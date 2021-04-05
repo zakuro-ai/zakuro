@@ -33,7 +33,7 @@ pip install zakuro-ai  --no-cache-dir
 ```
 
 ### Docker
-To build the image and launch a container to run a test demo on MNIST.
+To build the image with zakuro installed.
 ```
 docker pull zakuroai/zakuro
 sh docker.sh
