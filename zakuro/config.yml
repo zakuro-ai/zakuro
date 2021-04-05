@@ -1,0 +1,10 @@
+# matches bfd8deac from resnet18-bfd8deac.pth
+HASH_REGEX_EXP: '-([a-f0-9]*)\.'
+
+DEFAULT_ZAKURO_HOME: '$HOME/.zakuro'
+ZAKURO_HUB: 'http://hub.zakuro.ai/state_dict'
+ZAKURO_URI: 'zakuro://'
+ZAKURO_HOME: 'ZAKURO_HOME'
+DEFAULT_CACHE_DIR: '$HOME/.cache'
+XDG_CACHE_HOME: 'XDG_CACHE_HOME'
+READ_DATA_CHUNK: 8192
