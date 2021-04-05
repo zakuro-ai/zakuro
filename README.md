@@ -16,10 +16,10 @@ At a granular level, Sakura is a library that consists of the following componen
 
 | Component | Description |
 | ---- | --- |
-| **zakuro** | Contains the sakura modules. |
-| **zakuro.hub** | Contains the code related to ml processing |
-| **zakuro.nn** | Decorators used to synchronize the train/test.|
-| **zakuro.parsers** | Decorators used to synchronize the train/test.|
+| **zakuro** | Zakuro. |
+| **zakuro.hub** | Hub to store and share pretrained models |
+| **zakuro.nn** | Load models. |
+| **zakuro.parsers** | Parse config files |
 
 ## Installation
 ### Local
