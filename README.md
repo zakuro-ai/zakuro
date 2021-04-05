@@ -2,7 +2,7 @@
 
 --------------------------------------------------------------------------------
 
-Zakuro is a simple but powerful tool to reduce training time by running the train/test asynchronously. It provides two features:
+Zakuro is a simple but powerful tool to enable federated learning  running on a community cloud based platform. It provides two features:
 - A model hub to enable federated learning applications.
 - An integration with PyTorch. 
 
