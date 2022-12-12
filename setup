@@ -1,0 +1,43 @@
+FROM lscr.io/linuxserver/wireguard:latest
+
+# Start ssh server
+ENV PATH="/opt/spark/sbin:$PATH"
+ENV JAVA_HOME="/usr"
+ENV PYTHONPATH="/usr/local/lib/python3.10/dist-packages:/opt/spark/python:/workspace"
+
+# Add python
+RUN apt update && apt install \
+    sudo \
+    nano -y
+
+# Add foo user
+RUN adduser --disabled-password --gecos '' foo
+RUN adduser foo sudo
+RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+RUN usermod -u 1000 -g 1000 foo
+
+# # Add pysparks
+RUN sudo apt install \
+    rsync \
+    git \
+    wget \
+    default-jre \
+    python3 \
+    python3-pip -y
+
+RUN sudo ln -s /usr/bin/python3 /usr/bin/python
+
+#Dask
+RUN pip install distributed paramiko jupyterlab
+
+# # Spark
+# WORKDIR /tmp
+# RUN pip install pyspark==3.3.1
+# RUN wget https://dlcdn.apache.org/spark/spark-3.3.1/spark-3.3.1-bin-hadoop3.tgz && \
+#     tar -xzvf spark-3.3.1-bin-hadoop3.tgz && \
+#     mv spark-3.3.1-bin-hadoop3 spark
+# RUN mv spark /opt/
+# RUN ln -s /usr/local/lib/python3.10/dist-packages/pyspark /opt/spark/python/pyspark
+
+WORKDIR /workspace
+RUN chown foo:foo /workspace
