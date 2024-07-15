@@ -1,0 +1,28 @@
+x-zk0_compute: &zk0_compute
+  extends:
+    file: $HOME/.zakuro/compute/compute-zakuro.yaml
+    service: zk0_compute
+
+x-zk0_network: &zk0_network
+  extends:
+    file: $HOME/.zakuro/network/network-zakuro.yaml
+    service: zk0_network
+
+services:
+  zk0_network:
+    <<: *zk0_network
+  
+  zakuro:
+    <<: *zk0_compute
+    container_name: zakuro
+    image: zakuroai/zakuro
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    environment:
+      - PYTHONPATH=$PYTHONPATH:/workspace
+    volumes:
+      - $PWD:/workspace
+    user: foo
+    env_file:
+      - .env
