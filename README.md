@@ -17,24 +17,13 @@ At a granular level, Sakura is a library that consists of the following componen
 | Component | Description |
 | ---- | --- |
 | **zakuro** | Zakuro. |
+| **zakuro.fs** | Manage filesystem |
 | **zakuro.hub** | Hub to store and share pretrained models |
 | **zakuro.nn** | Load models. |
 | **zakuro.parsers** | Parse config files |
 
-## Installation
-### Local
-```
-python setup.py install
-```
-
-### Pypi
-```
-pip install zakuro-ai  --no-cache-dir
-```
-
 ### Docker
 To build the image with zakuro installed.
 ```
-docker pull zakuroai/zakuro
-sh docker.sh
+docker compose up vanilla -d
 ```

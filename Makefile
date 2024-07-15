@@ -1,34 +1,42 @@
-.DEFAULT_GOAL := build
+# PHONY are targets with no files to check, all in our case
+.DEFAULT_GOAL := help
+include .env
 
-ENDPOINT=10.13.13.2:8786
+# Extract the recommender version
+VERSION=$(shell cat ${PKG_NAME}/version)
+BUILD=$(shell date)
 
-# Build
-build: 
-	@docker-compose down
-	@docker rmi -f zakuroai/agent
-	@docker build . -t zakuroai/agent --no-cache
 
-down:
-	@docker-compose down
+#########################################################################################
+################# MISC ##################################################################
+#########################################################################################
+# Display the current version
+help:
+	@echo ${PKG_NAME} v$(VERSION)
+	@echo "Usage: make {build,  bash, ...}"
+	@echo "Please check README.md for instructions"
+	@echo ""
 
-up:
-	@docker-compose up -d
+# Build the project
+.PHONY: add_build
+add_build: 
+	echo ${BUILD} > ${PKG_NAME}/build
 
-reset:
-	@zakuro_cli down
-	@zakuro_cli up
-	@docker exec -d zakuro_agent  /bin/bash -c "dask worker ${ENDPOINT}"
+# Build the project
+.PHONY: build
+build: add_build build_wheel
 
-	
-ssh:
-	@docker exec -e HOME=/home/foo -u foo -it zakuro_agent bash
+# Run the project
+.PHONY: run
+run:
+	docker compose down
+	docker compose up ${ENV} -d
 
-# Sandbox
-sandbox:
-	@zakuro_cli reset
-	@zakuro_cli ssh
-
-nb:
-	@zakuro_cli reset
-	@docker exec -e HOME=/home/foo -u foo -d zakuro_agent /bin/bash -c "jupyter lab --ip 0.0.0.0 --port 8890 /workspace"
-	@zakuro_cli ssh
+# Build the project's wheels
+.PHONY: build_wheel
+build_wheel: 
+	# Build the wheels
+	@mkdir -p dist/legacy;
+	@mv dist/*.whl dist/legacy/ || true; \
+	pip install build && python -m build --wheel;
+	rsbuild clean

@@ -1,3 +1,8 @@
+dist/legacy
+.env
+notebooks
+etc
+__pycache__
 .idea
-*__pycache__
+.vscode
 *.pyc
