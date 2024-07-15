@@ -1,11 +1,25 @@
 import sys
-import yaml
-from argparse import Namespace
-import os
-from zakuro.parsers import ZakuroConfigLoader
+# import yaml
+# from argparse import Namespace
+# import os
+from gnutools.fs import parent
+from gnutools.fs import load_config as _load_config, parent
 
-current_dir = os.path.dirname(__file__)
-config = Namespace(**yaml.load(open(f"{current_dir}/config.yml"), Loader=ZakuroConfigLoader))
+
+def peer(worker):
+    def wrapper_worker(f):
+        def wrapper(*args, **kwargs):
+            from zakuro import ctx
+            try:
+                v = ctx.get_worker(worker).submit(f, *args, **kwargs)
+                return  v.result()
+            except ModuleNotFoundError:
+                return {worker: 
+                    {"error": ModuleNotFoundError, "input":{"f":f, "args": args, "kwargs": kwargs}, "output": None}}
+        return wrapper
+    return wrapper_worker
+
+
 
 try:
     from tqdm.auto import tqdm  # automatically select proper tqdm submodule if available
@@ -46,3 +60,18 @@ except ImportError:
 
                 sys.stderr.write('\n')
 
+
+
+def load_config():
+    filename = f"{parent(__file__)}/config.yml"
+    cfg = _load_config(filename)
+    return cfg
+
+
+
+def get_ip():
+    import subprocess
+
+    result = subprocess.run("zc wg0ip", shell=True, check=True, capture_output=True)
+    host = result.stdout.decode().rsplit()[0]
+    return host
