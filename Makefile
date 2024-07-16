@@ -24,7 +24,7 @@ add_build:
 
 # Build the project
 .PHONY: build
-build: add_build build_wheel
+build: add_build build_wheel build_docker
 
 # Run the project
 .PHONY: run
@@ -40,3 +40,15 @@ build_wheel:
 	@mv dist/*.whl dist/legacy/ || true; \
 	pip install build && python -m build --wheel;
 	rsbuild clean
+
+# Build the docker image
+.PHONY: build_docker
+build_docker: 
+	# Build the wheels
+	docker compose build
+
+# Build launch and connect
+.PHONY: all
+all: 
+	docker compose up -d
+	docker exec -it zakuro bash

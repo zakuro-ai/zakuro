@@ -1,7 +1,8 @@
 FROM zakuroai/compute
-
+USER root
+# RUN rm /workspace/*.whl
 COPY dist/*.whl /workspace/
+# RUN uv pip install /workspace/*.whl --system && rm /workspace/*.whl
 
-RUN uv pip install /workspace/*.whl && rm /workspace/*.whl
-
-WORKDIR /workspace
+# USER foo
+# WORKDIR /workspace
