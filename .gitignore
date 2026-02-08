@@ -1,9 +1,45 @@
+# macOS
 *DS_Store*
-dist/legacy
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Build
+build/
+dist/
+!dist/.gitkeep
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Type checking
+.mypy_cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
 .env
-notebooks
-etc
-__pycache__
-.idea
-.vscode
-*.pyc
+.env.local
+
+# Misc
+notebooks/
+etc/

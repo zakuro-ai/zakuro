@@ -1,9 +1,0 @@
-torch
-torchvision
-numpy
-tqdm
-gnutools-python
-requests
-pyYaml
-minio
-miniofs

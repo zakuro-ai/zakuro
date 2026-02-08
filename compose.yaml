@@ -1,28 +1,38 @@
-x-zk0_compute: &zk0_compute
-  extends:
-    file: $HOME/.zakuro/compute/compute-zakuro.yaml
-    service: zk0_compute
-
-x-zk0_network: &zk0_network
-  extends:
-    file: $HOME/.zakuro/network/network-zakuro.yaml
-    service: zk0_network
-
 services:
-  zk0_network:
-    <<: *zk0_network
-  
-  zakuro:
-    <<: *zk0_compute
-    container_name: zakuro
-    image: zakuroai/zakuro
+  zakuro-worker:
+    container_name: zakuro-worker
+    image: zakuroai/zakuro-worker:latest
     build:
       context: .
       dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
     environment:
-      - PYTHONPATH=$PYTHONPATH:/workspace
+      - ZAKURO_HOST=0.0.0.0
+      - ZAKURO_PORT=8000
+      - ZAKURO_WORKERS=4
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  # Development service with volume mounts
+  zakuro-worker-dev:
+    container_name: zakuro-worker-dev
+    image: python:3.12-slim
+    ports:
+      - "8001:8000"
     volumes:
-      - $PWD:/workspace
-    user: foo
-    env_file:
-      - .env
+      - .:/app
+    working_dir: /app
+    environment:
+      - ZAKURO_HOST=0.0.0.0
+      - ZAKURO_PORT=8000
+      - PYTHONPATH=/app
+    command: >
+      sh -c "pip install -e '.[worker]' && python -m zakuro.worker.server"
+    profiles:
+      - dev

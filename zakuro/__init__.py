@@ -1,11 +1,33 @@
-# -*- coding: utf-8 -*-
+"""
+Zakuro - Distributed computing made simple.
 
-from zakuro.context import Context
-from zakuro.pkg_info import __version__
-# from zakuro.parsers import ZakuroConfigLoader
-ctx = Context("zakuro://10.13.13.2")
+A kubetorch-like distributed computing library for the Zakuro platform.
 
-# current_dir = os.path.dirname(__file__)
-# config = Namespace(**yaml.load(open(f"{current_dir}/config.yml"), Loader=ZakuroConfigLoader))
-from .functional import load_config, peer
-cfg = load_config()
+Example:
+    >>> import zakuro as zk
+    >>>
+    >>> def hello_world():
+    ...     return "Hello from Zakuro!"
+    >>>
+    >>> compute = zk.Compute(cpus=0.5, memory="2Gi")
+    >>> remote_fn = zk.fn(hello_world).to(compute)
+    >>> result = remote_fn()  # Runs on Zakuro cluster
+"""
+
+__version__ = "0.2.0"
+__build__ = ""
+
+from zakuro.compute import Compute
+from zakuro.config import Config
+from zakuro.fn import Fn, cls, fn
+from zakuro.processors.registry import available_processors
+
+__all__ = [
+    "Compute",
+    "Config",
+    "Fn",
+    "fn",
+    "cls",
+    "available_processors",
+    "__version__",
+]
