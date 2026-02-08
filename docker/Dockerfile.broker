@@ -1,0 +1,79 @@
+# zakuroai/zakuro - Full distribution with broker, workers, and distributed backends
+#
+# This image includes:
+# - Zakuro Python library with all processors
+# - zc2 broker binary
+# - Ray, Dask, Spark support
+# - Tailscale for P2P networking
+#
+# Build: docker build -f docker/Dockerfile.broker -t zakuroai/zakuro .
+
+FROM python:3.12-slim AS python-base
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    wget \
+    procps \
+    net-tools \
+    iputils-ping \
+    openjdk-17-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN pip install --no-cache-dir uv
+
+# -------------------------------------------------------------------
+# Stage: Build zc2 binary
+# -------------------------------------------------------------------
+FROM rust:1.75-slim AS rust-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY --from=zc-source . .
+RUN cargo build --release
+
+# -------------------------------------------------------------------
+# Stage: Final image
+# -------------------------------------------------------------------
+FROM python-base AS final
+
+# Create non-root user
+RUN useradd -m -s /bin/bash zakuro
+WORKDIR /app
+
+# Copy zakuro wheel and install with all processors
+COPY dist/*.whl /tmp/
+RUN uv pip install "/tmp/*.whl[all-processors]" --system && rm /tmp/*.whl
+
+# Copy zc2 binary
+COPY --from=rust-builder /build/target/release/zc2 /usr/local/bin/zc
+
+# Install Tailscale
+RUN curl -fsSL https://tailscale.com/install.sh | sh
+
+# Create directories
+RUN mkdir -p /var/run/tailscale /app/data
+
+# Environment variables
+ENV ZAKURO_HOST=0.0.0.0
+ENV ZAKURO_PORT=8000
+ENV ZAKURO_BROKER_PORT=9000
+ENV ZAKURO_WORKER_NAME=worker
+ENV ZAKURO_CPU_PRICE=0.001
+ENV ZAKURO_MEMORY_PRICE=0.0001
+ENV ZAKURO_GPU_PRICE=0.01
+
+# Expose ports
+EXPOSE 8000 9000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/health || curl -f http://localhost:9000/health || exit 1
+
+# Default: run worker
+CMD ["python", "-m", "zakuro.worker.server"]
