@@ -1,0 +1,30 @@
+version: '3'
+
+tasks:
+  lint:
+    desc: Run linting checks
+    cmds:
+      - ruff check zakuro/ tests/
+
+  format:
+    desc: Format code with ruff
+    cmds:
+      - ruff format zakuro/ tests/
+
+  format-check:
+    desc: Check code formatting
+    cmds:
+      - ruff format --check zakuro/ tests/
+
+  typecheck:
+    desc: Run type checking with mypy
+    cmds:
+      - mypy zakuro/
+
+  all:
+    desc: Run all CI checks
+    cmds:
+      - task: lint
+      - task: format-check
+      - task: typecheck
+      - task test:unit

@@ -1,0 +1,23 @@
+version: '3'
+
+tasks:
+  unit:
+    desc: Run unit tests with pytest
+    cmds:
+      - python -m pytest tests/ -v --cov=zakuro --cov-report=term-missing {{.CLI_ARGS}}
+
+  fast:
+    desc: Run tests without coverage
+    cmds:
+      - python -m pytest tests/ -v {{.CLI_ARGS}}
+
+  integration:
+    desc: Run integration tests with docker compose
+    cmds:
+      - docker compose -f compose.test.yml up --build --abort-on-container-exit
+      - docker compose -f compose.test.yml down
+
+  all:
+    desc: Run all tests
+    cmds:
+      - task: unit

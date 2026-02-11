@@ -1,0 +1,45 @@
+version: '3'
+
+vars:
+  IMAGE: zakuroai/zakuro-worker
+
+tasks:
+  build:
+    desc: Build Docker image for worker
+    cmds:
+      - docker compose build
+
+  up:
+    desc: Start worker in Docker
+    cmds:
+      - docker compose up -d
+
+  down:
+    desc: Stop all containers
+    cmds:
+      - docker compose down
+
+  logs:
+    desc: Show container logs
+    cmds:
+      - docker compose logs -f
+
+  shell:
+    desc: Open shell in worker container
+    cmds:
+      - docker compose exec zakuro-worker bash
+
+  ps:
+    desc: Show container status
+    cmds:
+      - docker compose ps
+
+  restart:
+    desc: Restart containers
+    cmds:
+      - docker compose restart
+
+  push:
+    desc: Push image to registry
+    cmds:
+      - docker push {{.IMAGE}}:latest

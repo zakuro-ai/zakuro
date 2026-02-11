@@ -1,0 +1,49 @@
+version: '3'
+
+vars:
+  DIST_DIR: '{{.ROOT_DIR}}/dist'
+  INIT_FILE: '{{.ROOT_DIR}}/zakuro/__init__.py'
+
+tasks:
+  stamp:
+    desc: Stamp __build__ with current date
+    internal: true
+    cmds:
+      - |
+        if grep -q '^__build__' {{.INIT_FILE}}; then
+          sed -i 's/^__build__ = .*/__build__ = "{{.BUILD_DATE}}"/' {{.INIT_FILE}}
+        else
+          sed -i '/__version__/a __build__ = "{{.BUILD_DATE}}"' {{.INIT_FILE}}
+        fi
+    vars:
+      BUILD_DATE:
+        sh: TZ=Asia/Tokyo date +%Y-%m-%dT%H:%M:%S%z
+
+  wheel:
+    desc: Build wheel distribution with uv
+    preconditions:
+      - sh: command -v uv
+        msg: "uv is required - install with: curl -LsSf https://astral.sh/uv/install.sh | sh"
+    cmds:
+      - task: stamp
+      - mkdir -p {{.DIST_DIR}}/legacy
+      - cmd: mv {{.DIST_DIR}}/*.whl {{.DIST_DIR}}/legacy/ 2>/dev/null || true
+        ignore_error: true
+      - uv build --wheel --out-dir {{.DIST_DIR}}
+
+  sdist:
+    desc: Build source distribution
+    cmds:
+      - uv build --sdist --out-dir {{.DIST_DIR}}
+
+  all:
+    desc: Build wheel and source distribution
+    cmds:
+      - task: wheel
+      - task: sdist
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -rf {{.DIST_DIR}} build/ *.egg-info
+      - find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
