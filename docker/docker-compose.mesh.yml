@@ -1,0 +1,204 @@
+# Zakuro 2-Node P2P Mesh with Tailscale
+#
+# Each node = broker + worker + Redis + Tailscale sidecar
+# Worker and Tailscale share the broker's network namespace (same Tailscale IP).
+# Discovery scans the Tailscale subnet → finds both local and remote workers.
+# Local worker execution = free (cost=0). Remote = charged via credit ledger.
+#
+# Prerequisites:
+#   export ZK0NODE01_API_KEY=tskey-auth-...
+#   export ZK0NODE02_API_KEY=tskey-auth-...
+#
+# Usage:
+#   docker compose -f docker/docker-compose.mesh.yml up -d --build
+#   docker compose -f docker/docker-compose.mesh.yml logs -f node1-broker node2-broker
+#
+# Verify:
+#   curl http://localhost:9001/workers   # should list 2 workers
+#   curl http://localhost:9002/workers   # should list 2 workers
+
+services:
+  # ============ NODE 1: standard tier ============
+
+  node1-redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --appendfsync everysec
+    volumes:
+      - node1-redis:/data
+    networks: [node1-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  node1-broker:
+    build:
+      context: ../../zak-zc
+      dockerfile: docker/Dockerfile
+    environment:
+      REDIS_URL: redis://node1-redis:6379
+      ZAKURO_MASTER_KEY: node1-key
+      ZAKURO_AUTH: node1
+      # Tailscale peer discovery (IPs from `tailscale ip -4` on each node)
+      ZAKURO_TAILSCALE_IP: ${NODE1_TAILSCALE_IP:-}
+      ZAKURO_PEERS: ${NODE2_TAILSCALE_IP:-}:8000
+    ports:
+      - "9001:9000"
+    networks: [node1-net]
+    depends_on:
+      node1-redis:
+        condition: service_healthy
+    volumes:
+      - node1-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9000/health"]
+      interval: 10s
+      timeout: 70s
+      start_period: 90s
+      retries: 5
+
+  node1-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      ZAKURO_WORKER_NAME: zk0-node01-worker
+      ZAKURO_WORKER_TYPE: standard
+      ZAKURO_CPU_PRICE: "0.001"
+      ZAKURO_MEMORY_PRICE: "0.0001"
+      PYTHONUNBUFFERED: "1"
+    network_mode: "service:node1-broker"
+    depends_on:
+      node1-broker:
+        condition: service_healthy
+
+  node1-tailscale:
+    image: tailscale/tailscale:latest
+    cap_add: [NET_ADMIN, NET_RAW, SYS_MODULE]
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      TS_AUTHKEY: ${ZK0NODE01_API_KEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_EXTRA_ARGS: "--hostname=zk0-node01"
+    network_mode: "service:node1-broker"
+    depends_on:
+      node1-broker:
+        condition: service_healthy
+    volumes:
+      - node1-ts:/var/lib/tailscale
+
+  # ============ NODE 2: premium tier ============
+
+  node2-redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --appendfsync everysec
+    volumes:
+      - node2-redis:/data
+    networks: [node2-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  node2-broker:
+    build:
+      context: ../../zak-zc
+      dockerfile: docker/Dockerfile
+    environment:
+      REDIS_URL: redis://node2-redis:6379
+      ZAKURO_MASTER_KEY: node2-key
+      ZAKURO_AUTH: node2
+      # Tailscale peer discovery (IPs from `tailscale ip -4` on each node)
+      ZAKURO_TAILSCALE_IP: ${NODE2_TAILSCALE_IP:-}
+      ZAKURO_PEERS: ${NODE1_TAILSCALE_IP:-}:8000
+    ports:
+      - "9002:9000"
+    networks: [node2-net]
+    depends_on:
+      node2-redis:
+        condition: service_healthy
+    volumes:
+      - node2-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9000/health"]
+      interval: 10s
+      timeout: 70s
+      start_period: 90s
+      retries: 5
+
+  node2-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      ZAKURO_WORKER_NAME: zk0-node02-worker
+      ZAKURO_WORKER_TYPE: premium
+      ZAKURO_CPU_PRICE: "0.003"
+      ZAKURO_MEMORY_PRICE: "0.0003"
+      PYTHONUNBUFFERED: "1"
+    network_mode: "service:node2-broker"
+    depends_on:
+      node2-broker:
+        condition: service_healthy
+
+  node2-tailscale:
+    image: tailscale/tailscale:latest
+    cap_add: [NET_ADMIN, NET_RAW, SYS_MODULE]
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      TS_AUTHKEY: ${ZK0NODE02_API_KEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_EXTRA_ARGS: "--hostname=zk0-node02"
+    network_mode: "service:node2-broker"
+    depends_on:
+      node2-broker:
+        condition: service_healthy
+    volumes:
+      - node2-ts:/var/lib/tailscale
+
+  # ============ INIT: seed credits on both nodes ============
+
+  init:
+    image: curlimages/curl:latest
+    depends_on:
+      node1-broker:
+        condition: service_healthy
+      node2-broker:
+        condition: service_healthy
+    networks: [node1-net, node2-net]
+    volumes:
+      - ./init-mesh.sh:/init-mesh.sh:ro
+    entrypoint: ["/bin/sh", "/init-mesh.sh"]
+    restart: "no"
+
+  # ============ DEMO: task planner ============
+
+  demo:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.demo
+    networks: [node1-net, node2-net]
+    profiles: ["demo"]
+    restart: "no"
+
+networks:
+  node1-net:
+  node2-net:
+
+volumes:
+  node1-data:
+  node1-ts:
+  node1-redis:
+  node2-data:
+  node2-ts:
+  node2-redis:

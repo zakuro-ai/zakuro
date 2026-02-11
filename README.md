@@ -291,6 +291,49 @@ task docker:logs
 task docker:down
 ```
 
+### P2P Mesh Deployment
+
+Deploy a 2-node mesh where each node runs a broker + worker pair connected via Tailscale. Local execution is free; remote execution is charged via the credit ledger.
+
+```
+  Node 1 (standard)                          Node 2 (premium)
+  ┌──────────────────────┐                   ┌──────────────────────┐
+  │ Broker + Worker      │◄══ Tailscale ════►│ Broker + Worker      │
+  │ + Tailscale + Redis  │    mesh           │ + Tailscale + Redis  │
+  │ cpu=$0.001/s (free)  │                   │ cpu=$0.003/s (free)  │
+  └──────────────────────┘                   └──────────────────────┘
+```
+
+```bash
+cd docker
+
+# Set Tailscale auth keys
+export ZK0NODE01_API_KEY=tskey-auth-...
+export ZK0NODE02_API_KEY=tskey-auth-...
+
+# Set Tailscale IPs (from `tailscale ip -4` on each node)
+export NODE1_TAILSCALE_IP=100.x.x.x
+export NODE2_TAILSCALE_IP=100.y.y.y
+
+# Start the mesh (8 containers: 2x broker + worker + tailscale + redis)
+docker compose -f docker-compose.mesh.yml up -d --build
+
+# Verify both nodes see 2 workers
+curl http://localhost:9001/workers   # node1 broker
+curl http://localhost:9002/workers   # node2 broker
+
+# Run the demo (tests all routing strategies)
+pip install cloudpickle requests
+python mesh-demo.py http://localhost:9001 node1-user
+```
+
+The demo sends real cloudpickle-serialized Python functions through the broker:
+- `best_price` picks the local worker (free, cost=0)
+- `round_robin` alternates between local and remote (remote is charged)
+- `best_latency` picks based on response time history
+
+See `docker/docker-compose.mesh.yml` for the full compose configuration.
+
 ### Development Server
 
 ```bash
