@@ -12,9 +12,11 @@ RUN pip install --no-cache-dir uv
 RUN useradd -m -s /bin/bash zakuro
 WORKDIR /app
 
-# Copy wheel and install
+# Copy wheel and install with worker extras
 COPY dist/*.whl /tmp/
-RUN uv pip install /tmp/*.whl --system && rm /tmp/*.whl
+RUN uv pip install /tmp/*.whl --system \
+    && uv pip install fastapi "uvicorn[standard]" psutil --system \
+    && rm /tmp/*.whl
 
 # Switch to non-root user
 USER zakuro
