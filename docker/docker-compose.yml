@@ -1,0 +1,234 @@
+version: '3.8'
+
+# Zakuro Multi-Node Test Environment
+#
+# This creates:
+# - 1 broker node (routes requests, manages credits)
+# - 5 worker nodes with varying resources and pricing
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml up -d
+#   docker compose -f docker/docker-compose.yml logs -f broker
+
+x-worker-common: &worker-common
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile
+  environment: &worker-env
+    ZAKURO_AUTH: ${ZAKURO_AUTH:-demo}
+    ZAKURO_BROKER_URL: http://broker:9000
+    PYTHONUNBUFFERED: "1"
+  depends_on:
+    - broker
+  networks:
+    - zakuro-net
+  restart: unless-stopped
+
+services:
+  # ============================================================
+  # Broker - Routes requests to workers
+  # ============================================================
+  broker:
+    build:
+      context: ../../zak-zc
+      dockerfile: docker/Dockerfile
+    container_name: zakuro-broker
+    ports:
+      - "9000:9000"
+    environment:
+      ZAKURO_AUTH: ${ZAKURO_AUTH:-demo}
+      REDIS_URL: redis://redis:6379
+      ZAKURO_MASTER_KEY: ${ZAKURO_MASTER_KEY:-master-key-change-me}
+    volumes:
+      - broker-data:/app/data
+    networks:
+      - zakuro-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================================
+  # Redis - Credit ledger storage
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: zakuro-redis
+    command: redis-server --appendonly yes --appendfsync everysec
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - zakuro-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ============================================================
+  # Init - Credit initialization (runs once)
+  # ============================================================
+  init:
+    image: curlimages/curl:latest
+    container_name: zakuro-init
+    volumes:
+      - ./init-credits.sh:/init-credits.sh:ro
+    environment:
+      ZAKURO_BROKER_URL: http://broker:9000
+      ZAKURO_MASTER_KEY: ${ZAKURO_MASTER_KEY:-master-key-change-me}
+    depends_on:
+      broker:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - zakuro-net
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache bash python3
+        bash /init-credits.sh
+    restart: "no"
+
+  # ============================================================
+  # Worker 1: Budget tier - Low resources, cheapest pricing
+  # ============================================================
+  worker-1:
+    <<: *worker-common
+    container_name: zakuro-worker-1
+    ports:
+      - "8001:8000"
+    environment:
+      <<: *worker-env
+      ZAKURO_AUTH: worker-1-auth-key
+      ZAKURO_WORKER_ID: worker-1
+      ZAKURO_WORKER_NAME: worker-budget-1
+      ZAKURO_WORKER_TYPE: budget
+      ZAKURO_CPU_PRICE: "0.0005"
+      ZAKURO_MEMORY_PRICE: "0.00005"
+      ZAKURO_GPU_PRICE: "0.005"
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # ============================================================
+  # Worker 2: Budget tier - Low resources, cheapest pricing
+  # ============================================================
+  worker-2:
+    <<: *worker-common
+    container_name: zakuro-worker-2
+    ports:
+      - "8002:8000"
+    environment:
+      <<: *worker-env
+      ZAKURO_AUTH: worker-2-auth-key
+      ZAKURO_WORKER_ID: worker-2
+      ZAKURO_WORKER_NAME: worker-budget-2
+      ZAKURO_WORKER_TYPE: budget
+      ZAKURO_CPU_PRICE: "0.0006"
+      ZAKURO_MEMORY_PRICE: "0.00006"
+      ZAKURO_GPU_PRICE: "0.006"
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # ============================================================
+  # Worker 3: Standard tier - Medium resources, standard pricing
+  # ============================================================
+  worker-3:
+    <<: *worker-common
+    container_name: zakuro-worker-3
+    ports:
+      - "8003:8000"
+    environment:
+      <<: *worker-env
+      ZAKURO_AUTH: worker-3-auth-key
+      ZAKURO_WORKER_ID: worker-3
+      ZAKURO_WORKER_NAME: worker-standard-1
+      ZAKURO_WORKER_TYPE: standard
+      ZAKURO_CPU_PRICE: "0.001"
+      ZAKURO_MEMORY_PRICE: "0.0001"
+      ZAKURO_GPU_PRICE: "0.01"
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '1'
+          memory: 512M
+
+  # ============================================================
+  # Worker 4: Performance tier - High resources, premium pricing
+  # ============================================================
+  worker-4:
+    <<: *worker-common
+    container_name: zakuro-worker-4
+    ports:
+      - "8004:8000"
+    environment:
+      <<: *worker-env
+      ZAKURO_AUTH: worker-4-auth-key
+      ZAKURO_WORKER_ID: worker-4
+      ZAKURO_WORKER_NAME: worker-perf-1
+      ZAKURO_WORKER_TYPE: performance
+      ZAKURO_CPU_PRICE: "0.002"
+      ZAKURO_MEMORY_PRICE: "0.0002"
+      ZAKURO_GPU_PRICE: "0.02"
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 2G
+        reservations:
+          cpus: '2'
+          memory: 1G
+
+  # ============================================================
+  # Worker 5: Premium tier - Maximum resources, highest pricing
+  # ============================================================
+  worker-5:
+    <<: *worker-common
+    container_name: zakuro-worker-5
+    ports:
+      - "8005:8000"
+    environment:
+      <<: *worker-env
+      ZAKURO_AUTH: worker-5-auth-key
+      ZAKURO_WORKER_ID: worker-5
+      ZAKURO_WORKER_NAME: worker-premium-1
+      ZAKURO_WORKER_TYPE: premium
+      ZAKURO_CPU_PRICE: "0.005"
+      ZAKURO_MEMORY_PRICE: "0.0005"
+      ZAKURO_GPU_PRICE: "0.05"
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 4G
+        reservations:
+          cpus: '4'
+          memory: 2G
+
+networks:
+  zakuro-net:
+    external: true
+
+volumes:
+  broker-data:
+  redis-data:

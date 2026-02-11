@@ -1,0 +1,283 @@
+version: '3.8'
+
+# Zakuro Multi-Node Environment with Tailscale P2P Networking
+#
+# This creates 5 worker nodes connected via Tailscale mesh network.
+# Each worker registers with the broker using its Tailscale IP.
+#
+# Prerequisites:
+#   1. Get a Tailscale auth key: https://login.tailscale.com/admin/settings/keys
+#   2. Set TAILSCALE_AUTHKEY environment variable
+#
+# Usage:
+#   export TAILSCALE_AUTHKEY=tskey-auth-xxx
+#   docker compose -f docker/docker-compose.tailscale.yml up -d
+
+x-tailscale-sidecar: &tailscale-sidecar
+  image: tailscale/tailscale:latest
+  cap_add:
+    - NET_ADMIN
+    - NET_RAW
+  environment:
+    TS_AUTHKEY: ${TAILSCALE_AUTHKEY}
+    TS_STATE_DIR: /var/lib/tailscale
+    TS_USERSPACE: "true"
+  volumes:
+    - tailscale-state:/var/lib/tailscale
+  restart: unless-stopped
+
+x-worker-common: &worker-common
+  build:
+    context: ..
+    dockerfile: docker/Dockerfile
+  environment: &worker-env
+    ZAKURO_AUTH: ${ZAKURO_AUTH:-demo}
+    ZAKURO_BROKER_URL: http://broker:9000
+    PYTHONUNBUFFERED: "1"
+  restart: unless-stopped
+
+services:
+  # ============================================================
+  # Broker - Routes requests to workers
+  # ============================================================
+  broker:
+    build:
+      context: ../..
+      dockerfile: zak-zc/docker/Dockerfile
+    container_name: zakuro-broker
+    ports:
+      - "9000:9000"
+    environment:
+      ZAKURO_AUTH: ${ZAKURO_AUTH:-demo}
+      REDIS_URL: redis://redis:6379
+      ZAKURO_MASTER_KEY: ${ZAKURO_MASTER_KEY:-master-key-change-me}
+    volumes:
+      - broker-data:/app/data
+    networks:
+      - zakuro-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Broker Tailscale sidecar
+  broker-tailscale:
+    <<: *tailscale-sidecar
+    container_name: zakuro-broker-ts
+    hostname: zakuro-broker
+    environment:
+      TS_AUTHKEY: ${TAILSCALE_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_EXTRA_ARGS: "--hostname=zakuro-broker"
+    network_mode: "service:broker"
+    depends_on:
+      - broker
+
+  # ============================================================
+  # Redis - Credit ledger storage
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: zakuro-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - zakuro-net
+    restart: unless-stopped
+
+  # ============================================================
+  # Init - Credit initialization
+  # ============================================================
+  init:
+    image: curlimages/curl:latest
+    container_name: zakuro-init
+    volumes:
+      - ./init-credits.sh:/init-credits.sh:ro
+    environment:
+      ZAKURO_BROKER_URL: http://broker:9000
+      ZAKURO_MASTER_KEY: ${ZAKURO_MASTER_KEY:-master-key-change-me}
+    depends_on:
+      broker:
+        condition: service_healthy
+    networks:
+      - zakuro-net
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache bash python3
+        bash /init-credits.sh
+    restart: "no"
+
+  # ============================================================
+  # Worker 1: Budget tier
+  # ============================================================
+  worker-1:
+    <<: *worker-common
+    container_name: zakuro-worker-1
+    environment:
+      <<: *worker-env
+      ZAKURO_WORKER_NAME: ts-worker-budget-1
+      ZAKURO_WORKER_TYPE: budget
+      ZAKURO_CPU_PRICE: "0.0005"
+      ZAKURO_MEMORY_PRICE: "0.00005"
+    networks:
+      - zakuro-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  worker-1-tailscale:
+    <<: *tailscale-sidecar
+    container_name: zakuro-worker-1-ts
+    environment:
+      TS_AUTHKEY: ${TAILSCALE_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_EXTRA_ARGS: "--hostname=zakuro-worker-1"
+    network_mode: "service:worker-1"
+    depends_on:
+      - worker-1
+
+  # ============================================================
+  # Worker 2: Budget tier
+  # ============================================================
+  worker-2:
+    <<: *worker-common
+    container_name: zakuro-worker-2
+    environment:
+      <<: *worker-env
+      ZAKURO_WORKER_NAME: ts-worker-budget-2
+      ZAKURO_WORKER_TYPE: budget
+      ZAKURO_CPU_PRICE: "0.0006"
+      ZAKURO_MEMORY_PRICE: "0.00006"
+    networks:
+      - zakuro-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+
+  worker-2-tailscale:
+    <<: *tailscale-sidecar
+    container_name: zakuro-worker-2-ts
+    environment:
+      TS_AUTHKEY: ${TAILSCALE_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_EXTRA_ARGS: "--hostname=zakuro-worker-2"
+    network_mode: "service:worker-2"
+    depends_on:
+      - worker-2
+
+  # ============================================================
+  # Worker 3: Standard tier
+  # ============================================================
+  worker-3:
+    <<: *worker-common
+    container_name: zakuro-worker-3
+    environment:
+      <<: *worker-env
+      ZAKURO_WORKER_NAME: ts-worker-standard-1
+      ZAKURO_WORKER_TYPE: standard
+      ZAKURO_CPU_PRICE: "0.001"
+      ZAKURO_MEMORY_PRICE: "0.0001"
+    networks:
+      - zakuro-net
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+
+  worker-3-tailscale:
+    <<: *tailscale-sidecar
+    container_name: zakuro-worker-3-ts
+    environment:
+      TS_AUTHKEY: ${TAILSCALE_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_EXTRA_ARGS: "--hostname=zakuro-worker-3"
+    network_mode: "service:worker-3"
+    depends_on:
+      - worker-3
+
+  # ============================================================
+  # Worker 4: Performance tier
+  # ============================================================
+  worker-4:
+    <<: *worker-common
+    container_name: zakuro-worker-4
+    environment:
+      <<: *worker-env
+      ZAKURO_WORKER_NAME: ts-worker-perf-1
+      ZAKURO_WORKER_TYPE: performance
+      ZAKURO_CPU_PRICE: "0.002"
+      ZAKURO_MEMORY_PRICE: "0.0002"
+    networks:
+      - zakuro-net
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 2G
+
+  worker-4-tailscale:
+    <<: *tailscale-sidecar
+    container_name: zakuro-worker-4-ts
+    environment:
+      TS_AUTHKEY: ${TAILSCALE_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_EXTRA_ARGS: "--hostname=zakuro-worker-4"
+    network_mode: "service:worker-4"
+    depends_on:
+      - worker-4
+
+  # ============================================================
+  # Worker 5: Premium tier
+  # ============================================================
+  worker-5:
+    <<: *worker-common
+    container_name: zakuro-worker-5
+    environment:
+      <<: *worker-env
+      ZAKURO_WORKER_NAME: ts-worker-premium-1
+      ZAKURO_WORKER_TYPE: premium
+      ZAKURO_CPU_PRICE: "0.005"
+      ZAKURO_MEMORY_PRICE: "0.0005"
+    networks:
+      - zakuro-net
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 4G
+
+  worker-5-tailscale:
+    <<: *tailscale-sidecar
+    container_name: zakuro-worker-5-ts
+    environment:
+      TS_AUTHKEY: ${TAILSCALE_AUTHKEY}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_EXTRA_ARGS: "--hostname=zakuro-worker-5"
+    network_mode: "service:worker-5"
+    depends_on:
+      - worker-5
+
+networks:
+  zakuro-net:
+    driver: bridge
+
+volumes:
+  broker-data:
+  redis-data:
+  tailscale-state:

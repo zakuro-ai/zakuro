@@ -1,0 +1,74 @@
+version: '3'
+
+vars:
+  MODULE: zakuro
+  IMAGE: zakuroai/zakuro-worker
+
+includes:
+  build:
+    taskfile: taskfiles/build.yml
+    optional: true
+  docker:
+    taskfile: taskfiles/docker.yml
+    optional: true
+  test:
+    taskfile: taskfiles/test.yml
+    optional: true
+  deploy:
+    taskfile: taskfiles/deploy.yml
+    optional: true
+  ci:
+    taskfile: taskfiles/ci.yml
+    optional: true
+
+dotenv: ['.env']
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  setup:
+    desc: Install prerequisites and verify environment
+    cmds:
+      - echo "Checking prerequisites..."
+      - command -v python >/dev/null 2>&1 && echo "  [OK] python $(python --version 2>&1 | cut -d' ' -f2)" || echo "  [MISSING] python"
+      - command -v uv >/dev/null 2>&1 && echo "  [OK] uv" || echo "  [MISSING] uv - install with: curl -LsSf https://astral.sh/uv/install.sh | sh"
+      - command -v docker >/dev/null 2>&1 && echo "  [OK] docker" || echo "  [MISSING] docker"
+      - command -v task >/dev/null 2>&1 && echo "  [OK] task" || echo "  [MISSING] task"
+      - echo ""
+      - echo "Installing Python dependencies..."
+      - uv sync --all-extras
+
+  dev:
+    desc: Install package in development mode
+    cmds:
+      - uv pip install --system -e ".[all]"
+
+  clean:
+    desc: Clean all build artifacts
+    cmds:
+      - rm -rf dist/ build/ *.egg-info .pytest_cache .mypy_cache .ruff_cache
+      - find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+      - find . -type f -name "*.pyc" -delete 2>/dev/null || true
+
+  worker:dev:
+    desc: Start development worker with hot reload
+    cmds:
+      - uvicorn zakuro.worker.server:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:prod:
+    desc: Start production worker
+    cmds:
+      - uvicorn zakuro.worker.server:app --host 0.0.0.0 --port 8000 --workers 4
+
+  demo:broker:
+    desc: Run broker demo script (requires broker running)
+    cmds:
+      - ./scripts/demo_broker.sh
+
+  demo:notebook:
+    desc: Open broker demo notebook in JupyterLab
+    cmds:
+      - jupyter lab notebooks/demo_broker.ipynb
