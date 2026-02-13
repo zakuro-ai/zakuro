@@ -67,12 +67,13 @@ class ZakuroClient:
             headers["Authorization"] = f"Bearer {self.config.auth_token}"
         return headers
 
-    def execute(self, payload: bytes) -> bytes:
+    def execute(self, payload: bytes, extra_headers: dict[str, str] | None = None) -> bytes:
         """
         Execute serialized function on worker.
 
         Args:
             payload: cloudpickle-serialized function with args/kwargs
+            extra_headers: Optional additional HTTP headers (e.g. instance affinity)
 
         Returns:
             cloudpickle-serialized result
@@ -81,10 +82,13 @@ class ZakuroClient:
             httpx.HTTPStatusError: If worker returns error status
             httpx.ConnectError: If worker is unreachable
         """
+        headers = {"Content-Type": "application/octet-stream"}
+        if extra_headers:
+            headers.update(extra_headers)
         response = self.client.post(
             "/execute",
             content=payload,
-            headers={"Content-Type": "application/octet-stream"},
+            headers=headers,
         )
         response.raise_for_status()
         return response.content
