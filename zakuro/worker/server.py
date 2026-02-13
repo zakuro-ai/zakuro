@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import multiprocessing
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import cloudpickle
@@ -19,15 +19,16 @@ app = FastAPI(
     version="0.2.0",
 )
 
-# Process pool for function execution
-executor: ProcessPoolExecutor | None = None
+# Thread pool for function execution (threads share memory, so instance
+# state in executor._instances is visible to all workers)
+executor: ThreadPoolExecutor | None = None
 
 
 @app.on_event("startup")
 async def startup() -> None:
-    """Initialize process pool on startup."""
+    """Initialize thread pool on startup."""
     global executor
-    executor = ProcessPoolExecutor(
+    executor = ThreadPoolExecutor(
         max_workers=multiprocessing.cpu_count(),
     )
 
@@ -122,7 +123,7 @@ async def execute(request: Request) -> Response:
     payload = await request.body()
 
     try:
-        # Run in process pool for isolation
+        # Run in thread pool (shared memory for instance state)
         loop = asyncio.get_event_loop()
         result_bytes = await loop.run_in_executor(
             executor,
