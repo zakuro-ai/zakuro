@@ -42,8 +42,14 @@ def execute_function(payload: bytes) -> bytes:
 
             instance = klass(*args, **kwargs)
 
-            # Store instance and return ID
-            instance_id = _store_instance(instance)
+            # Use client-provided instance_id for broker affinity routing,
+            # otherwise auto-generate one
+            client_id = data.get("instance_id")
+            if client_id:
+                _instances[client_id] = instance
+                instance_id = client_id
+            else:
+                instance_id = _store_instance(instance)
             return cloudpickle.dumps({"instance_id": instance_id})
 
         elif action == "call_method":
