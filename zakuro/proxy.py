@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Generic, TypeVar
 
 import cloudpickle
@@ -47,16 +48,26 @@ class RemoteProxy(Generic[T]):
 
     def _create_remote_instance(self) -> None:
         """Create the instance on the remote worker."""
+        # Generate instance ID client-side so the broker can track affinity
+        instance_id = f"instance_{uuid.uuid4().hex[:12]}"
+
         payload = cloudpickle.dumps(
             {
                 "action": "create_instance",
+                "instance_id": instance_id,
                 "klass": self._klass,
                 "args": self._args,
                 "kwargs": self._kwargs,
             }
         )
 
-        result_bytes = self._client.execute(payload)
+        result_bytes = self._client.execute(
+            payload,
+            extra_headers={
+                "X-Zakuro-Instance-Action": "create_instance",
+                "X-Zakuro-Instance-Id": instance_id,
+            },
+        )
         result = cloudpickle.loads(result_bytes)
 
         if isinstance(result, Exception):
@@ -91,7 +102,13 @@ class RemoteProxy(Generic[T]):
             }
         )
 
-        result_bytes = self._client.execute(payload)
+        result_bytes = self._client.execute(
+            payload,
+            extra_headers={
+                "X-Zakuro-Instance-Action": "call_method",
+                "X-Zakuro-Instance-Id": self._instance_id,
+            },
+        )
         result = cloudpickle.loads(result_bytes)
 
         if isinstance(result, Exception):
