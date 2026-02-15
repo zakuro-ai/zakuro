@@ -50,29 +50,29 @@ result = remote_fn()  # Returns "Hello from Zakuro!"
 
 ```bash
 # Install from GitHub release
-pip install https://github.com/zakuro-ai/zakuro/releases/download/v0.2.0/zakuro_ai-0.2.0-py3-none-any.whl
+pip install https://github.com/zakuro-ai/zakuro/releases/download/v0.2.1/zakuro_ai-0.2.1-py3-none-any.whl
 
 # Or with uv
-uv pip install https://github.com/zakuro-ai/zakuro/releases/download/v0.2.0/zakuro_ai-0.2.0-py3-none-any.whl
+uv pip install https://github.com/zakuro-ai/zakuro/releases/download/v0.2.1/zakuro_ai-0.2.1-py3-none-any.whl
 ```
 
 ### Optional Processor Backends
 
 ```bash
 # Download the wheel first
-wget https://github.com/zakuro-ai/zakuro/releases/download/v0.2.0/zakuro_ai-0.2.0-py3-none-any.whl
+wget https://github.com/zakuro-ai/zakuro/releases/download/v0.2.1/zakuro_ai-0.2.1-py3-none-any.whl
 
 # Install with Ray support
-pip install "zakuro_ai-0.2.0-py3-none-any.whl[ray]"
+pip install "zakuro_ai-0.2.1-py3-none-any.whl[ray]"
 
 # Install with Dask support
-pip install "zakuro_ai-0.2.0-py3-none-any.whl[dask]"
+pip install "zakuro_ai-0.2.1-py3-none-any.whl[dask]"
 
 # Install with Spark support
-pip install "zakuro_ai-0.2.0-py3-none-any.whl[spark]"
+pip install "zakuro_ai-0.2.1-py3-none-any.whl[spark]"
 
 # Install all processors
-pip install "zakuro_ai-0.2.0-py3-none-any.whl[all-processors]"
+pip install "zakuro_ai-0.2.1-py3-none-any.whl[all-processors]"
 ```
 
 For development:
