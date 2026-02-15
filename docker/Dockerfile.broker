@@ -61,7 +61,7 @@ RUN mkdir -p /var/run/tailscale /app/data
 
 # Environment variables
 ENV ZAKURO_HOST=0.0.0.0
-ENV ZAKURO_PORT=8000
+ENV ZAKURO_PORT=3960
 ENV ZAKURO_BROKER_PORT=9000
 ENV ZAKURO_WORKER_NAME=worker
 ENV ZAKURO_CPU_PRICE=0.001
@@ -69,11 +69,11 @@ ENV ZAKURO_MEMORY_PRICE=0.0001
 ENV ZAKURO_GPU_PRICE=0.01
 
 # Expose ports
-EXPOSE 8000 9000
+EXPOSE 3960 9000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/health || curl -f http://localhost:9000/health || exit 1
+    CMD curl -f http://localhost:3960/health || curl -f http://localhost:9000/health || exit 1
 
 # Default: run worker
 CMD ["python", "-m", "zakuro.worker.server"]

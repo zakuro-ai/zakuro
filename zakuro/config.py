@@ -29,7 +29,7 @@ class Config:
 
     # Worker settings
     default_host: str = "127.0.0.1"
-    default_port: int = 8000
+    default_port: int = 3960
 
     # Authentication
     auth_token: Optional[str] = None

@@ -22,11 +22,11 @@ RUN uv pip install /tmp/*.whl --system \
 USER zakuro
 
 # Expose worker port
-EXPOSE 8000
+EXPOSE 3960
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:3960/health || exit 1
 
 # Run worker server
 CMD ["python", "-m", "zakuro.worker.server"]

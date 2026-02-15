@@ -49,27 +49,30 @@ result = remote_fn()  # Returns "Hello from Zakuro!"
 ## Installation
 
 ```bash
-# Install from PyPI
-pip install zakuro-ai
+# Install from GitHub release
+pip install https://github.com/zakuro-ai/zakuro/releases/download/v0.2.0/zakuro_ai-0.2.0-py3-none-any.whl
 
 # Or with uv
-uv pip install zakuro-ai
+uv pip install https://github.com/zakuro-ai/zakuro/releases/download/v0.2.0/zakuro_ai-0.2.0-py3-none-any.whl
 ```
 
 ### Optional Processor Backends
 
 ```bash
+# Download the wheel first
+wget https://github.com/zakuro-ai/zakuro/releases/download/v0.2.0/zakuro_ai-0.2.0-py3-none-any.whl
+
 # Install with Ray support
-pip install "zakuro-ai[ray]"
+pip install "zakuro_ai-0.2.0-py3-none-any.whl[ray]"
 
 # Install with Dask support
-pip install "zakuro-ai[dask]"
+pip install "zakuro_ai-0.2.0-py3-none-any.whl[dask]"
 
 # Install with Spark support
-pip install "zakuro-ai[spark]"
+pip install "zakuro_ai-0.2.0-py3-none-any.whl[spark]"
 
 # Install all processors
-pip install "zakuro-ai[all-processors]"
+pip install "zakuro_ai-0.2.0-py3-none-any.whl[all-processors]"
 ```
 
 For development:
@@ -111,7 +114,7 @@ compute = zk.Compute(
     memory="4Gi",       # Memory (supports Gi, Mi, G, M)
     gpus=1,             # GPU count
     host="worker.local", # Worker host (optional, auto-discovered)
-    port=8000,          # Worker port
+    port=3960,          # Worker port
     env={"KEY": "val"}, # Environment variables
 )
 
@@ -119,7 +122,7 @@ compute = zk.Compute(
 compute = zk.Compute(uri="ray://head:10001", cpus=4)
 compute = zk.Compute(uri="dask://scheduler:8786", memory="8Gi")
 compute = zk.Compute(uri="spark://master:7077", gpus=1)
-compute = zk.Compute(uri="zakuro://worker:8000")  # HTTP backend
+compute = zk.Compute(uri="zakuro://worker:3960")  # HTTP backend
 ```
 
 ### Processor Backends
@@ -128,7 +131,7 @@ Zakuro supports multiple compute backends via URI-based selection:
 
 | URI Scheme | Backend | Priority | Default Port | Install |
 | ---------- | ------- | -------- | ------------ | ------- |
-| `zakuro://` | HTTP (default) | 10 | 8000 | included |
+| `zakuro://` | HTTP (default) | 10 | 3960 | included |
 | `spark://` | Apache Spark | 30 | 7077 | `[spark]` |
 | `dask://` | Dask Distributed | 40 | 8786 | `[dask]` |
 | `ray://` | Ray | 50 | 10001 | `[ray]` |
@@ -350,8 +353,8 @@ Zakuro can be configured via environment variables:
 | Variable | Description | Default |
 | -------- | ----------- | ------- |
 | `ZAKURO_HOST` | Default worker host | `127.0.0.1` |
-| `ZAKURO_PORT` | Default worker port | `8000` |
-| `ZAKURO_URI` | Default processor URI | `zakuro://127.0.0.1:8000` |
+| `ZAKURO_PORT` | Default worker port | `3960` |
+| `ZAKURO_URI` | Default processor URI | `zakuro://127.0.0.1:3960` |
 | `ZAKURO_AUTH` | Authentication token | - |
 | `ZAKURO_WORKER_NAME` | Worker name for discovery | `worker-{hostname}` |
 | `ZAKURO_WORKER_TYPE` | Worker type identifier | `zakuro` |
