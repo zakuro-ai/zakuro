@@ -19,10 +19,10 @@ class Compute:
         >>> compute = Compute(uri="ray://head:10001", cpus=2)
         >>> compute = Compute(uri="dask://scheduler:8786", cpus=4)
         >>> compute = Compute(uri="spark://master:7077", memory="8Gi")
-        >>> compute = Compute(uri="zc://my.api.zakuro-ai.com:9000")  # Production broker
+        >>> compute = Compute(uri="zc://my.zakuro-ai.com:9000")  # Production broker
 
     Or traditional host/port (defaults to zc:// broker scheme):
-        >>> compute = Compute(host="my.api.zakuro-ai.com", port=9000, cpus=2)
+        >>> compute = Compute(host="my.zakuro-ai.com", port=9000, cpus=2)
 
     URI Schemes:
         - zc:// - Broker-based routing (default, recommended)

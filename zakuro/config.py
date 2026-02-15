@@ -28,7 +28,7 @@ class Config:
     """
 
     # Broker settings (default to production)
-    default_host: str = "my.api.zakuro-ai.com"
+    default_host: str = "my.zakuro-ai.com"
     default_port: int = 9000
 
     # Authentication
