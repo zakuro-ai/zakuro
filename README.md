@@ -49,27 +49,30 @@ result = remote_fn()  # Returns "Hello from Zakuro!"
 ## Installation
 
 ```bash
-# Install from PyPI
-pip install zakuro-ai
+# Install from GitHub release
+pip install https://github.com/zakuro-ai/zakuro/releases/download/v0.2.0/zakuro_ai-0.2.0-py3-none-any.whl
 
 # Or with uv
-uv pip install zakuro-ai
+uv pip install https://github.com/zakuro-ai/zakuro/releases/download/v0.2.0/zakuro_ai-0.2.0-py3-none-any.whl
 ```
 
 ### Optional Processor Backends
 
 ```bash
+# Download the wheel first
+wget https://github.com/zakuro-ai/zakuro/releases/download/v0.2.0/zakuro_ai-0.2.0-py3-none-any.whl
+
 # Install with Ray support
-pip install "zakuro-ai[ray]"
+pip install "zakuro_ai-0.2.0-py3-none-any.whl[ray]"
 
 # Install with Dask support
-pip install "zakuro-ai[dask]"
+pip install "zakuro_ai-0.2.0-py3-none-any.whl[dask]"
 
 # Install with Spark support
-pip install "zakuro-ai[spark]"
+pip install "zakuro_ai-0.2.0-py3-none-any.whl[spark]"
 
 # Install all processors
-pip install "zakuro-ai[all-processors]"
+pip install "zakuro_ai-0.2.0-py3-none-any.whl[all-processors]"
 ```
 
 For development:
