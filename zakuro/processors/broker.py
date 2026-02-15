@@ -28,7 +28,7 @@ class BrokerProcessor(Processor):
         - broker://host:port
 
     Example:
-        >>> config = ProcessorConfig.from_uri("zc://my.api.zakuro-ai.com:9000")
+        >>> config = ProcessorConfig.from_uri("zc://my.zakuro-ai.com:9000")
         >>> processor = BrokerProcessor(config, compute)
         >>> with processor:
         ...     result = processor.execute(func_bytes, args, kwargs)
