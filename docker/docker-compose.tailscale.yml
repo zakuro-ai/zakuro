@@ -38,6 +38,30 @@ x-worker-common: &worker-common
 
 services:
   # ============================================================
+  # PostgreSQL - Credit ledger and user storage
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: zakuro-postgres
+    environment:
+      POSTGRES_DB: zakuro
+      POSTGRES_USER: zakuro
+      POSTGRES_PASSWORD: zakuro_secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../../zak-dashboard/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - zakuro-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zakuro"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
   # Broker - Routes requests to workers
   # ============================================================
   broker:
@@ -49,12 +73,15 @@ services:
       - "9000:9000"
     environment:
       ZAKURO_AUTH: ${ZAKURO_AUTH:-demo}
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://zakuro:zakuro_secret@postgres:5432/zakuro
       ZAKURO_MASTER_KEY: ${ZAKURO_MASTER_KEY:-master-key-change-me}
     volumes:
       - broker-data:/app/data
     networks:
       - zakuro-net
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
@@ -75,20 +102,6 @@ services:
     network_mode: "service:broker"
     depends_on:
       - broker
-
-  # ============================================================
-  # Redis - Credit ledger storage
-  # ============================================================
-  redis:
-    image: redis:7-alpine
-    container_name: zakuro-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    networks:
-      - zakuro-net
-    restart: unless-stopped
 
   # ============================================================
   # Init - Credit initialization
@@ -279,5 +292,5 @@ networks:
 
 volumes:
   broker-data:
-  redis-data:
+  pgdata:
   tailscale-state:

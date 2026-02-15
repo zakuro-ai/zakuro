@@ -3,6 +3,7 @@ version: '3.8'
 # Zakuro Multi-Node Test Environment
 #
 # This creates:
+# - 1 PostgreSQL database (shared credit ledger)
 # - 1 broker node (routes requests, manages credits)
 # - 5 worker nodes with varying resources and pricing
 #
@@ -26,6 +27,30 @@ x-worker-common: &worker-common
 
 services:
   # ============================================================
+  # PostgreSQL - Credit ledger and user storage
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: zakuro-postgres
+    environment:
+      POSTGRES_DB: zakuro
+      POSTGRES_USER: zakuro
+      POSTGRES_PASSWORD: zakuro_secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../../zak-dashboard/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - zakuro-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zakuro"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
   # Broker - Routes requests to workers
   # ============================================================
   broker:
@@ -37,35 +62,18 @@ services:
       - "9000:9000"
     environment:
       ZAKURO_AUTH: ${ZAKURO_AUTH:-demo}
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://zakuro:zakuro_secret@postgres:5432/zakuro
       ZAKURO_MASTER_KEY: ${ZAKURO_MASTER_KEY:-master-key-change-me}
     volumes:
       - broker-data:/app/data
     networks:
       - zakuro-net
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
-  # ============================================================
-  # Redis - Credit ledger storage
-  # ============================================================
-  redis:
-    image: redis:7-alpine
-    container_name: zakuro-redis
-    command: redis-server --appendonly yes --appendfsync everysec
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    networks:
-      - zakuro-net
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -84,8 +92,6 @@ services:
     depends_on:
       broker:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
       - zakuro-net
     entrypoint: ["/bin/sh", "-c"]
@@ -102,7 +108,7 @@ services:
     <<: *worker-common
     container_name: zakuro-worker-1
     ports:
-      - "8001:8000"
+      - "8001:3960"
     environment:
       <<: *worker-env
       ZAKURO_AUTH: worker-1-auth-key
@@ -128,7 +134,7 @@ services:
     <<: *worker-common
     container_name: zakuro-worker-2
     ports:
-      - "8002:8000"
+      - "8002:3960"
     environment:
       <<: *worker-env
       ZAKURO_AUTH: worker-2-auth-key
@@ -154,7 +160,7 @@ services:
     <<: *worker-common
     container_name: zakuro-worker-3
     ports:
-      - "8003:8000"
+      - "8003:3960"
     environment:
       <<: *worker-env
       ZAKURO_AUTH: worker-3-auth-key
@@ -180,7 +186,7 @@ services:
     <<: *worker-common
     container_name: zakuro-worker-4
     ports:
-      - "8004:8000"
+      - "8004:3960"
     environment:
       <<: *worker-env
       ZAKURO_AUTH: worker-4-auth-key
@@ -206,7 +212,7 @@ services:
     <<: *worker-common
     container_name: zakuro-worker-5
     ports:
-      - "8005:8000"
+      - "8005:3960"
     environment:
       <<: *worker-env
       ZAKURO_AUTH: worker-5-auth-key
@@ -231,4 +237,4 @@ networks:
 
 volumes:
   broker-data:
-  redis-data:
+  pgdata:

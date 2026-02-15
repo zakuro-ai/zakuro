@@ -15,10 +15,10 @@ class TestProcessorConfig:
 
     def test_parse_zakuro_uri(self) -> None:
         """Test parsing zakuro:// URI."""
-        config = ProcessorConfig.from_uri("zakuro://worker:8000")
+        config = ProcessorConfig.from_uri("zakuro://worker:3960")
         assert config.scheme == "zakuro"
         assert config.host == "worker"
-        assert config.port == 8000
+        assert config.port == 3960
 
     def test_parse_ray_uri(self) -> None:
         """Test parsing ray:// URI."""
@@ -50,7 +50,7 @@ class TestProcessorConfig:
 
     def test_default_ports(self) -> None:
         """Test default port assignment."""
-        assert ProcessorConfig.from_uri("zakuro://host").port == 8000
+        assert ProcessorConfig.from_uri("zakuro://host").port == 3960
         assert ProcessorConfig.from_uri("ray://host").port == 10001
         assert ProcessorConfig.from_uri("dask://host").port == 8786
         assert ProcessorConfig.from_uri("spark://host").port == 7077
@@ -100,7 +100,7 @@ class TestProcessorRegistry:
         """Test getting HTTP processor by URI."""
         registry = ProcessorRegistry()
         compute = Compute(host="localhost")
-        processor = registry.get("zakuro://localhost:8000", compute)
+        processor = registry.get("zakuro://localhost:3960", compute)
         assert isinstance(processor, HttpProcessor)
 
     def test_get_processor_invalid_scheme(self) -> None:
@@ -129,7 +129,7 @@ class TestHttpProcessor:
 
     def test_context_manager(self) -> None:
         """Test processor context manager lifecycle."""
-        config = ProcessorConfig.from_uri("zakuro://localhost:8000")
+        config = ProcessorConfig.from_uri("zakuro://localhost:3960")
         compute = Compute(host="localhost")
         processor = HttpProcessor(config, compute)
 
@@ -143,7 +143,7 @@ class TestHttpProcessor:
 
     def test_execute_not_connected(self) -> None:
         """Test execute raises when not connected."""
-        config = ProcessorConfig.from_uri("zakuro://localhost:8000")
+        config = ProcessorConfig.from_uri("zakuro://localhost:3960")
         compute = Compute(host="localhost")
         processor = HttpProcessor(config, compute)
 
@@ -250,7 +250,7 @@ class TestModuleLevelFunctions:
     def test_get_processor(self) -> None:
         """Test get_processor function."""
         compute = Compute(host="localhost")
-        processor = get_processor("zakuro://localhost:8000", compute)
+        processor = get_processor("zakuro://localhost:3960", compute)
         assert isinstance(processor, Processor)
 
     def test_available_processors_export(self) -> None:

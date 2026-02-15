@@ -161,7 +161,7 @@ def main() -> None:
     uvicorn.run(
         "zakuro.worker.server:app",
         host="0.0.0.0",
-        port=8000,
+        port=3960,
         reload=False,
     )
 
