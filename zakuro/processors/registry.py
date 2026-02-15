@@ -187,7 +187,7 @@ def get_processor(uri: str, compute: Compute) -> Processor:
     """Get a processor for the given URI.
 
     Args:
-        uri: Processor URI (e.g., "ray://head:10001", "zakuro://worker:8000")
+        uri: Processor URI (e.g., "ray://head:10001", "zakuro://worker:3960")
         compute: Compute resource specification
 
     Returns:

@@ -31,6 +31,7 @@ services:
       ZAKURO_MASTER_KEY: node1-key
       ZAKURO_AUTH: node1
       ZAKURO_OWNER_ID: "1000000001"
+      ZAKURO_NODE_NAME: zk0-node01
       # Tailscale peer discovery (IPs from `tailscale ip -4` on each node)
       ZAKURO_TAILSCALE_IP: ${NODE1_TAILSCALE_IP:-}
       ZAKURO_PEERS: ${NODE2_TAILSCALE_IP:-}:3960
@@ -91,7 +92,8 @@ services:
       DATABASE_URL: postgresql://zakuro_broker:broker_secret_change_me@zak-postgres:5432/zakuro
       ZAKURO_MASTER_KEY: node2-key
       ZAKURO_AUTH: node2
-      ZAKURO_OWNER_ID: "1000000001"
+      ZAKURO_OWNER_ID: "1000000002"
+      ZAKURO_NODE_NAME: zk0-node02
       # Tailscale peer discovery (IPs from `tailscale ip -4` on each node)
       ZAKURO_TAILSCALE_IP: ${NODE2_TAILSCALE_IP:-}
       ZAKURO_PEERS: ${NODE1_TAILSCALE_IP:-}:3960

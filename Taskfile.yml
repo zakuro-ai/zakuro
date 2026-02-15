@@ -33,10 +33,10 @@ tasks:
     desc: Install prerequisites and verify environment
     cmds:
       - echo "Checking prerequisites..."
-      - command -v python >/dev/null 2>&1 && echo "  [OK] python $(python --version 2>&1 | cut -d' ' -f2)" || echo "  [MISSING] python"
-      - command -v uv >/dev/null 2>&1 && echo "  [OK] uv" || echo "  [MISSING] uv - install with: curl -LsSf https://astral.sh/uv/install.sh | sh"
-      - command -v docker >/dev/null 2>&1 && echo "  [OK] docker" || echo "  [MISSING] docker"
-      - command -v task >/dev/null 2>&1 && echo "  [OK] task" || echo "  [MISSING] task"
+      - cmd: command -v python >/dev/null 2>&1 && echo "  [OK] python $(python --version 2>&1 | cut -d' ' -f2)" || echo "  [MISSING] python"
+      - cmd: 'command -v uv >/dev/null 2>&1 && echo "  [OK] uv" || echo "  [MISSING] uv - install with: curl -LsSf https://astral.sh/uv/install.sh | sh"'
+      - cmd: command -v docker >/dev/null 2>&1 && echo "  [OK] docker" || echo "  [MISSING] docker"
+      - cmd: command -v task >/dev/null 2>&1 && echo "  [OK] task" || echo "  [MISSING] task"
       - echo ""
       - echo "Installing Python dependencies..."
       - uv sync --all-extras
@@ -56,12 +56,20 @@ tasks:
   worker:dev:
     desc: Start development worker with hot reload
     cmds:
-      - uvicorn zakuro.worker.server:app --host 0.0.0.0 --port 8000 --reload
+      - uvicorn zakuro.worker.server:app --host 0.0.0.0 --port 3960 --reload
 
   worker:prod:
     desc: Start production worker
     cmds:
-      - uvicorn zakuro.worker.server:app --host 0.0.0.0 --port 8000 --workers 4
+      - uvicorn zakuro.worker.server:app --host 0.0.0.0 --port 3960 --workers 4
+
+  reinstall:
+    desc: Rebuild wheel, uninstall current version, and reinstall
+    cmds:
+      - rm -rf dist/
+      - python -m build
+      - pip uninstall -y zakuro-ai
+      - pip install --break-system-packages dist/*.whl
 
   demo:broker:
     desc: Run broker demo script (requires broker running)

@@ -19,10 +19,10 @@ class Compute:
         >>> compute = Compute(uri="ray://head:10001", cpus=2)
         >>> compute = Compute(uri="dask://scheduler:8786", cpus=4)
         >>> compute = Compute(uri="spark://master:7077", memory="8Gi")
-        >>> compute = Compute(uri="zakuro://worker:8000")  # Default HTTP
+        >>> compute = Compute(uri="zakuro://worker:3960")  # Default HTTP
 
     Or traditional host/port (defaults to zakuro:// scheme):
-        >>> compute = Compute(host="worker", port=8000, cpus=2)
+        >>> compute = Compute(host="worker", port=3960, cpus=2)
 
     URI Schemes:
         - zakuro:// - HTTP backend (default)
@@ -53,7 +53,7 @@ class Compute:
 
     # Legacy connection settings (used if uri not provided)
     host: Optional[str] = None
-    port: int = 8000
+    port: int = 3960
 
     # Backend-specific options
     processor_options: dict[str, Any] = field(default_factory=dict)
@@ -82,7 +82,7 @@ class Compute:
             # Update host/port from URI if not explicitly set
             if self.host is None:
                 self.host = config.host
-            if self.port == 8000:  # default port
+            if self.port == 3960:  # default port
                 self.port = config.port
         elif self.host is None:
             # No URI and no host - discover worker
@@ -131,6 +131,61 @@ class Compute:
             "Gi": 1024**3,
         }
         return int(value * multipliers[unit])
+
+    def check(self) -> dict:
+        """
+        Validate connectivity and resource availability on the target worker.
+
+        Returns:
+            Worker info dict on success.
+
+        Raises:
+            ConnectionError: If the worker is unreachable.
+            RuntimeError: If the worker has insufficient resources.
+        """
+        from zakuro.client import ZakuroClient
+
+        client = ZakuroClient(self)
+        try:
+            if not client.ping():
+                raise ConnectionError(
+                    f"Worker unreachable at {self.endpoint}"
+                )
+            info = client.info()
+        except ConnectionError:
+            raise
+        except Exception as exc:
+            raise ConnectionError(
+                f"Worker unreachable at {self.endpoint}: {exc}"
+            ) from exc
+        finally:
+            client.close()
+
+        # Validate resources against what the worker reports
+        available_cpus = info.get("cpus_available")
+        if available_cpus is not None and self.cpus > available_cpus:
+            raise RuntimeError(
+                f"Insufficient CPUs: requested {self.cpus}, "
+                f"available {available_cpus}"
+            )
+
+        available_memory = info.get("memory_available")
+        if available_memory is not None:
+            if self.memory_bytes() > available_memory:
+                raise RuntimeError(
+                    f"Insufficient memory: requested {self.memory} "
+                    f"({self.memory_bytes()} bytes), "
+                    f"available {available_memory} bytes"
+                )
+
+        available_gpus = info.get("gpus_available")
+        if available_gpus is not None and self.gpus > available_gpus:
+            raise RuntimeError(
+                f"Insufficient GPUs: requested {self.gpus}, "
+                f"available {available_gpus}"
+            )
+
+        return info
 
     def __repr__(self) -> str:
         """Return string representation."""

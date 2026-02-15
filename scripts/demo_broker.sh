@@ -8,7 +8,7 @@
 set -e
 
 BROKER_URL="${BROKER_URL:-http://localhost:9001}"
-WORKER_URL="${WORKER_URL:-http://localhost:8000}"
+WORKER_URL="${WORKER_URL:-http://localhost:3960}"
 USER_ID="${USER:-demo-user}"
 
 echo "========================================"
