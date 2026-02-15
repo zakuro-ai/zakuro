@@ -1,13 +1,15 @@
 # Zakuro 2-Node P2P Mesh with Tailscale
 #
-# Each node = broker + worker + Redis + Tailscale sidecar
+# Each node = broker + worker + Tailscale sidecar
+# PostgreSQL is provided by the dashboard stack (zak-postgres on zakuro-shared network).
 # Worker and Tailscale share the broker's network namespace (same Tailscale IP).
-# Discovery scans the Tailscale subnet → finds both local and remote workers.
+# Discovery probes ZAKURO_PEERS via Tailscale tunnel -> finds remote workers.
 # Local worker execution = free (cost=0). Remote = charged via credit ledger.
 #
 # Prerequisites:
-#   export ZK0NODE01_API_KEY=tskey-auth-...
-#   export ZK0NODE02_API_KEY=tskey-auth-...
+#   1. Dashboard stack must be running: cd zak-dashboard && docker compose up -d
+#   2. export ZK0NODE01_API_KEY=tskey-auth-...
+#      export ZK0NODE02_API_KEY=tskey-auth-...
 #
 # Usage:
 #   docker compose -f docker/docker-compose.mesh.yml up -d --build
@@ -20,36 +22,23 @@
 services:
   # ============ NODE 1: standard tier ============
 
-  node1-redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes --appendfsync everysec
-    volumes:
-      - node1-redis:/data
-    networks: [node1-net]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   node1-broker:
     build:
       context: ../../zak-zc
       dockerfile: docker/Dockerfile
     environment:
-      REDIS_URL: redis://node1-redis:6379
+      DATABASE_URL: postgresql://zakuro_broker:broker_secret_change_me@zak-postgres:5432/zakuro
       ZAKURO_MASTER_KEY: node1-key
       ZAKURO_AUTH: node1
+      ZAKURO_OWNER_ID: "1000000001"
       # Tailscale peer discovery (IPs from `tailscale ip -4` on each node)
       ZAKURO_TAILSCALE_IP: ${NODE1_TAILSCALE_IP:-}
-      ZAKURO_PEERS: ${NODE2_TAILSCALE_IP:-}:8000
+      ZAKURO_PEERS: ${NODE2_TAILSCALE_IP:-}:3960
+      ZAKURO_PEER_KEY: ${ZAKURO_PEER_KEY:-zakuro-p2p-secret}
+      ZAKURO_P2P: ${ZAKURO_P2P:-false}
     ports:
       - "9001:9000"
-    networks: [node1-net]
-    depends_on:
-      node1-redis:
-        condition: service_healthy
+    networks: [node1-net, zakuro-shared]
     volumes:
       - node1-data:/app/data
     restart: unless-stopped
@@ -84,7 +73,7 @@ services:
       TS_AUTHKEY: ${ZK0NODE01_API_KEY}
       TS_STATE_DIR: /var/lib/tailscale
       TS_USERSPACE: "false"
-      TS_EXTRA_ARGS: "--hostname=zk0-node01"
+      TS_EXTRA_ARGS: "--hostname=zk0-node01 --netfilter-mode=off --accept-dns=false"
     network_mode: "service:node1-broker"
     depends_on:
       node1-broker:
@@ -94,36 +83,23 @@ services:
 
   # ============ NODE 2: premium tier ============
 
-  node2-redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes --appendfsync everysec
-    volumes:
-      - node2-redis:/data
-    networks: [node2-net]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   node2-broker:
     build:
       context: ../../zak-zc
       dockerfile: docker/Dockerfile
     environment:
-      REDIS_URL: redis://node2-redis:6379
+      DATABASE_URL: postgresql://zakuro_broker:broker_secret_change_me@zak-postgres:5432/zakuro
       ZAKURO_MASTER_KEY: node2-key
       ZAKURO_AUTH: node2
+      ZAKURO_OWNER_ID: "1000000001"
       # Tailscale peer discovery (IPs from `tailscale ip -4` on each node)
       ZAKURO_TAILSCALE_IP: ${NODE2_TAILSCALE_IP:-}
-      ZAKURO_PEERS: ${NODE1_TAILSCALE_IP:-}:8000
+      ZAKURO_PEERS: ${NODE1_TAILSCALE_IP:-}:3960
+      ZAKURO_PEER_KEY: ${ZAKURO_PEER_KEY:-zakuro-p2p-secret}
+      ZAKURO_P2P: ${ZAKURO_P2P:-false}
     ports:
       - "9002:9000"
-    networks: [node2-net]
-    depends_on:
-      node2-redis:
-        condition: service_healthy
+    networks: [node2-net, zakuro-shared]
     volumes:
       - node2-data:/app/data
     restart: unless-stopped
@@ -158,7 +134,7 @@ services:
       TS_AUTHKEY: ${ZK0NODE02_API_KEY}
       TS_STATE_DIR: /var/lib/tailscale
       TS_USERSPACE: "false"
-      TS_EXTRA_ARGS: "--hostname=zk0-node02"
+      TS_EXTRA_ARGS: "--hostname=zk0-node02 --netfilter-mode=off --accept-dns=false"
     network_mode: "service:node2-broker"
     depends_on:
       node2-broker:
@@ -194,11 +170,12 @@ services:
 networks:
   node1-net:
   node2-net:
+  zakuro-shared:
+    external: true
+    name: zakuro-shared
 
 volumes:
   node1-data:
   node1-ts:
-  node1-redis:
   node2-data:
   node2-ts:
-  node2-redis:
