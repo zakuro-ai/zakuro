@@ -14,8 +14,8 @@ Example:
     >>> result = remote_fn()  # Runs on Zakuro cluster
 """
 
-__version__ = "0.2.0"
-__build__ = "2026-02-15T23:23:17+0900"
+__version__ = "0.2.1"
+__build__ = "2026-02-16T00:00:00+0900"
 
 from zakuro.compute import Compute
 from zakuro.config import Config

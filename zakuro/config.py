@@ -27,9 +27,9 @@ class Config:
         '127.0.0.1'
     """
 
-    # Worker settings
-    default_host: str = "127.0.0.1"
-    default_port: int = 3960
+    # Broker settings (default to production)
+    default_host: str = "my.api.zakuro-ai.com"
+    default_port: int = 9000
 
     # Authentication
     auth_token: Optional[str] = None

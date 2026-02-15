@@ -19,13 +19,14 @@ class Compute:
         >>> compute = Compute(uri="ray://head:10001", cpus=2)
         >>> compute = Compute(uri="dask://scheduler:8786", cpus=4)
         >>> compute = Compute(uri="spark://master:7077", memory="8Gi")
-        >>> compute = Compute(uri="zakuro://worker:3960")  # Default HTTP
+        >>> compute = Compute(uri="zc://my.api.zakuro-ai.com:9000")  # Production broker
 
-    Or traditional host/port (defaults to zakuro:// scheme):
-        >>> compute = Compute(host="worker", port=3960, cpus=2)
+    Or traditional host/port (defaults to zc:// broker scheme):
+        >>> compute = Compute(host="my.api.zakuro-ai.com", port=9000, cpus=2)
 
     URI Schemes:
-        - zakuro:// - HTTP backend (default)
+        - zc:// - Broker-based routing (default, recommended)
+        - zakuro:// - Direct HTTP worker backend
         - ray:// - Ray distributed computing
         - dask:// or tcp:// - Dask distributed
         - spark:// - Apache Spark
@@ -53,7 +54,7 @@ class Compute:
 
     # Legacy connection settings (used if uri not provided)
     host: Optional[str] = None
-    port: int = 3960
+    port: int = 9000  # Default broker port
 
     # Backend-specific options
     processor_options: dict[str, Any] = field(default_factory=dict)
@@ -82,15 +83,18 @@ class Compute:
             # Update host/port from URI if not explicitly set
             if self.host is None:
                 self.host = config.host
-            if self.port == 3960:  # default port
+            if self.port == 9000:  # default port
                 self.port = config.port
         elif self.host is None:
-            # No URI and no host - discover worker
-            self.host = self._discover_worker()
-            self.uri = f"zakuro://{self.host}:{self.port}"
+            # No URI and no host - use production broker
+            from zakuro.config import Config
+            config = Config.load()
+            self.host = config.default_host
+            self.port = config.default_port
+            self.uri = f"zc://{self.host}:{self.port}"
         else:
-            # Build URI from host/port
-            self.uri = f"zakuro://{self.host}:{self.port}"
+            # Build URI from host/port - use broker by default
+            self.uri = f"zc://{self.host}:{self.port}"
 
     def _discover_worker(self) -> str:
         """Discover worker via Tailscale or fallback to localhost."""
