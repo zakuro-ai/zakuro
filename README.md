@@ -111,7 +111,7 @@ compute = zk.Compute(
     memory="4Gi",       # Memory (supports Gi, Mi, G, M)
     gpus=1,             # GPU count
     host="worker.local", # Worker host (optional, auto-discovered)
-    port=8000,          # Worker port
+    port=3960,          # Worker port
     env={"KEY": "val"}, # Environment variables
 )
 
@@ -119,7 +119,7 @@ compute = zk.Compute(
 compute = zk.Compute(uri="ray://head:10001", cpus=4)
 compute = zk.Compute(uri="dask://scheduler:8786", memory="8Gi")
 compute = zk.Compute(uri="spark://master:7077", gpus=1)
-compute = zk.Compute(uri="zakuro://worker:8000")  # HTTP backend
+compute = zk.Compute(uri="zakuro://worker:3960")  # HTTP backend
 ```
 
 ### Processor Backends
@@ -128,7 +128,7 @@ Zakuro supports multiple compute backends via URI-based selection:
 
 | URI Scheme | Backend | Priority | Default Port | Install |
 | ---------- | ------- | -------- | ------------ | ------- |
-| `zakuro://` | HTTP (default) | 10 | 8000 | included |
+| `zakuro://` | HTTP (default) | 10 | 3960 | included |
 | `spark://` | Apache Spark | 30 | 7077 | `[spark]` |
 | `dask://` | Dask Distributed | 40 | 8786 | `[dask]` |
 | `ray://` | Ray | 50 | 10001 | `[ray]` |
@@ -350,8 +350,8 @@ Zakuro can be configured via environment variables:
 | Variable | Description | Default |
 | -------- | ----------- | ------- |
 | `ZAKURO_HOST` | Default worker host | `127.0.0.1` |
-| `ZAKURO_PORT` | Default worker port | `8000` |
-| `ZAKURO_URI` | Default processor URI | `zakuro://127.0.0.1:8000` |
+| `ZAKURO_PORT` | Default worker port | `3960` |
+| `ZAKURO_URI` | Default processor URI | `zakuro://127.0.0.1:3960` |
 | `ZAKURO_AUTH` | Authentication token | - |
 | `ZAKURO_WORKER_NAME` | Worker name for discovery | `worker-{hostname}` |
 | `ZAKURO_WORKER_TYPE` | Worker type identifier | `zakuro` |

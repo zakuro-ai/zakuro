@@ -15,7 +15,7 @@ Example:
 """
 
 __version__ = "0.2.0"
-__build__ = ""
+__build__ = "2026-02-12T15:37:02+0900"
 
 from zakuro.compute import Compute
 from zakuro.config import Config

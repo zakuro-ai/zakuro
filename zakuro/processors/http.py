@@ -24,7 +24,7 @@ class HttpProcessor(Processor):
         - http://host:port
 
     Example:
-        >>> config = ProcessorConfig.from_uri("zakuro://worker:8000")
+        >>> config = ProcessorConfig.from_uri("zakuro://worker:3960")
         >>> processor = HttpProcessor(config, compute)
         >>> with processor:
         ...     result = processor.execute(func_bytes, args, kwargs)

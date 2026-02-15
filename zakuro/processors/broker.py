@@ -54,14 +54,38 @@ class BrokerProcessor(Processor):
 
         import os
 
-        # Get user ID from environment or generate one
-        self._user_id = os.environ.get("ZAKURO_USER", os.environ.get("USER", "anonymous"))
+        # Read API key from ZAKURO_AUTH env var
+        self._api_key: str | None = os.environ.get("ZAKURO_AUTH")
+
+        # Determine user_id:
+        # 1. processor_options["user_id"] if set
+        # 2. Extract from API key format (zk_{user_id}_{random})
+        # 3. ZAKURO_USER env var
+        # 4. $USER / "anonymous"
+        user_id = self._compute.processor_options.get("user_id") if self._compute.processor_options else None
+        if not user_id and self._api_key and self._api_key.startswith("zk_"):
+            # Extract user_id from key format: zk_{user_id}_{random}
+            parts = self._api_key[3:]  # strip "zk_"
+            last_underscore = parts.rfind("_")
+            if last_underscore > 0:
+                user_id = parts[:last_underscore]
+        if not user_id:
+            user_id = os.environ.get("ZAKURO_USER", os.environ.get("USER", "anonymous"))
+        self._user_id = user_id
 
         # Build broker URL
         broker_url = f"http://{self._config.host}:{self._config.port}"
 
+        # Set default headers: prefer Bearer auth, fallback to X-Zakuro-User
+        headers = {}
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+        else:
+            headers["X-Zakuro-User"] = self._user_id
+
         self._client = httpx.Client(
             base_url=broker_url,
+            headers=headers,
             timeout=httpx.Timeout(
                 connect=10.0,
                 read=300.0,  # 5 min for long computations
@@ -122,13 +146,12 @@ class BrokerProcessor(Processor):
             "estimated_duration_secs": 1.0,  # Default estimate
         }
 
-        # Execute via broker
+        # Execute via broker (auth headers are set on the client)
         response = self._client.post(
             "/execute",
             content=payload,
             headers={
                 "Content-Type": "application/octet-stream",
-                "X-Zakuro-User": self._user_id or "anonymous",
                 "X-Zakuro-Requirements": json.dumps(requirements),
             },
         )
@@ -231,6 +254,19 @@ class BrokerProcessor(Processor):
                 "estimated_duration_secs": duration_secs,
             },
         )
+        response.raise_for_status()
+        return response.json()
+
+    def whoami(self) -> dict[str, Any]:
+        """Get authenticated user info from broker.
+
+        Returns:
+            Dict with user_id, balance, ledger_connected, local_mode
+        """
+        if not self._connected or self._client is None:
+            raise RuntimeError("Processor not connected.")
+
+        response = self._client.get("/me")
         response.raise_for_status()
         return response.json()
 

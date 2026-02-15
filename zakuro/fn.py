@@ -157,6 +157,11 @@ class Cls(Generic[T]):
         self._compute = None
         return self
 
+    @property
+    def is_remote(self) -> bool:
+        """Check if class is configured for remote instantiation."""
+        return self._compute is not None
+
     def __call__(self, *args: Any, **kwargs: Any) -> T:
         """Instantiate the class locally or remotely."""
         if self._compute is None:

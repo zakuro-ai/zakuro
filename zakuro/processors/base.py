@@ -39,7 +39,7 @@ class ProcessorConfig:
             - ray://host:port
             - dask://scheduler:8786
             - spark://master:7077
-            - zakuro://worker:8000
+            - zakuro://worker:3960
             - tcp://scheduler:8786 (alias for dask)
             - http://host:port (alias for zakuro)
         """
@@ -64,9 +64,9 @@ class ProcessorConfig:
     def _default_port(scheme: str) -> int:
         """Get default port for a scheme."""
         defaults = {
-            "zakuro": 8000,
-            "http": 8000,
-            "https": 8000,
+            "zakuro": 3960,
+            "http": 3960,
+            "https": 3960,
             "ray": 10001,
             "dask": 8786,
             "tcp": 8786,
@@ -74,7 +74,7 @@ class ProcessorConfig:
             "zc": 9000,
             "broker": 9000,
         }
-        return defaults.get(scheme, 8000)
+        return defaults.get(scheme, 3960)
 
     @property
     def endpoint(self) -> str:
