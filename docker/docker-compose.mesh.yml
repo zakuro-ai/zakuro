@@ -37,6 +37,9 @@ services:
       ZAKURO_PEERS: ${NODE2_TAILSCALE_IP:-}:3960
       ZAKURO_PEER_KEY: ${ZAKURO_PEER_KEY:-zakuro-p2p-secret}
       ZAKURO_P2P: ${ZAKURO_P2P:-false}
+      # Dashboard API for worker sync (preferred over direct DB access)
+      ZAKURO_API_URL: ${ZAKURO_API_URL:-http://zak-api:8000}
+      ZAKURO_BROKER_API_KEY: ${ZAKURO_BROKER_API_KEY:-zakuro-broker-secret-2026}
     ports:
       - "9001:9000"
     networks: [node1-net, zakuro-shared]
