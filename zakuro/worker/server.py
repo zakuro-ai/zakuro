@@ -156,12 +156,23 @@ async def root() -> dict[str, str]:
 
 def main() -> None:
     """Run the worker server."""
+    import argparse
+    import os
     import uvicorn
+
+    parser = argparse.ArgumentParser(description="Zakuro Worker Server")
+    parser.add_argument("--host", default=os.environ.get("ZAKURO_HOST", "0.0.0.0"))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("ZAKURO_PORT", "3960")))
+    parser.add_argument("--worker-name", default=None, help="Override ZAKURO_WORKER_NAME")
+    args = parser.parse_args()
+
+    if args.worker_name:
+        os.environ["ZAKURO_WORKER_NAME"] = args.worker_name
 
     uvicorn.run(
         "zakuro.worker.server:app",
-        host="0.0.0.0",
-        port=3960,
+        host=args.host,
+        port=args.port,
         reload=False,
     )
 
