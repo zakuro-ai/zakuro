@@ -29,17 +29,15 @@ services:
     environment:
       DATABASE_URL: postgresql://zakuro_broker:broker_secret_change_me@zak-postgres:5432/zakuro
       ZAKURO_MASTER_KEY: node1-key
-      ZAKURO_AUTH: node1
-      ZAKURO_OWNER_ID: "1000000001"
       ZAKURO_NODE_NAME: zk0-node01
       # Tailscale peer discovery (IPs from `tailscale ip -4` on each node)
       ZAKURO_TAILSCALE_IP: ${NODE1_TAILSCALE_IP:-}
       ZAKURO_PEERS: ${NODE2_TAILSCALE_IP:-}:3960
       ZAKURO_PEER_KEY: ${ZAKURO_PEER_KEY:-zakuro-p2p-secret}
       ZAKURO_P2P: ${ZAKURO_P2P:-false}
-      # Dashboard API for worker sync — connect directly to production
+      # Dashboard API for worker sync — owner ID auto-derived from API key
       ZAKURO_API_URL: https://my.zakuro-ai.com
-      ZAKURO_API_KEY: ${ZAKURO_API_KEY}
+      ZAKURO_API_KEY: ${ZK0NODE01_ZAKURO_KEY}
     ports:
       - "9001:9000"
     networks: [node1-net, zakuro-shared]
@@ -94,16 +92,15 @@ services:
     environment:
       DATABASE_URL: postgresql://zakuro_broker:broker_secret_change_me@zak-postgres:5432/zakuro
       ZAKURO_MASTER_KEY: node2-key
-      ZAKURO_OWNER_ID: "1000000001"
       ZAKURO_NODE_NAME: zk0-node02
       # Tailscale peer discovery (IPs from `tailscale ip -4` on each node)
       ZAKURO_TAILSCALE_IP: ${NODE2_TAILSCALE_IP:-}
       ZAKURO_PEERS: ${NODE1_TAILSCALE_IP:-}:3960
       ZAKURO_PEER_KEY: ${ZAKURO_PEER_KEY:-zakuro-p2p-secret}
       ZAKURO_P2P: ${ZAKURO_P2P:-false}
-      # Dashboard API for worker sync — connect directly to production
+      # Dashboard API for worker sync — owner ID auto-derived from API key
       ZAKURO_API_URL: https://my.zakuro-ai.com
-      ZAKURO_API_KEY: ${ZAKURO_API_KEY}
+      ZAKURO_API_KEY: ${ZK0NODE02_ZAKURO_KEY}
     ports:
       - "9002:9000"
     networks: [node2-net, zakuro-shared]
