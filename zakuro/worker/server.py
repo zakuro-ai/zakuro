@@ -52,30 +52,51 @@ async def info() -> dict[str, Any]:
     """Worker info endpoint for broker discovery."""
     import os
     import platform
+    import shutil
+    import subprocess
 
     cpus = multiprocessing.cpu_count()
 
-    # Try to get memory info
+    # Memory info
     try:
         import psutil
-        memory_total = psutil.virtual_memory().total
-        memory_available = psutil.virtual_memory().available
+        vm = psutil.virtual_memory()
+        memory_total = vm.total
+        memory_available = vm.available
     except ImportError:
-        memory_total = 8 * 1024 * 1024 * 1024  # Default 8 GiB
+        memory_total = 8 * 1024 * 1024 * 1024
         memory_available = memory_total
 
-    # Check for GPUs
+    # GPU info from nvidia-smi
     gpus = 0
+    gpu_model = None
+    gpu_vram_gb = None
     try:
-        import subprocess
         result = subprocess.run(
-            ["nvidia-smi", "-L"],
-            capture_output=True,
-            text=True,
-            timeout=5,
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5,
         )
         if result.returncode == 0:
-            gpus = len([line for line in result.stdout.split("\n") if line.strip()])
+            lines = [l.strip() for l in result.stdout.strip().split("\n") if l.strip()]
+            gpus = len(lines)
+            if lines:
+                parts = lines[0].split(", ", 1)
+                gpu_model = parts[0].strip()
+                if len(parts) > 1:
+                    try:
+                        gpu_vram_gb = int(parts[1].strip()) // 1024
+                    except ValueError:
+                        pass
+    except Exception:
+        pass
+
+    # CPU model
+    cpu_model = platform.processor() or platform.machine() or None
+
+    # Available storage on root filesystem
+    storage_gb_available = None
+    try:
+        storage_gb_available = shutil.disk_usage("/").free // (1024 ** 3)
     except Exception:
         pass
 
@@ -93,6 +114,12 @@ async def info() -> dict[str, Any]:
             "memory_available": memory_available,
             "gpus_total": gpus,
             "gpus_available": gpus,
+        },
+        "hardware": {
+            "cpu_model": cpu_model,
+            "gpu_model": gpu_model,
+            "gpu_vram_gb": gpu_vram_gb,
+            "storage_gb": storage_gb_available,
         },
         "pricing": {
             "cpu_price": float(os.environ.get("ZAKURO_CPU_PRICE", "0.001")),
