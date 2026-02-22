@@ -56,9 +56,6 @@ class BrokerProcessor(Processor):
 
         # Read API key from ZAKURO_API_KEY (or legacy ZAKURO_AUTH)
         key_from_env = os.environ.get("ZAKURO_API_KEY") or os.environ.get("ZAKURO_AUTH")
-        print(f"[DEBUG broker.py] ZAKURO_API_KEY from env: {os.environ.get('ZAKURO_API_KEY')}")
-        print(f"[DEBUG broker.py] ZAKURO_AUTH from env: {os.environ.get('ZAKURO_AUTH')}")
-        print(f"[DEBUG broker.py] Final API key: {key_from_env}")
         self._api_key: str | None = key_from_env
 
         # Determine user_id:
