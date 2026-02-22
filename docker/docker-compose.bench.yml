@@ -1,0 +1,110 @@
+# Zakuro P2P Benchmark Setup (No Tailscale Required)
+#
+# Simplified P2P mesh for local benchmarking without Tailscale.
+# Each broker+worker runs on localhost with different ports.
+# P2P coordination happens via localhost HTTP calls.
+#
+# Scalability test configurations:
+#   - 2 nodes: NODE_COUNT=2
+#   - 5 nodes: NODE_COUNT=5
+#   - 10 nodes: NODE_COUNT=10
+#
+# Usage:
+#   export NODE_COUNT=2  # or 5, or 10
+#   docker compose -f docker/docker-compose.bench.yml up -d --scale broker=${NODE_COUNT}
+#   docker compose -f docker/docker-compose.bench.yml logs -f
+
+services:
+  # PostgreSQL for credit ledger
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: zakuro
+      POSTGRES_USER: zakuro
+      POSTGRES_PASSWORD: bench_secret
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - /opt/code/ZAK/zak-dashboard/api/database/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+      - /opt/code/ZAK/zak-dashboard/api/database/02_broker_role.sql:/docker-entrypoint-initdb.d/02_broker_role.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "zakuro"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks: [bench-net]
+
+  # Broker nodes (scale with --scale broker=N)
+  broker:
+    build:
+      context: ../../zak-zc
+      dockerfile: docker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://zakuro_broker:broker_secret_change_me@postgres:5432/zakuro
+      ZAKURO_MASTER_KEY: bench-master-key
+      ZAKURO_AUTH: bench-user
+      ZAKURO_PEER_KEY: bench-p2p-secret
+      ZAKURO_P2P: ${ZAKURO_P2P:-true}
+      ZAKURO_PEERS: ${ZAKURO_PEERS:-}
+      # Will be overridden by scale script
+      ZAKURO_OWNER_ID: "1000000001"
+      RUST_LOG: ${RUST_LOG:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [bench-net]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Worker nodes (scale with --scale worker=N)
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      ZAKURO_WORKER_TYPE: benchmark
+      ZAKURO_CPU_PRICE: "0.001"
+      ZAKURO_MEMORY_PRICE: "0.0001"
+      PYTHONUNBUFFERED: "1"
+      # Simulated realistic workload (100-500ms)
+      ZAKURO_TASK_DELAY: "0.2"  # 200ms average
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [bench-net]
+    restart: unless-stopped
+
+  # Benchmark runner
+  benchrunner:
+    build:
+      context: ../../zak-zc
+      dockerfile: docker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://zakuro_broker:broker_secret_change_me@postgres:5432/zakuro
+      ZAKURO_MASTER_KEY: bench-master-key
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [bench-net]
+    profiles: ["benchmark"]
+    command: >
+      sh -c "
+        sleep 10 &&
+        /usr/local/bin/zc bench
+          -u http://broker:9000
+          -c ${BENCH_CONCURRENCY:-50}
+          -n ${BENCH_REQUESTS:-10000}
+          --user bench-user
+      "
+
+networks:
+  bench-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
