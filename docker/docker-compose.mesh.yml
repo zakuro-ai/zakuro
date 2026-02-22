@@ -30,9 +30,8 @@ services:
       DATABASE_URL: postgresql://zakuro_broker:broker_secret_change_me@zak-postgres:5432/zakuro
       ZAKURO_MASTER_KEY: node1-key
       ZAKURO_NODE_NAME: zk0-node01
-      # Tailscale peer discovery (IPs from `tailscale ip -4` on each node)
-      ZAKURO_TAILSCALE_IP: ${NODE1_TAILSCALE_IP:-}
-      ZAKURO_PEERS: ${NODE2_TAILSCALE_IP:-}:3960
+      # Peer discovery via Tailscale hostname (MagicDNS resolves to peer's Tailscale IP)
+      ZAKURO_PEERS: zk0-node02:3960
       ZAKURO_PEER_KEY: ${ZAKURO_PEER_KEY:-zakuro-p2p-secret}
       ZAKURO_P2P: ${ZAKURO_P2P:-false}
       # Dashboard API for worker sync — owner ID auto-derived from API key
@@ -72,16 +71,19 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     environment:
-      TS_AUTHKEY: ${ZK0NODE01_API_KEY}
+      ZAKURO_API_KEY: ${ZK0NODE01_ZAKURO_KEY}
+      ZAKURO_API_URL: https://my.zakuro-ai.com
       TS_STATE_DIR: /var/lib/tailscale
       TS_USERSPACE: "false"
-      TS_EXTRA_ARGS: "--hostname=zk0-node01 --netfilter-mode=off --accept-dns=false"
+      TS_EXTRA_ARGS: "--hostname=zk0-node01 --netfilter-mode=off"
+    entrypoint: ["/bin/sh", "/tailscale-entrypoint.sh"]
     network_mode: "service:node1-broker"
     depends_on:
       node1-broker:
         condition: service_healthy
     volumes:
       - node1-ts:/var/lib/tailscale
+      - ./tailscale-entrypoint.sh:/tailscale-entrypoint.sh:ro
 
   # ============ NODE 2: premium tier ============
 
@@ -93,9 +95,8 @@ services:
       DATABASE_URL: postgresql://zakuro_broker:broker_secret_change_me@zak-postgres:5432/zakuro
       ZAKURO_MASTER_KEY: node2-key
       ZAKURO_NODE_NAME: zk0-node02
-      # Tailscale peer discovery (IPs from `tailscale ip -4` on each node)
-      ZAKURO_TAILSCALE_IP: ${NODE2_TAILSCALE_IP:-}
-      ZAKURO_PEERS: ${NODE1_TAILSCALE_IP:-}:3960
+      # Peer discovery via Tailscale hostname (MagicDNS resolves to peer's Tailscale IP)
+      ZAKURO_PEERS: zk0-node01:3960
       ZAKURO_PEER_KEY: ${ZAKURO_PEER_KEY:-zakuro-p2p-secret}
       ZAKURO_P2P: ${ZAKURO_P2P:-false}
       # Dashboard API for worker sync — owner ID auto-derived from API key
@@ -135,16 +136,19 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     environment:
-      TS_AUTHKEY: ${ZK0NODE02_API_KEY}
+      ZAKURO_API_KEY: ${ZK0NODE02_ZAKURO_KEY}
+      ZAKURO_API_URL: https://my.zakuro-ai.com
       TS_STATE_DIR: /var/lib/tailscale
       TS_USERSPACE: "false"
-      TS_EXTRA_ARGS: "--hostname=zk0-node02 --netfilter-mode=off --accept-dns=false"
+      TS_EXTRA_ARGS: "--hostname=zk0-node02 --netfilter-mode=off"
+    entrypoint: ["/bin/sh", "/tailscale-entrypoint.sh"]
     network_mode: "service:node2-broker"
     depends_on:
       node2-broker:
         condition: service_healthy
     volumes:
       - node2-ts:/var/lib/tailscale
+      - ./tailscale-entrypoint.sh:/tailscale-entrypoint.sh:ro
 
   # ============ INIT: seed credits on both nodes ============
 

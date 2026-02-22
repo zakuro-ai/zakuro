@@ -46,3 +46,4 @@ etc/
 wal.jsonl
 .env.production
 tmp/
+docker/.env
