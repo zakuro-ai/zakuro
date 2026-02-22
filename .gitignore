@@ -43,3 +43,6 @@ htmlcov/
 # Misc
 notebooks/
 etc/
+wal.jsonl
+.env.production
+tmp/
