@@ -191,18 +191,21 @@ zc -d broker           # Daemon mode (background)
 
 #### Credit Management
 
-The broker uses a Redis-based ledger with API key authentication:
+The broker communicates with the dashboard API for credit operations:
 
 ```bash
-# Add credits (requires API key)
-curl -X POST http://broker:9000/credits/my-user/add \
+# Add credits via dashboard API (requires master key)
+curl -X POST https://dashboard.zakuro-ai.com/api/credits/add \
   -H "Content-Type: application/json" \
-  -H "X-Api-Key: $ZAKURO_MASTER_KEY" \
-  -d '{"amount": 100.0}'
+  -H "Authorization: Bearer $ZAKURO_MASTER_KEY" \
+  -d '{"user_id": "my-user", "amount": 100.0, "description": "Initial deposit"}'
 
-# Check balance
-curl http://broker:9000/credits/my-user
+# Check balance via broker (proxies to dashboard API)
+curl http://broker:9000/credits/my-user \
+  -H "Authorization: Bearer $API_KEY"
 ```
+
+**Architecture**: Brokers use `ZAKURO_API_URL` + `ZAKURO_BROKER_API_KEY` to communicate with the dashboard API. Direct PostgreSQL access (`DATABASE_URL`) is only used in local/development mode.
 
 #### Discovery Modes
 
@@ -302,9 +305,12 @@ Deploy a 2-node mesh where each node runs a broker + worker pair connected via T
   Node 1 (standard)                          Node 2 (premium)
   ┌──────────────────────┐                   ┌──────────────────────┐
   │ Broker + Worker      │◄══ Tailscale ════►│ Broker + Worker      │
-  │ + Tailscale + Redis  │    mesh           │ + Tailscale + Redis  │
+  │ + Tailscale          │    mesh           │ + Tailscale          │
   │ cpu=$0.001/s (free)  │                   │ cpu=$0.003/s (free)  │
-  └──────────────────────┘                   └──────────────────────┘
+  └──────────┬───────────┘                   └──────────┬───────────┘
+           │                                        │
+           └────────── Dashboard API ──────────────┘
+              (credit operations via HTTPS)
 ```
 
 ```bash
@@ -318,7 +324,10 @@ export ZK0NODE02_API_KEY=tskey-auth-...
 export NODE1_TAILSCALE_IP=100.x.x.x
 export NODE2_TAILSCALE_IP=100.y.y.y
 
-# Start the mesh (8 containers: 2x broker + worker + tailscale + redis)
+# Set dashboard API URL (brokers communicate via API)
+export ZAKURO_API_URL=https://dashboard.zakuro-ai.com
+
+# Start the mesh (6 containers: 2x broker + worker + tailscale)
 docker compose -f docker-compose.mesh.yml up -d --build
 
 # Verify both nodes see 2 workers
@@ -368,7 +377,11 @@ Zakuro can be configured via environment variables:
 | Variable | Description | Default |
 | -------- | ----------- | ------- |
 | `ZAKURO_MASTER_KEY` | Master API key for admin operations | - |
-| `REDIS_URL` | Redis connection for ledger | `redis://127.0.0.1:6379` |
+| `DATABASE_URL` | PostgreSQL connection for ledger | `postgresql://zakuro_broker:broker_secret@localhost:5432/zakuro` |
+| `ZAKURO_PEER_KEY` | Shared secret for P2P broker communication | - |
+| `ZAKURO_P2P` | Enable P2P broker-to-broker mode | `false` |
+| `ZAKURO_OWNER_ID` | Broker's unique ID for authority assignment | - |
+| `ZAKURO_PEERS` | Comma-separated peer broker URLs | - |
 
 ## License
 
