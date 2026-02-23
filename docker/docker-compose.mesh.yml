@@ -42,6 +42,7 @@ services:
       - "9001:9000"
     networks: [node1-net, zakuro-shared]
     volumes:
+      - ../../zak-zc/target/release/zc2:/usr/local/bin/zc:ro
       - node1-data:/app/data
     restart: unless-stopped
     healthcheck:
@@ -141,6 +142,7 @@ services:
       - "9002:9000"
     networks: [node2-net, zakuro-shared]
     volumes:
+      - ../../zak-zc/target/release/zc2:/usr/local/bin/zc:ro
       - node2-data:/app/data
     restart: unless-stopped
     healthcheck:
