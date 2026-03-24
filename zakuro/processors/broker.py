@@ -41,6 +41,8 @@ class BrokerProcessor(Processor):
         super().__init__(config, compute)
         self._client: httpx.Client | None = None
         self._user_id: str | None = None
+        self.last_cost: float = 0.0
+        self.last_balance: float = 0.0
 
     @classmethod
     def is_available(cls) -> bool:
@@ -139,13 +141,22 @@ class BrokerProcessor(Processor):
             }
         )
 
-        # Build requirements header
-        requirements = {
+        # Build requirements header from compute spec + processor_options overrides
+        opts = self._compute.processor_options or {}
+        requirements: dict[str, Any] = {
             "cpus": self._compute.cpus,
             "memory_bytes": self._compute.memory_bytes(),
             "gpus": self._compute.gpus,
-            "estimated_duration_secs": 1.0,  # Default estimate
+            "estimated_duration_secs": opts.get("estimated_duration_secs", 1.0),
         }
+        if "budget_credits" in opts:
+            requirements["budget_credits"] = float(opts["budget_credits"])
+        if "strategy" in opts:
+            requirements["strategy"] = opts["strategy"]
+        if "remote_only" in opts:
+            requirements["remote_only"] = bool(opts["remote_only"])
+        if "worker_type" in opts:
+            requirements["worker_type"] = opts["worker_type"]
 
         # Execute via broker (auth headers are set on the client)
         response = self._client.post(
@@ -170,6 +181,14 @@ class BrokerProcessor(Processor):
         # Extract cost info from headers
         cost = response.headers.get("X-Zakuro-Cost", "0")
         remaining = response.headers.get("X-Zakuro-Credits-Remaining", "0")
+        try:
+            self.last_cost = float(cost)
+        except (ValueError, TypeError):
+            self.last_cost = 0.0
+        try:
+            self.last_balance = float(remaining)
+        except (ValueError, TypeError):
+            self.last_balance = 0.0
 
         # Deserialize result
         result = cloudpickle.loads(response.content)
