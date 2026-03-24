@@ -29,8 +29,12 @@ services:
       dockerfile: Dockerfile.broker-runtime
     environment:
       ZAKURO_NODE_NAME: zk0-node01
-      ZAKURO_API_KEY: ${ZK0NODE01_ZAKURO_KEY:-}
+      # Use admin key for broker API auth (user1 lacks broker API access).
+      # ZAKURO_OWNER_ID pins the node owner so is_self_owned and authority
+      # assignment still reflect user1, not the API key holder.
+      ZAKURO_API_KEY: ${ZAKURO_ADMIN_API_KEY:-${ZK0NODE02_ZAKURO_KEY}}
       ZAKURO_API_URL: https://my.zakuro-ai.com
+      ZAKURO_OWNER_ID: "1000000001"
       # Peer = node2 Tailscale IP (Tailscale tunnel, not Docker network)
       ZAKURO_PEERS: ${ZK0NODE02_TAILSCALE_IP:-}:9000
       ZAKURO_PEER_KEY: ${ZAKURO_PEER_KEY:-zakuro-p2p-secret}
