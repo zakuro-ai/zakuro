@@ -122,10 +122,8 @@ async def info() -> dict[str, Any]:
             "storage_gb": storage_gb_available,
         },
         "pricing": {
-            "cpu_price": float(os.environ.get("ZAKURO_CPU_PRICE", "0.001")),
-            "memory_price": float(os.environ.get("ZAKURO_MEMORY_PRICE", "0.0001")),
-            "gpu_price": float(os.environ.get("ZAKURO_GPU_PRICE", "0.01")),
-            "min_charge": float(os.environ.get("ZAKURO_MIN_CHARGE", "0.0001")),
+            "price_per_hour": float(os.environ.get("ZAKURO_PRICE_PER_HOUR", "3.6")),
+            "min_charge": float(os.environ.get("ZAKURO_MIN_CHARGE", "0.001")),
         },
         "tags": os.environ.get("ZAKURO_WORKER_TAGS", "").split(",") if os.environ.get("ZAKURO_WORKER_TAGS") else [],
     }
