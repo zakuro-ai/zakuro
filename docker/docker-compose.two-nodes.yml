@@ -7,7 +7,7 @@
 # Prerequisites:
 #   source ~/.zakuro/env   # sets ZK0NODE01_ZAKURO_KEY, ZK0NODE02_ZAKURO_KEY,
 #                          #       ZK0NODE01_TAILSCALE_IP, ZK0NODE02_TAILSCALE_IP,
-#                          #       ZAKURO_PEER_KEY
+#                          #       ZAKURO_PEER_KEY, ZK0NODE01_TS_AUTHKEY (Tailscale key for node1)
 #
 # Usage:
 #   docker compose -f docker/docker-compose.two-nodes.yml up -d --build
@@ -29,8 +29,8 @@ services:
       dockerfile: Dockerfile.broker-runtime
     environment:
       ZAKURO_NODE_NAME: zk0-node01
-      ZAKURO_MASTER_KEY: node1-master-key
-      # Node 1 user key has no broker API access → standalone billing with local credits
+      ZAKURO_API_KEY: ${ZK0NODE01_ZAKURO_KEY:-}
+      ZAKURO_API_URL: https://my.zakuro-ai.com
       # Peer = node2 Tailscale IP (Tailscale tunnel, not Docker network)
       ZAKURO_PEERS: ${ZK0NODE02_TAILSCALE_IP:-}:9000
       ZAKURO_PEER_KEY: ${ZAKURO_PEER_KEY:-zakuro-p2p-secret}
