@@ -34,15 +34,15 @@ services:
       ZAKURO_PEERS: ${ZK0NODE02_TAILSCALE_IP:-100.120.132.51}:9000
       ZAKURO_PEER_KEY: ${ZAKURO_PEER_KEY:-zakuro-p2p-secret}
       ZAKURO_P2P: ${ZAKURO_P2P:-true}
-      # Dashboard API for worker sync — owner ID auto-derived from API key
-      ZAKURO_API_URL: https://my.zakuro-ai.com
+      # Hybrid mode: MASTER_KEY for local billing, API_URL/API_KEY for tx publishing to dashboard
+      ZAKURO_API_URL: ${ZAKURO_API_URL:-https://my.zakuro-ai.com}
       ZAKURO_API_KEY: ${ZK0NODE01_ZAKURO_KEY}
-      ZAKURO_SCAN_RANGE: "3960-3962"
+      ZAKURO_SCAN_RANGE: "3960-3965"
     ports:
       - "9001:9000"
     networks: [node1-net, zakuro-shared]
     volumes:
-      - ../../zak-zc/target/release/zc2:/usr/local/bin/zc:ro
+      - ../../zak-zc/target/release/zc:/usr/local/bin/zc:ro
       - node1-data:/app/data
     restart: unless-stopped
     healthcheck:
@@ -110,6 +110,7 @@ services:
       ZAKURO_API_URL: https://my.zakuro-ai.com
       TS_STATE_DIR: /var/lib/tailscale
       TS_USERSPACE: "false"
+      TS_AUTHKEY: ${ZK0NODE01_TS_AUTHKEY}
       TS_EXTRA_ARGS: "--hostname=zk0-node01 --netfilter-mode=off"
     entrypoint: ["/bin/sh", "/tailscale-entrypoint.sh"]
     network_mode: "service:node1-broker"
@@ -140,15 +141,14 @@ services:
       ZAKURO_PEERS: ${ZK0NODE01_TAILSCALE_IP:-100.82.173.52}:9000
       ZAKURO_PEER_KEY: ${ZAKURO_PEER_KEY:-zakuro-p2p-secret}
       ZAKURO_P2P: ${ZAKURO_P2P:-true}
-      # Dashboard API for worker sync — owner ID auto-derived from API key
-      ZAKURO_API_URL: https://my.zakuro-ai.com
-      ZAKURO_API_KEY: ${ZK0NODE02_ZAKURO_KEY}
-      ZAKURO_SCAN_RANGE: "3960-3962"
+      # Standalone billing: no dashboard API (local ledger only)
+      # ZAKURO_API_URL and ZAKURO_API_KEY intentionally omitted for node01
+      ZAKURO_SCAN_RANGE: "3960-3965"
     ports:
       - "9002:9000"
     networks: [node2-net, zakuro-shared]
     volumes:
-      - ../../zak-zc/target/release/zc2:/usr/local/bin/zc:ro
+      - ../../zak-zc/target/release/zc:/usr/local/bin/zc:ro
       - node2-data:/app/data
     restart: unless-stopped
     healthcheck:
@@ -167,7 +167,7 @@ services:
       ZAKURO_WORKER_TYPE: premium
       ZAKURO_CPU_PRICE: "0.003"
       ZAKURO_MEMORY_PRICE: "0.0003"
-      ZAKURO_MIN_CHARGE: "1.0"
+      ZAKURO_MIN_CHARGE: "0.00035"
       ZAKURO_PORT: "3960"
       PYTHONUNBUFFERED: "1"
     network_mode: "service:node2-broker"
@@ -184,7 +184,7 @@ services:
       ZAKURO_WORKER_TYPE: premium
       ZAKURO_CPU_PRICE: "0.003"
       ZAKURO_MEMORY_PRICE: "0.0003"
-      ZAKURO_MIN_CHARGE: "1.0"
+      ZAKURO_MIN_CHARGE: "0.00035"
       ZAKURO_PORT: "3961"
       PYTHONUNBUFFERED: "1"
     network_mode: "service:node2-broker"
@@ -201,8 +201,59 @@ services:
       ZAKURO_WORKER_TYPE: premium
       ZAKURO_CPU_PRICE: "0.003"
       ZAKURO_MEMORY_PRICE: "0.0003"
-      ZAKURO_MIN_CHARGE: "1.0"
+      ZAKURO_MIN_CHARGE: "0.00035"
       ZAKURO_PORT: "3962"
+      PYTHONUNBUFFERED: "1"
+    network_mode: "service:node2-broker"
+    depends_on:
+      node2-broker:
+        condition: service_healthy
+
+  node2-worker-3:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      ZAKURO_WORKER_NAME: zk0-node02-worker-3
+      ZAKURO_WORKER_TYPE: premium
+      ZAKURO_CPU_PRICE: "0.003"
+      ZAKURO_MEMORY_PRICE: "0.0003"
+      ZAKURO_MIN_CHARGE: "0.00035"
+      ZAKURO_PORT: "3963"
+      PYTHONUNBUFFERED: "1"
+    network_mode: "service:node2-broker"
+    depends_on:
+      node2-broker:
+        condition: service_healthy
+
+  node2-worker-4:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      ZAKURO_WORKER_NAME: zk0-node02-worker-4
+      ZAKURO_WORKER_TYPE: premium
+      ZAKURO_CPU_PRICE: "0.003"
+      ZAKURO_MEMORY_PRICE: "0.0003"
+      ZAKURO_MIN_CHARGE: "0.00035"
+      ZAKURO_PORT: "3964"
+      PYTHONUNBUFFERED: "1"
+    network_mode: "service:node2-broker"
+    depends_on:
+      node2-broker:
+        condition: service_healthy
+
+  node2-worker-5:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    environment:
+      ZAKURO_WORKER_NAME: zk0-node02-worker-5
+      ZAKURO_WORKER_TYPE: premium
+      ZAKURO_CPU_PRICE: "0.003"
+      ZAKURO_MEMORY_PRICE: "0.0003"
+      ZAKURO_MIN_CHARGE: "0.00035"
+      ZAKURO_PORT: "3965"
       PYTHONUNBUFFERED: "1"
     network_mode: "service:node2-broker"
     depends_on:
