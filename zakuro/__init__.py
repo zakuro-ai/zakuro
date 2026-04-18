@@ -21,6 +21,7 @@ from zakuro.compute import Compute
 from zakuro.config import Config
 from zakuro.fn import Fn, cls, fn
 from zakuro.processors.registry import available_processors
+from zakuro.standalone import detect_backend, is_standalone
 
 __all__ = [
     "Compute",
@@ -29,5 +30,7 @@ __all__ = [
     "fn",
     "cls",
     "available_processors",
+    "detect_backend",
+    "is_standalone",
     "__version__",
 ]
