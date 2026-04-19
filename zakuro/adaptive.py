@@ -199,6 +199,10 @@ class AdaptiveCompute:
         initial_latency: float = 1.0,
         backpressure_threshold: float = 30.0,
         cost_coefficient: float = 0.0,
+        local_region: Optional[str] = None,
+        local_rack: Optional[str] = None,
+        region_penalty: float = 1.10,
+        rack_penalty: float = 1.03,
     ) -> None:
         self._workers: list["Compute"] = list(workers)
         if not self._workers:
@@ -222,6 +226,16 @@ class AdaptiveCompute:
         if cost_coefficient < 0:
             raise ValueError("cost_coefficient must be >= 0")
         self._cost_coef = float(cost_coefficient)
+        # Topology preference (Phase 4.2). ``local_region=None`` falls back to
+        # ``$ZAKURO_REGION`` (same for rack) so environments can set this
+        # once per host and every AdaptiveCompute picks it up. Penalties of
+        # 1.0 disable the preference entirely.
+        if region_penalty < 1.0 or rack_penalty < 1.0:
+            raise ValueError("region_penalty and rack_penalty must be >= 1.0")
+        self._local_region = local_region or os.environ.get("ZAKURO_REGION") or None
+        self._local_rack = local_rack or os.environ.get("ZAKURO_RACK") or None
+        self._region_penalty = float(region_penalty)
+        self._rack_penalty = float(rack_penalty)
         # `fast_ema > drift_threshold * baseline` → mark as drifted.
         self._drift_threshold = float(drift_threshold)
         # Multiplier applied to the drifted worker's expected time-to-serve.
@@ -828,6 +842,18 @@ class AdaptiveCompute:
                 price = getattr(self._workers[i], "price_per_hour", None)
                 if price is not None and price > 0:
                     expected *= 1.0 + self._cost_coef * price
+            # Topology-aware: softly demote cross-region (and, secondarily,
+            # cross-rack) workers. Small multipliers so a faster remote
+            # worker still wins on latency — this only breaks near-ties.
+            if self._local_region is not None:
+                w = self._workers[i]
+                w_region = getattr(w, "region", None)
+                if w_region is not None and w_region != self._local_region:
+                    expected *= self._region_penalty
+                elif w_region == self._local_region and self._local_rack is not None:
+                    w_rack = getattr(w, "rack", None)
+                    if w_rack is not None and w_rack != self._local_rack:
+                        expected *= self._rack_penalty
             out.append(expected)
         return out
 

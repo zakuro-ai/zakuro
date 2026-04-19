@@ -356,6 +356,77 @@ class TestPriceAware:
         assert all(p == 1 for p in picks)
 
 
+class TestTopologyHints:
+    def test_same_region_wins_on_tie(self) -> None:
+        """Equal latency, differing region → picker prefers local region."""
+        local = Compute(host="a.local", verify=False, region="us-west")
+        remote = Compute(host="b.local", verify=False, region="us-east")
+        ac = AdaptiveCompute(
+            workers=[remote, local],  # put the remote at idx 0
+            local_region="us-west",
+            softmax_temperature=0.0,
+        )
+        for _ in range(30):
+            ac._update_ema(ac._stats[0], 0.01)
+            ac._update_ema(ac._stats[1], 0.01)
+        # Despite idx 0 being the first-index tiebreaker, the local worker
+        # (idx 1) wins because the region penalty stretches remote's
+        # expected time.
+        assert all(ac.pick() == 1 for _ in range(20))
+
+    def test_faster_remote_still_wins(self) -> None:
+        """A much-faster remote should beat a slow local — penalty is soft."""
+        slow_local = Compute(host="a.local", verify=False, region="us-west")
+        fast_remote = Compute(host="b.local", verify=False, region="us-east")
+        ac = AdaptiveCompute(
+            workers=[slow_local, fast_remote],
+            local_region="us-west",
+            softmax_temperature=0.0,
+            region_penalty=1.10,
+        )
+        # 10× latency difference dwarfs the 10 % region penalty.
+        for _ in range(30):
+            ac._update_ema(ac._stats[0], 1.0)
+            ac._update_ema(ac._stats[1], 0.01)
+        assert all(ac.pick() == 1 for _ in range(20))
+
+    def test_no_local_region_is_a_noop(self) -> None:
+        """Absent local_region, topology tags on workers are ignored."""
+        a = Compute(host="a.local", verify=False, region="r1")
+        b = Compute(host="b.local", verify=False, region="r2")
+        ac = AdaptiveCompute(workers=[a, b], softmax_temperature=0.0)
+        for _ in range(30):
+            ac._update_ema(ac._stats[0], 0.01)
+            ac._update_ema(ac._stats[1], 0.01)
+        assert all(ac.pick() == 0 for _ in range(20))
+
+    def test_rack_preference_within_region(self) -> None:
+        """Same region, differing rack → prefer same-rack on tie."""
+        cross_rack = Compute(host="a.local", verify=False, region="r", rack="R2")
+        same_rack = Compute(host="b.local", verify=False, region="r", rack="R1")
+        ac = AdaptiveCompute(
+            workers=[cross_rack, same_rack],
+            local_region="r",
+            local_rack="R1",
+            softmax_temperature=0.0,
+        )
+        for _ in range(30):
+            ac._update_ema(ac._stats[0], 0.01)
+            ac._update_ema(ac._stats[1], 0.01)
+        assert all(ac.pick() == 1 for _ in range(20))
+
+    def test_env_var_seeds_local_region(self, monkeypatch) -> None:
+        """$ZAKURO_REGION populates local_region when not passed explicitly."""
+        monkeypatch.setenv("ZAKURO_REGION", "us-west")
+        local = Compute(host="a.local", verify=False, region="us-west")
+        remote = Compute(host="b.local", verify=False, region="us-east")
+        ac = AdaptiveCompute(workers=[remote, local], softmax_temperature=0.0)
+        for _ in range(30):
+            ac._update_ema(ac._stats[0], 0.01)
+            ac._update_ema(ac._stats[1], 0.01)
+        assert all(ac.pick() == 1 for _ in range(20))
+
+
 class TestBandwidthAware:
     def test_picker_prefers_higher_bandwidth_for_big_payloads(self) -> None:
         """Same latency, different bandwidth: big payloads pick the fatter pipe."""
