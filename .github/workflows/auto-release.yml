@@ -1,8 +1,10 @@
 name: Auto-release
 
-# On every push to master, bump the patch version, tag it, and create a
-# GitHub release. The existing `publish.yml` workflow is triggered by the
-# release creation and handles PyPI + Docker publishing.
+# On every push to master, bump the patch version, tag it, create a
+# GitHub release, and publish the wheel to PyPI. Publishing is inlined
+# (rather than a release-triggered sibling workflow) because releases
+# created by GITHUB_TOKEN don't cascade into other workflows — so the
+# chained approach never fires.
 #
 # Skip a commit with `[skip release]` in the message. Skip docs-only
 # changes via a path filter to keep the release cadence sane.
@@ -15,6 +17,7 @@ on:
       - "docs/**"
       - "notebooks/**"
       - ".github/workflows/*.yml"   # don't auto-release on CI edits
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -71,3 +74,31 @@ jobs:
           gh release create "${{ steps.bump.outputs.tag }}" \
             --title "${{ steps.bump.outputs.tag }}" \
             --generate-notes
+
+  publish-pypi:
+    needs: bump-and-release
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write  # OIDC trusted publishing — no token secret required
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-and-release.outputs.tag }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Build wheel + sdist
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/bin/python hatchling build
+          .venv/bin/python -m build --outdir dist
+
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
