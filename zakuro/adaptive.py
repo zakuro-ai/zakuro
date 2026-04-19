@@ -54,6 +54,22 @@ if TYPE_CHECKING:
     from zakuro.compute import Compute
 
 
+def _identity(x: Any) -> Any:
+    """Module-level identity used as the default warmup probe.
+
+    Kept at module scope so it cloudpickles cleanly on the worker side
+    (local / lambda functions don't) and so subsequent calls reuse the
+    worker-side module cache.
+    """
+    return x
+
+
+# Small sentinel passed as the probe argument.  Empty string keeps the payload
+# under a dozen bytes so warmup latency is dominated by network RTT rather
+# than transfer.
+_WARMUP_TOKEN = ""
+
+
 class _WorkerStats:
     """Per-worker running statistics in the Adam style.
 
@@ -162,7 +178,19 @@ class AdaptiveCompute:
     @property
     def workers(self) -> list["Compute"]:
         """Read-only view of the worker pool."""
-        return list(self._workers)
+        with self._lock:
+            return list(self._workers)
+
+    @property
+    def backpressure_threshold(self) -> float:
+        """Current backpressure cap, in seconds."""
+        return self._backpressure
+
+    @backpressure_threshold.setter
+    def backpressure_threshold(self, value: float) -> None:
+        if value < 0:
+            raise ValueError("backpressure_threshold must be non-negative")
+        self._backpressure = float(value)
 
     def stats(self) -> list[dict[str, Any]]:
         """Snapshot of per-worker stats, bias-corrected."""
@@ -182,6 +210,209 @@ class AdaptiveCompute:
         """
         with self._lock:
             return self._pick_locked()
+
+    # ........................................................ node lifecycle
+
+    def add_worker(self, compute: "Compute") -> int:
+        """Admit a new worker into the pool. Returns its index.
+
+        The fresh worker is seeded with a bootstrap latency prior equal to
+        the current mesh-median observed latency — this prevents "greedy
+        stampede" onto a new (unverified) worker before it proves itself,
+        while still letting it earn traffic on its first observation.
+        """
+        with self._lock:
+            median = self._mesh_median_latency_locked()
+            self._workers.append(compute)
+            new_stats = _WorkerStats()
+            # Seed the EMA so the *bias-corrected* m_hat equals the mesh
+            # median. m_hat = m / (1 − β₁^step); solving for m with step=1
+            # gives m = median × (1 − β₁).
+            new_stats.m = median * (1.0 - self._beta1)
+            new_stats.step = 1
+            new_stats.last_latency = median
+            self._stats.append(new_stats)
+            return len(self._workers) - 1
+
+    def remove_worker(self, idx: int) -> "Compute":
+        """Evict a worker from the pool. Returns the evicted Compute."""
+        with self._lock:
+            if not (0 <= idx < len(self._workers)):
+                raise IndexError(f"worker index {idx} out of range")
+            if len(self._workers) == 1:
+                raise ValueError(
+                    "cannot remove the last worker; add a replacement first"
+                )
+            compute = self._workers.pop(idx)
+            self._stats.pop(idx)
+            return compute
+
+    # ................................................................. warmup
+
+    def warmup(
+        self,
+        *,
+        probe_fn: Optional[Any] = None,
+        rounds: int = 3,
+        timeout: float = 10.0,
+        eject_on_failure: bool = True,
+        set_backpressure: bool = True,
+        verbose: bool = True,
+    ) -> dict[str, Any]:
+        """Probe every worker before real traffic to calibrate priors.
+
+        Runs ``rounds`` successful round-trips per worker against a cheap
+        payload (``probe_fn``, defaults to an identity function). The
+        observed latencies seed each worker's EMA, replacing the pessimistic
+        ``initial_latency`` bootstrap.
+
+        When ``eject_on_failure`` is True, workers that fail every probe
+        within ``timeout`` seconds are removed from the pool before the
+        method returns — they never see real traffic.
+
+        When ``set_backpressure`` is True, the method updates
+        ``backpressure_threshold`` to `1.5 × max(observed_worker_latency)`,
+        biasing toward skipping an eval whenever the slow side can't
+        keep up.
+
+        Returns a report dict that callers can log / store:
+
+        .. code-block:: python
+
+            {
+                "rounds": 3,
+                "workers": [
+                    {"idx": 0, "uri": "...", "ok": True,
+                     "latency_mean": 0.31, "latency_p95": 0.42, "observed": [...]},
+                    {"idx": 1, "uri": "...", "ok": False, "reason": "timeout"},
+                ],
+                "ejected": [1],
+                "recommended_backpressure": 0.63,
+                "applied_backpressure": True,
+            }
+
+        """
+        import zakuro as zk
+
+        if probe_fn is None:
+            probe_fn = _identity
+
+        # Wrap probe_fn as a zk.fn we can dispatch to a single worker.
+        probe = zk.fn(probe_fn) if not hasattr(probe_fn, "_func") else probe_fn
+
+        # Snapshot the list of (idx, compute) up-front so mutations during
+        # the walk don't skip or double-count workers.
+        with self._lock:
+            snapshot: list[tuple[int, "Compute"]] = list(enumerate(self._workers))
+
+        worker_reports: list[dict[str, Any]] = []
+        # Track ORIGINAL indices; we translate to current positions right
+        # before eviction (pool may have changed under us).
+        failed_uris: list[str] = []
+
+        for orig_idx, compute in snapshot:
+            observed: list[float] = []
+            err: Optional[str] = None
+            started = time.perf_counter()
+            for _ in range(rounds):
+                remaining = timeout - (time.perf_counter() - started)
+                if remaining <= 0:
+                    err = err or "timeout"
+                    break
+                try:
+                    t0 = time.perf_counter()
+                    probe.to(compute)(_WARMUP_TOKEN)
+                    observed.append(time.perf_counter() - t0)
+                except Exception as exc:
+                    err = repr(exc)
+                    break
+
+            if observed:
+                observed.sort()
+                mean = sum(observed) / len(observed)
+                p95 = observed[min(len(observed) - 1, int(0.95 * len(observed)))]
+                worker_reports.append(
+                    {
+                        "idx": orig_idx,
+                        "uri": getattr(compute, "uri", None),
+                        "ok": True,
+                        "rounds_succeeded": len(observed),
+                        "latency_mean": mean,
+                        "latency_p95": p95,
+                        "observed": list(observed),
+                    }
+                )
+                # Seed the corresponding stats with the mean — look up by
+                # identity since the index may have shifted.
+                with self._lock:
+                    for i, w in enumerate(self._workers):
+                        if w is compute:
+                            s = _WorkerStats()
+                            s.m = mean
+                            s.step = len(observed)
+                            s.last_latency = observed[-1]
+                            self._stats[i] = s
+                            break
+            else:
+                worker_reports.append(
+                    {
+                        "idx": orig_idx,
+                        "uri": getattr(compute, "uri", None),
+                        "ok": False,
+                        "reason": err or "no observations",
+                    }
+                )
+                failed_uris.append(str(getattr(compute, "uri", orig_idx)))
+
+        # Eject failed workers.
+        ejected: list[int] = []
+        if eject_on_failure and failed_uris:
+            with self._lock:
+                keep_workers = []
+                keep_stats = []
+                for i, w in enumerate(self._workers):
+                    uri = str(getattr(w, "uri", i))
+                    if uri in failed_uris and len(self._workers) - len(ejected) > 1:
+                        ejected.append(i)
+                        continue
+                    keep_workers.append(w)
+                    keep_stats.append(self._stats[i])
+                self._workers = keep_workers
+                self._stats = keep_stats
+
+        # Recommend a backpressure threshold from the worst healthy worker's p95.
+        healthy_p95 = [r["latency_p95"] for r in worker_reports if r["ok"]]
+        recommended = max(healthy_p95) * 1.5 if healthy_p95 else None
+        if set_backpressure and recommended is not None:
+            self._backpressure = recommended
+
+        report = {
+            "rounds": rounds,
+            "workers": worker_reports,
+            "ejected": ejected,
+            "recommended_backpressure": recommended,
+            "applied_backpressure": set_backpressure and recommended is not None,
+        }
+
+        if verbose:
+            self._print_warmup_report(report)
+
+        return report
+
+    @staticmethod
+    def _print_warmup_report(report: dict[str, Any]) -> None:
+        parts = []
+        for w in report["workers"]:
+            uri = w.get("uri") or f"worker-{w['idx']}"
+            if w["ok"]:
+                parts.append(f"{uri} (p95={w['latency_p95']:.3f}s)")
+            else:
+                parts.append(f"{uri}: EJECTED ({w['reason']})")
+        summary = ", ".join(parts)
+        bp = report["recommended_backpressure"]
+        bp_str = f"{bp:.2f}s" if bp is not None else "<none>"
+        print(f"[warmup] {summary}")
+        print(f"[warmup] recommended backpressure: {bp_str}")
 
     def dispatch(
         self,
@@ -244,6 +475,23 @@ class AdaptiveCompute:
 
     def _best_expected_time(self) -> float:
         return min(self._expected_times_locked())
+
+    def _mesh_median_latency_locked(self) -> float:
+        """Median of the bias-corrected latency EMAs for observed workers.
+
+        Falls back to ``initial_latency`` if no worker has any observations
+        yet — matches the bootstrap assumption from the first call.
+        """
+        observed = [
+            s.m_hat(self._beta1) for s in self._stats if s.step > 0
+        ]
+        if not observed:
+            return self._initial_latency
+        observed.sort()
+        mid = len(observed) // 2
+        if len(observed) % 2 == 1:
+            return observed[mid]
+        return 0.5 * (observed[mid - 1] + observed[mid])
 
     def _update_ema(self, s: _WorkerStats, latency: float) -> None:
         s.step += 1
