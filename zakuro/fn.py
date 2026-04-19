@@ -28,12 +28,17 @@ class Fn(Generic[R]):
 
     def __init__(self, func: Callable[..., R]) -> None:
         self._func = func
-        self._compute: Optional[Compute] = None
+        self._compute: Optional[Any] = None  # Compute or AdaptiveCompute
         self._serialized: Optional[bytes] = None
         functools.update_wrapper(self, func)
 
-    def to(self, compute: Compute) -> Fn[R]:
-        """Attach compute resources for remote execution."""
+    def to(self, compute: Any) -> Fn[R]:
+        """Attach a compute target.
+
+        Accepts a :class:`~zakuro.compute.Compute` (single worker) or a
+        :class:`~zakuro.adaptive.AdaptiveCompute` (multi-worker, Adam-style
+        allocator). Returns self so calls chain: ``fn.to(compute)(arg)``.
+        """
         self._compute = compute
         return self
 
@@ -48,11 +53,19 @@ class Fn(Generic[R]):
             # Local execution
             return self._func(*args, **kwargs)
 
-        # Remote execution
-        return self._execute_remote(*args, **kwargs)
+        # AdaptiveCompute handles its own dispatch (pick a worker, time it,
+        # record stats). It calls _execute_single_compute on us after
+        # re-pointing ``self._compute`` at the chosen worker.
+        from zakuro.adaptive import AdaptiveCompute
 
-    def _execute_remote(self, *args: Any, **kwargs: Any) -> R:
-        """Send function to worker for execution, or run in-process if no backend."""
+        if isinstance(self._compute, AdaptiveCompute):
+            return self._compute.dispatch(self, args, kwargs)
+
+        # Remote execution with a single Compute target.
+        return self._execute_single_compute(*args, **kwargs)
+
+    def _execute_single_compute(self, *args: Any, **kwargs: Any) -> R:
+        """Dispatch to a single Compute target — the original single-worker path."""
         if self._compute is None:
             raise RuntimeError("No compute target. Use .to(compute) first.")
 
@@ -81,6 +94,10 @@ class Fn(Generic[R]):
         processor = get_processor(uri, self._compute)
         with processor:
             return processor.execute(func_bytes, args, kwargs)
+
+    # Retained as an alias for any external callers that hooked into the
+    # pre-adaptive name.
+    _execute_remote = _execute_single_compute
 
     def serialize(self) -> bytes:
         """Serialize the function for transport."""
