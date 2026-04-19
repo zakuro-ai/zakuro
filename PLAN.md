@@ -66,6 +66,17 @@ Spawn a QUIC worker, dispatch (success), SIGKILL + respawn on same port, dispatc
 
 Connection-dead detection is 12× faster; subsequent dispatches recover to baseline latency without user intervention.
 
+### In-memory handle path (Mac MPS, standalone, 3-epoch distilbert)
+
+Same workload, same seed. A toggle in the bench forces the `_is_in_process_target` detector off so we can A/B:
+
+| variant | wall | note |
+|---|---|---|
+| `torch.save` (remote path taken in-process) | 7.28 s | state_dict round-trips through `torch.save` → `torch.load` in the same process |
+| in-memory handle | **5.56 s** | `state_dict` passed as a Python reference |
+
+**+23.6 % wall-clock reduction** over 3 epochs. ~570 ms/epoch of pure serialisation overhead removed. No API change — the fast path is automatic when compute resolves to standalone.
+
 ### State-dict serialiser: cloudpickle vs torch.save (x399 CPU, distilbert 268 MB)
 
 Producer-side dump cost — matters because it runs in the pool thread while training is still happening on the main thread:
@@ -247,8 +258,9 @@ Replace the "cloudpickle state_dict in callback" pattern with a **non-blocking c
 
 **Pool-thread improvement (sakura #39):** the same state_dict blob used to get `cloudpickle.dumps`d (481 ms, 39 % GIL-share). Switched to `torch.save(sd, BytesIO)` — **282 ms, 72 % GIL-share**. Training step now has roughly 2× the CPU during the pool's packaging window.
 
+**In-memory handle path (sakura #40):** when the compute target is standalone (in-process), `torch.save` / `torch.load` are skipped entirely; the `state_dict` flows as a Python reference into the pool thread. Measured end-to-end wall: **7.28 → 5.56 s** on a 3-epoch distilbert standalone fine-tune (**+23.6 %**). ~570 ms/epoch reclaimed.
+
 Next-up slices:
-- In-memory `torch.Tensor` views as handle type (zero-copy on same host).
 - Disk-path handles written by a dedicated CUDA stream (GPU → local SSD, non-blocking).
 - Object-store URIs (for multi-machine).
 
