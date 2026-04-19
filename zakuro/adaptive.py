@@ -87,9 +87,19 @@ class _WorkerStats:
         Count of exceptions while executing on this worker.
     last_latency:
         Most recent completed-dispatch latency.
+    health_strikes:
+        Number of consecutive failed health probes. Reset on a successful
+        probe or a successful real dispatch.
+    suspended:
+        ``True`` when the worker has accumulated ``max_strikes`` health
+        misses. Suspended workers don't receive traffic but are not ejected
+        — a single successful probe un-suspends them.
     """
 
-    __slots__ = ("m", "v", "step", "queue", "failures", "last_latency")
+    __slots__ = (
+        "m", "v", "step", "queue", "failures", "last_latency",
+        "health_strikes", "suspended",
+    )
 
     def __init__(self) -> None:
         self.m: float = 0.0
@@ -98,6 +108,8 @@ class _WorkerStats:
         self.queue: int = 0
         self.failures: int = 0
         self.last_latency: Optional[float] = None
+        self.health_strikes: int = 0
+        self.suspended: bool = False
 
     def m_hat(self, beta1: float) -> float:
         """Bias-corrected first moment. Zero until the first completed call."""
@@ -119,6 +131,8 @@ class _WorkerStats:
             "latency_ema": self.m_hat(beta1),
             "latency_var": self.v_hat(beta2),
             "last_latency": self.last_latency,
+            "health_strikes": self.health_strikes,
+            "suspended": self.suspended,
         }
 
 
@@ -172,6 +186,13 @@ class AdaptiveCompute:
 
         self._stats = [_WorkerStats() for _ in self._workers]
         self._lock = threading.Lock()
+
+        # Health probing lifecycle (Phase 1.1).
+        self._probe_thread: Optional[threading.Thread] = None
+        self._probe_stop: threading.Event = threading.Event()
+        self._probe_interval: float = 5.0
+        self._probe_timeout: float = 2.0
+        self._max_strikes: int = 3
 
     # .................................................................. API
 
@@ -399,6 +420,149 @@ class AdaptiveCompute:
 
         return report
 
+    # ......................................................... health probes
+
+    def start_health_probes(
+        self,
+        *,
+        interval: float = 5.0,
+        timeout: float = 2.0,
+        max_strikes: int = 3,
+    ) -> None:
+        """Start a background heartbeat loop.
+
+        Every ``interval`` seconds the loop probes each worker's HEALTH
+        opcode (QUIC) or ``/health`` endpoint (HTTP). A miss increments the
+        worker's ``health_strikes`` counter; on ``max_strikes`` consecutive
+        misses the worker is **suspended** — traffic routes around it but
+        it stays in the pool. A successful probe resets the counter and
+        un-suspends.
+
+        Safe to call multiple times; only one probe thread runs per
+        ``AdaptiveCompute`` instance.
+        """
+        if interval <= 0:
+            raise ValueError("interval must be positive")
+        if timeout <= 0:
+            raise ValueError("timeout must be positive")
+        if max_strikes < 1:
+            raise ValueError("max_strikes must be ≥ 1")
+
+        self._probe_interval = float(interval)
+        self._probe_timeout = float(timeout)
+        self._max_strikes = int(max_strikes)
+
+        if self._probe_thread is not None and self._probe_thread.is_alive():
+            return
+
+        self._probe_stop.clear()
+        self._probe_thread = threading.Thread(
+            target=self._probe_loop,
+            name="zakuro-adaptive-health",
+            daemon=True,
+        )
+        self._probe_thread.start()
+
+    def stop_health_probes(self, timeout: float = 5.0) -> None:
+        """Signal the probe thread to stop and wait for it.
+
+        Idempotent; safe to call from any thread.
+        """
+        self._probe_stop.set()
+        if self._probe_thread is not None:
+            self._probe_thread.join(timeout=timeout)
+        self._probe_thread = None
+
+    def probe_once(self) -> list[dict[str, Any]]:
+        """Run a single probe round synchronously. Returns per-worker results.
+
+        Exposed mainly for tests and for users who prefer to drive the
+        heartbeat loop from their own scheduler.
+        """
+        with self._lock:
+            snapshot: list[tuple[int, "Compute"]] = list(enumerate(self._workers))
+        results: list[dict[str, Any]] = []
+        for idx, compute in snapshot:
+            ok, err, latency = self._probe(compute)
+            with self._lock:
+                # The pool may have mutated; find the worker by identity.
+                cur_idx = self._find_locked(compute)
+                if cur_idx is None:
+                    continue
+                s = self._stats[cur_idx]
+                if ok:
+                    s.health_strikes = 0
+                    if s.suspended:
+                        s.suspended = False
+                    # A good probe is also an observation: fold it into the EMA
+                    # so that workers picking up after a transient stall are
+                    # credited for being fast again.
+                    if latency is not None:
+                        self._update_ema(s, latency)
+                else:
+                    s.health_strikes += 1
+                    if s.health_strikes >= self._max_strikes:
+                        s.suspended = True
+            results.append(
+                {
+                    "idx": idx,
+                    "uri": getattr(compute, "uri", None),
+                    "ok": ok,
+                    "latency": latency,
+                    "error": err,
+                }
+            )
+        return results
+
+    def _probe_loop(self) -> None:
+        while not self._probe_stop.is_set():
+            try:
+                self.probe_once()
+            except Exception:  # defensive — loop must never die on a user error
+                pass
+            # Use Event.wait so stop is immediate.
+            self._probe_stop.wait(self._probe_interval)
+
+    def _probe(self, compute: "Compute") -> tuple[bool, Optional[str], Optional[float]]:
+        """Probe a single worker's health. Returns (ok, error_reason, latency_sec)."""
+        # Pick the right probe per scheme; fall through to the generic
+        # worker-runner info endpoint if we don't know the processor.
+        scheme = getattr(compute, "scheme", "")
+        t0 = time.perf_counter()
+        try:
+            if scheme == "quic":
+                from zakuro.processors.base import ProcessorConfig
+                from zakuro.processors.quic import QuicProcessor
+
+                config = ProcessorConfig(
+                    scheme="quic", host=compute.host, port=compute.port
+                )
+                processor = QuicProcessor(config, compute)
+                processor.connect()
+                try:
+                    ok = processor.ping()
+                finally:
+                    processor.disconnect()
+            else:
+                # HTTP / zakuro:// — hit /health directly without cloudpickling.
+                import httpx
+
+                url = f"http://{compute.host}:{compute.port}/health"
+                try:
+                    r = httpx.get(url, timeout=self._probe_timeout)
+                    ok = r.status_code == 200
+                except httpx.HTTPError as exc:
+                    return False, repr(exc), None
+            return ok, None if ok else "health returned non-ok", time.perf_counter() - t0
+        except Exception as exc:
+            return False, repr(exc), None
+
+    def _find_locked(self, compute: "Compute") -> Optional[int]:
+        for i, w in enumerate(self._workers):
+            if w is compute:
+                return i
+        return None
+
     @staticmethod
     def _print_warmup_report(report: dict[str, Any]) -> None:
         parts = []
@@ -468,6 +632,12 @@ class AdaptiveCompute:
     def _expected_times_locked(self) -> list[float]:
         out = []
         for s in self._stats:
+            if s.suspended:
+                # Suspended workers get sent to infinity so the picker routes
+                # around them — but they stay in the pool, so a successful
+                # probe can rehabilitate them with one flip of `suspended`.
+                out.append(float("inf"))
+                continue
             m = s.m_hat(self._beta1)
             lat = m if s.step > 0 else self._initial_latency
             out.append((s.queue + 1) * lat)
@@ -514,6 +684,15 @@ class AdaptiveCompute:
             f"beta1={self._beta1}, beta2={self._beta2}, "
             f"tau={self._tau}, backpressure={self._backpressure}s)"
         )
+
+    def __del__(self) -> None:
+        # Best-effort cleanup of the probe thread when the allocator is
+        # garbage-collected. Users should call stop_health_probes() explicitly
+        # in long-running processes.
+        try:
+            self.stop_health_probes(timeout=0.5)
+        except Exception:
+            pass
 
 
 __all__ = ["AdaptiveCompute"]
