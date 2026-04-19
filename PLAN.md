@@ -54,6 +54,18 @@ Two Mac workers under softmax routing (τ = 0.05). Baseline at t=0, then 10 s of
 | injection 10 s | 8 (5 %) | 142 (95 %) | **t + 0.48 s** |
 | recovery 20 s | 167 (56 %) | 133 (44 %) | cleared |
 
+### QUIC retry / dead-connection detection (`scripts/bench_quic_retry.py`)
+
+Spawn a QUIC worker, dispatch (success), SIGKILL + respawn on same port, dispatch again. The in-flight call during the kill is a silent drop (no FIN from the killed worker); aioquic has to rely on its idle timeout to notice.
+
+| event | wall time |
+|---|---|
+| baseline dispatch | 95 ms |
+| dispatch in-flight during SIGKILL | **5 s** (was 60 s with aioquic default idle timeout) |
+| dispatch after respawn on same port | 94 ms |
+
+Connection-dead detection is 12× faster; subsequent dispatches recover to baseline latency without user intervention.
+
 ### State-dict serialiser: cloudpickle vs torch.save (x399 CPU, distilbert 268 MB)
 
 Producer-side dump cost — matters because it runs in the pool thread while training is still happening on the main thread:
@@ -155,11 +167,23 @@ Result: from slowdown onset to ≥95 % traffic diversion in under half a second.
 - Hook for a future discovery source (`Tailscale peer list`, `K8s service endpoints`, etc.) to push changes.
 - Refuses to drop the last worker — returns `ValueError("cannot remove the last worker; add a replacement first")`.
 
-### 1.4 QUIC connection migration — F4.2 💭
+### 1.4 QUIC resilience — F4.2 ✅ (retry slice)
 
-- Verify `aioquic` and `quinn` honour connection migration when the local socket's address changes.
-- Write a network-change integration test (`tc netem` or a local TUN reshuffle) that proves an in-flight stream survives.
-- Expose a callback on the `QuicProcessor` that fires on `ConnectionIdsIssued` / path-change events for observability.
+Shipped the high-value slice: the processor recovers from transient connection failures without the caller knowing.
+
+- `QuicProcessor.execute` wraps the in-flight `request` in a try/except; on `ConnectionError` / `OSError` / `RuntimeError` it tears down the stale connection, dials again via `_reconnect()`, and retries once.
+- Client-side protocol surfaces `ConnectionTerminated` / `StreamReset` to waiting futures as `ConnectionError`, so retries can trigger promptly instead of hanging.
+- `QuicConfiguration(idle_timeout=5.0)` (down from aioquic's 30–60 s default) makes dead-connection detection **12× faster** on SIGKILL/silent-drop scenarios.
+
+**Measured on `scripts/bench_quic_retry.py`** (QUIC worker bounce with SIGKILL + respawn on same port):
+
+| event | before | after |
+|---|---|---|
+| baseline dispatch | 95 ms | 95 ms |
+| in-flight during SIGKILL | 60 s timeout | **5 s** ConnectionError |
+| post-respawn dispatch | 95 ms | 95 ms |
+
+The full "connection migration on network change" case (new source IP, NAT rebinding) is still open — our reference LAN doesn't let us exercise it — but the retry+idle-timeout change addresses the common cause of SM4 breakage (worker restarts, transient network blips).
 
 ---
 
