@@ -13,6 +13,7 @@ import shutil
 import socket
 import subprocess
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 import httpx
@@ -25,6 +26,25 @@ def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+def _locate_zakuro_worker() -> Optional[str]:
+    """Find the ``zakuro-worker`` binary that matches the current Python.
+
+    Prefer the bin directory sibling of ``sys.executable`` — this avoids a
+    common footgun where a stale ``uv tool install zakuro-ai`` earlier in
+    ``$PATH`` resolves to an older wheel whose import chain eagerly pulls
+    FastAPI and fails at import time in a reduced environment.
+
+    Falls back to ``shutil.which`` for users who run outside a venv.
+    """
+    import os as _os
+    import sys as _sys
+
+    sibling = Path(_sys.executable).parent / "zakuro-worker"
+    if sibling.is_file() and _os.access(sibling, _os.X_OK):
+        return str(sibling)
+    return shutil.which("zakuro-worker")
 
 
 class Worker:
@@ -78,11 +98,11 @@ class Worker:
         """
         if transport not in ("http", "quic"):
             raise ValueError(f"unknown transport {transport!r}")
-        binary = shutil.which("zakuro-worker")
+        binary = _locate_zakuro_worker()
         if binary is None:
             raise RuntimeError(
-                "`zakuro-worker` CLI not found on PATH; install the zakuro package "
-                "or activate its virtualenv."
+                "`zakuro-worker` CLI not found next to the current Python or on "
+                "PATH; install the zakuro package or activate its virtualenv."
             )
         chosen_port = port if port is not None else _free_port()
         args = [
