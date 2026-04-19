@@ -193,6 +193,80 @@ class TestWarmup:
         assert any(r["ok"] is False for r in report["workers"])
 
 
+class TestDriftDetection:
+    def test_stable_worker_not_drifted(self) -> None:
+        """Consistent latencies keep drift_factor at 1.0."""
+        ac = AdaptiveCompute(
+            workers=[_fast_worker()],
+            beta1=0.8, beta_slow=0.99,
+            drift_threshold=2.0,
+        )
+        for _ in range(50):
+            ac._update_ema(ac._stats[0], 0.1)
+        assert ac.stats()[0]["drift_factor"] == 1.0
+
+    def test_sustained_slowdown_marks_drift(self) -> None:
+        """A worker whose fast EMA climbs past drift_threshold × baseline
+        should be soft-demoted."""
+        ac = AdaptiveCompute(
+            workers=[_fast_worker()],
+            beta1=0.7,          # responsive fast EMA
+            beta_slow=0.95,     # slower baseline
+            drift_threshold=1.5,
+            drift_penalty=5.0,
+        )
+        # Establish baseline.
+        for _ in range(30):
+            ac._update_ema(ac._stats[0], 0.1)
+        assert ac.stats()[0]["drift_factor"] == 1.0
+
+        # Inject 5× slowdown; baseline lags behind so ratio crosses 1.5.
+        for _ in range(15):
+            ac._update_ema(ac._stats[0], 0.5)
+        stats = ac.stats()[0]
+        assert stats["drift_factor"] == 5.0
+        # Expected time in picker = (queue+1) * ema * drift_factor → huge.
+        assert ac._expected_times_locked()[0] > 1.0
+
+    def test_recovery_clears_drift(self) -> None:
+        """Returning to baseline should clear the demotion."""
+        ac = AdaptiveCompute(
+            workers=[_fast_worker()],
+            beta1=0.7, beta_slow=0.95,
+            drift_threshold=1.5,
+            drift_recovery_threshold=1.1,
+        )
+        for _ in range(30):
+            ac._update_ema(ac._stats[0], 0.1)
+        for _ in range(15):
+            ac._update_ema(ac._stats[0], 0.5)
+        assert ac.stats()[0]["drift_factor"] == 5.0
+
+        # Return to fast latencies.
+        for _ in range(60):
+            ac._update_ema(ac._stats[0], 0.1)
+        assert ac.stats()[0]["drift_factor"] == 1.0
+
+    def test_drift_deflects_picks(self) -> None:
+        """In a 2-worker pool, only the drifted side is skipped."""
+        ac = AdaptiveCompute(
+            workers=[_fast_worker(), _slow_worker()],
+            beta1=0.7, beta_slow=0.95,
+            drift_threshold=1.5,
+        )
+        # Baseline both: worker 0 fast, worker 1 fast too.
+        for _ in range(30):
+            ac._update_ema(ac._stats[0], 0.1)
+            ac._update_ema(ac._stats[1], 0.1)
+        # Drift worker 0.
+        for _ in range(15):
+            ac._update_ema(ac._stats[0], 1.0)
+
+        picks = [ac.pick() for _ in range(50)]
+        # All picks should go to the healthy worker 1.
+        assert picks.count(1) == 50
+
+
 class TestHealthProbe:
     def test_probe_miss_marks_strike(self) -> None:
         """A probe that fails (unreachable host) increments health_strikes."""

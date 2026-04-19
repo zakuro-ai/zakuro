@@ -99,6 +99,8 @@ class _WorkerStats:
     __slots__ = (
         "m", "v", "step", "queue", "failures", "last_latency",
         "health_strikes", "suspended",
+        # Drift-detection state (Phase 1.2).
+        "m_slow", "drift_factor",
     )
 
     def __init__(self) -> None:
@@ -110,6 +112,10 @@ class _WorkerStats:
         self.last_latency: Optional[float] = None
         self.health_strikes: int = 0
         self.suspended: bool = False
+        # Longer-horizon EMA used as the "baseline" that drift is measured
+        # against. 1.0 = healthy; > 1.0 = deprioritised proportionally.
+        self.m_slow: float = 0.0
+        self.drift_factor: float = 1.0
 
     def m_hat(self, beta1: float) -> float:
         """Bias-corrected first moment. Zero until the first completed call."""
@@ -123,13 +129,21 @@ class _WorkerStats:
             return 0.0
         return self.v / (1.0 - beta2**self.step)
 
-    def to_dict(self, beta1: float, beta2: float) -> dict[str, Any]:
+    def m_slow_hat(self, beta_slow: float) -> float:
+        """Bias-corrected slow-EMA baseline."""
+        if self.step == 0:
+            return 0.0
+        return self.m_slow / (1.0 - beta_slow**self.step)
+
+    def to_dict(self, beta1: float, beta2: float, beta_slow: float) -> dict[str, Any]:
         return {
             "step": self.step,
             "queue": self.queue,
             "failures": self.failures,
             "latency_ema": self.m_hat(beta1),
             "latency_var": self.v_hat(beta2),
+            "latency_baseline": self.m_slow_hat(beta_slow),
+            "drift_factor": self.drift_factor,
             "last_latency": self.last_latency,
             "health_strikes": self.health_strikes,
             "suspended": self.suspended,
@@ -168,6 +182,10 @@ class AdaptiveCompute:
         *,
         beta1: float = 0.9,
         beta2: float = 0.999,
+        beta_slow: float = 0.995,
+        drift_threshold: float = 2.0,
+        drift_penalty: float = 5.0,
+        drift_recovery_threshold: float = 1.1,
         softmax_temperature: float = 0.0,
         initial_latency: float = 1.0,
         backpressure_threshold: float = 30.0,
@@ -177,9 +195,24 @@ class AdaptiveCompute:
             raise ValueError("AdaptiveCompute requires at least one worker.")
         if not (0.0 <= beta1 < 1.0) or not (0.0 <= beta2 < 1.0):
             raise ValueError("beta1, beta2 must be in [0, 1).")
+        if not (0.0 <= beta_slow < 1.0):
+            raise ValueError("beta_slow must be in [0, 1).")
+        if drift_threshold <= 1.0:
+            raise ValueError("drift_threshold must be > 1")
+        if drift_recovery_threshold < 1.0:
+            raise ValueError("drift_recovery_threshold must be ≥ 1")
 
         self._beta1 = beta1
         self._beta2 = beta2
+        # Slower EMA used as "this worker's normal performance". Drift is
+        # detected when the fast EMA rises significantly above this baseline.
+        self._beta_slow = beta_slow
+        # `fast_ema > drift_threshold * baseline` → mark as drifted.
+        self._drift_threshold = float(drift_threshold)
+        # Multiplier applied to the drifted worker's expected time-to-serve.
+        self._drift_penalty = float(drift_penalty)
+        # `fast_ema < drift_recovery_threshold * baseline` → clear the drift.
+        self._drift_recovery = float(drift_recovery_threshold)
         self._tau = float(softmax_temperature)
         self._initial_latency = float(initial_latency)
         self._backpressure = float(backpressure_threshold)
@@ -216,7 +249,10 @@ class AdaptiveCompute:
     def stats(self) -> list[dict[str, Any]]:
         """Snapshot of per-worker stats, bias-corrected."""
         with self._lock:
-            return [s.to_dict(self._beta1, self._beta2) for s in self._stats]
+            return [
+                s.to_dict(self._beta1, self._beta2, self._beta_slow)
+                for s in self._stats
+            ]
 
     def is_backpressured(self) -> bool:
         """True when the best worker's expected time-to-serve exceeds the cap."""
@@ -248,8 +284,10 @@ class AdaptiveCompute:
             new_stats = _WorkerStats()
             # Seed the EMA so the *bias-corrected* m_hat equals the mesh
             # median. m_hat = m / (1 − β₁^step); solving for m with step=1
-            # gives m = median × (1 − β₁).
+            # gives m = median × (1 − β₁). Do the same for the slow EMA so
+            # drift detection has a sensible baseline from the first call.
             new_stats.m = median * (1.0 - self._beta1)
+            new_stats.m_slow = median * (1.0 - self._beta_slow)
             new_stats.step = 1
             new_stats.last_latency = median
             self._stats.append(new_stats)
@@ -369,8 +407,17 @@ class AdaptiveCompute:
                     for i, w in enumerate(self._workers):
                         if w is compute:
                             s = _WorkerStats()
-                            s.m = mean
-                            s.step = len(observed)
+                            step = len(observed)
+                            # Seed the raw EMAs so that bias-corrected `m_hat`
+                            # and `m_slow_hat` BOTH equal the observed mean at
+                            # the current step count. Without this, the longer
+                            # EMA has much stronger bias correction than the
+                            # shorter one and the slow-baseline would read
+                            # artificially large, masking drift or flagging
+                            # spurious drift depending on timing.
+                            s.m = mean * (1.0 - self._beta1**step)
+                            s.m_slow = mean * (1.0 - self._beta_slow**step)
+                            s.step = step
                             s.last_latency = observed[-1]
                             self._stats[i] = s
                             break
@@ -640,7 +687,10 @@ class AdaptiveCompute:
                 continue
             m = s.m_hat(self._beta1)
             lat = m if s.step > 0 else self._initial_latency
-            out.append((s.queue + 1) * lat)
+            # drift_factor softly demotes a drifted worker without ejecting:
+            # it still gets some traffic (so the fast EMA can recover if the
+            # underlying symptom clears) but its expected time is stretched.
+            out.append((s.queue + 1) * lat * s.drift_factor)
         return out
 
     def _best_expected_time(self) -> float:
@@ -671,7 +721,20 @@ class AdaptiveCompute:
         # on-line Welford-style update adopted by Adam-variant implementations.
         deviation = latency - prev_m
         s.v = self._beta2 * s.v + (1.0 - self._beta2) * (deviation * deviation)
+        s.m_slow = self._beta_slow * s.m_slow + (1.0 - self._beta_slow) * latency
         s.last_latency = latency
+        # Drift detection: a worker whose *fast* EMA has climbed past a
+        # multiple of its own *slow* baseline is deprioritised. Only kicks in
+        # after a minimum observation count so we don't trip on a cold start.
+        if s.step >= 8:
+            fast = s.m_hat(self._beta1)
+            baseline = s.m_slow_hat(self._beta_slow)
+            if baseline > 0:
+                ratio = fast / baseline
+                if ratio >= self._drift_threshold:
+                    s.drift_factor = self._drift_penalty
+                elif ratio <= self._drift_recovery and s.drift_factor > 1.0:
+                    s.drift_factor = 1.0
 
     # ........................................................ dunder utilities
 
