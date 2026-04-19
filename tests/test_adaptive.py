@@ -193,6 +193,67 @@ class TestWarmup:
         assert any(r["ok"] is False for r in report["workers"])
 
 
+class TestHealthProbe:
+    def test_probe_miss_marks_strike(self) -> None:
+        """A probe that fails (unreachable host) increments health_strikes."""
+        # 192.0.2.1 is TEST-NET-1, guaranteed unroutable → /health fails.
+        compute = Compute(host="192.0.2.1", port=3960, verify=False)
+        ac = AdaptiveCompute(workers=[compute])
+        ac._probe_timeout = 0.5  # don't sit for the HTTP default.
+
+        results = ac.probe_once()
+        assert results[0]["ok"] is False
+        stats = ac.stats()[0]
+        assert stats["health_strikes"] == 1
+        assert stats["suspended"] is False  # only one strike so far
+
+    def test_suspension_after_max_strikes(self) -> None:
+        bad = Compute(host="192.0.2.1", port=3960, verify=False)
+        good = _fast_worker()
+        ac = AdaptiveCompute(workers=[bad, good])
+        ac._probe_timeout = 0.5
+        ac._max_strikes = 2
+
+        def fake_probe(compute):
+            if compute is bad:
+                return (False, "unreachable", None)
+            return (True, None, 0.005)
+
+        with patch.object(AdaptiveCompute, "_probe", side_effect=fake_probe):
+            ac.probe_once()
+            ac.probe_once()
+        assert ac.stats()[0]["suspended"] is True
+        assert ac.stats()[1]["suspended"] is False
+        # Suspended worker is sent to inf in the picker, so all traffic
+        # goes to the healthy worker.
+        for _ in range(20):
+            assert ac.pick() == 1
+
+    def test_recovery_unsuspends(self) -> None:
+        """A successful probe after suspension should unsuspend and reset strikes."""
+        ac = AdaptiveCompute(workers=[_fast_worker()])
+        ac._stats[0].suspended = True
+        ac._stats[0].health_strikes = 5
+        with patch.object(
+            AdaptiveCompute, "_probe",
+            return_value=(True, None, 0.012),
+        ):
+            ac.probe_once()
+        stats = ac.stats()[0]
+        assert stats["suspended"] is False
+        assert stats["health_strikes"] == 0
+
+    def test_start_and_stop_probe_thread(self) -> None:
+        """start_health_probes spawns a thread; stop_health_probes reaps it."""
+        compute = Compute(host="127.0.0.1", port=3960, verify=False)
+        ac = AdaptiveCompute(workers=[compute])
+        ac.start_health_probes(interval=0.1, timeout=0.1, max_strikes=5)
+        assert ac._probe_thread is not None and ac._probe_thread.is_alive()
+        time.sleep(0.3)  # let it probe at least once
+        ac.stop_health_probes(timeout=1.0)
+        assert ac._probe_thread is None
+
+
 class TestDispatch:
     def test_dispatch_times_and_records(self) -> None:
         """AdaptiveCompute.dispatch should run the fn and update stats."""
