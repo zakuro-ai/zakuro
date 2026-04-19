@@ -3,386 +3,225 @@
 --------------------------------------------------------------------------------
 
 <p align="center">
-        <img alt="Build" src="https://github.com/zakuro-ai/zakuro/actions/workflows/test.yml/badge.svg?branch=main">
-        <img alt="GitHub" src="https://img.shields.io/github/license/zakuro-ai/zakuro.svg?color=blue">
-        <img alt="GitHub release" src="https://img.shields.io/github/release/zakuro-ai/zakuro.svg">
+        <img alt="License" src="https://img.shields.io/github/license/zakuro-ai/zakuro.svg?color=blue">
         <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-blue">
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> •
   <a href="#installation">Installation</a> •
-  <a href="#modules">Modules</a> •
-  <a href="#development">Development</a>
+  <a href="#concepts">Concepts</a> •
+  <a href="#adaptive-compute">Adaptive Compute</a> •
+  <a href="#notebooks">Notebooks</a> •
+  <a href="#benchmarks">Benchmarks</a> •
+  <a href="#docs">Docs</a>
 </p>
 
-Zakuro is a distributed computing library that makes running Python functions on remote workers as simple as adding a decorator. Inspired by [kubetorch](https://github.com/run-house/kubetorch), it provides a clean Pythonic API for cluster computing.
+**Zakuro is a context-aware distributed-ML runtime.** You decorate a Python function, declare a pool of workers, and the framework routes each call to the worker with the lowest expected time-to-serve — learning from every dispatch, reacting to node failures and performance drift, and never making training wait on things that can be decoupled.
 
-## Quick Start
+See [`PRD.md`](PRD.md) for the product vision and [`PLAN.md`](PLAN.md) for the measured engineering progress (every number observed, nothing simulated).
 
-```python
-import zakuro as zk
+## Quick start
 
-def hello_world():
-    return "Hello from Zakuro!"
-
-# Define compute resources
-compute = zk.Compute(cpus=0.5, memory="2Gi")
-
-# Send function to remote worker
-remote_fn = zk.fn(hello_world).to(compute)
-
-# Execute remotely
-result = remote_fn()  # Returns "Hello from Zakuro!"
-```
-
-## Features
-
-- **Simple decorator-based API** - Use `@zk.fn` to make any function remotely executable
-- **Resource specification** - Define CPU, memory, and GPU requirements with `zk.Compute`
-- **Multiple backends** - Supports HTTP, Ray, Dask, and Spark via URI-based selection
-- **Closure support** - Closures and lambdas work transparently via cloudpickle
-- **Remote classes** - Use `@zk.cls` for remote class instantiation
-- **Automatic discovery** - Workers discovered via Tailscale or DNS
-- **Backend auto-detection** - Automatically discovers available processors
-
-## Installation
-
-```bash
-# Install from GitHub release
-pip install https://github.com/zakuro-ai/zakuro/releases/download/v0.2.1/zakuro_ai-0.2.1-py3-none-any.whl
-
-# Or with uv
-uv pip install https://github.com/zakuro-ai/zakuro/releases/download/v0.2.1/zakuro_ai-0.2.1-py3-none-any.whl
-```
-
-### Optional Processor Backends
-
-```bash
-# Download the wheel first
-wget https://github.com/zakuro-ai/zakuro/releases/download/v0.2.1/zakuro_ai-0.2.1-py3-none-any.whl
-
-# Install with Ray support
-pip install "zakuro_ai-0.2.1-py3-none-any.whl[ray]"
-
-# Install with Dask support
-pip install "zakuro_ai-0.2.1-py3-none-any.whl[dask]"
-
-# Install with Spark support
-pip install "zakuro_ai-0.2.1-py3-none-any.whl[spark]"
-
-# Install all processors
-pip install "zakuro_ai-0.2.1-py3-none-any.whl[all-processors]"
-```
-
-For development:
-```bash
-# Clone the repository
-git clone https://github.com/zakuro-ai/zakuro
-cd zakuro
-
-# Install with dev dependencies
-uv pip install -e ".[dev]"
-```
-
-## Modules
-
-| Component | Description |
-| --------- | ----------- |
-| **zakuro.compute** | Resource specification (CPU, memory, GPU) |
-| **zakuro.fn** | Function and class decorators |
-| **zakuro.processors** | Backend processors (HTTP, Ray, Dask, Spark) |
-| **zakuro.client** | HTTP client for worker communication |
-| **zakuro.config** | Configuration management |
-| **zakuro.discovery** | Worker discovery via Tailscale/DNS |
-| **zakuro.worker** | FastAPI-based worker server |
-| **zakuro.fs** | MinIO/ZFS filesystem integration |
-| **zakuro.hub** | Model hub for pretrained models |
-
-## API Reference
-
-### Compute
-
-Define compute resources for remote execution:
-
-```python
-import zakuro as zk
-
-# Basic compute target (uses HTTP backend by default)
-compute = zk.Compute(
-    cpus=2.0,           # CPU cores
-    memory="4Gi",       # Memory (supports Gi, Mi, G, M)
-    gpus=1,             # GPU count
-    host="worker.local", # Worker host (optional, auto-discovered)
-    port=3960,          # Worker port
-    env={"KEY": "val"}, # Environment variables
-)
-
-# URI-based backend selection
-compute = zk.Compute(uri="ray://head:10001", cpus=4)
-compute = zk.Compute(uri="dask://scheduler:8786", memory="8Gi")
-compute = zk.Compute(uri="spark://master:7077", gpus=1)
-compute = zk.Compute(uri="zakuro://worker:3960")  # HTTP backend
-```
-
-### Processor Backends
-
-Zakuro supports multiple compute backends via URI-based selection:
-
-| URI Scheme | Backend | Priority | Default Port | Install |
-| ---------- | ------- | -------- | ------------ | ------- |
-| `zakuro://` | HTTP (default) | 10 | 3960 | included |
-| `spark://` | Apache Spark | 30 | 7077 | `[spark]` |
-| `dask://` | Dask Distributed | 40 | 8786 | `[dask]` |
-| `ray://` | Ray | 50 | 10001 | `[ray]` |
-| `zc://` | P2P Broker | 100 | 9000 | included |
-
-```python
-import zakuro as zk
-
-# Check available processors
-print(zk.available_processors())  # ['zakuro', 'ray', 'dask', 'spark']
-
-# Use Ray backend
-compute = zk.Compute(uri="ray://ray-head:10001", cpus=4, memory="8Gi")
-result = zk.fn(my_func).to(compute)()
-
-# Use Dask backend
-compute = zk.Compute(uri="dask://scheduler:8786", cpus=2)
-result = zk.fn(my_func).to(compute)()
-
-# Use Spark backend
-compute = zk.Compute(uri="spark://master:7077", memory="4Gi")
-result = zk.fn(my_func).to(compute)()
-
-# Use P2P Broker (optimal worker selection with credit billing)
-compute = zk.Compute(uri="zc://broker:9000", cpus=4, memory="8Gi")
-result = zk.fn(my_func).to(compute)()
-```
-
-### P2P Compute Broker
-
-The broker provides optimal worker routing with credit-based billing:
-
-```python
-import zakuro as zk
-
-# Connect to broker for P2P compute
-compute = zk.Compute(
-    uri="zc://broker.tailnet:9000",
-    cpus=4,
-    memory="8Gi",
-    processor_options={"user_id": "my-user"}
-)
-
-# Function is routed to optimal worker based on:
-# - Resource availability
-# - Price per compute (CPU/memory/GPU)
-# - Worker latency and load
-result = zk.fn(my_func).to(compute)()
-```
-
-Start a broker with the `zc` CLI:
-```bash
-zc broker              # Foreground with live transaction log
-zc broker 8080         # Custom port
-zc -d broker           # Daemon mode (background)
-```
-
-#### Credit Management
-
-The broker communicates with the dashboard API for credit operations:
-
-```bash
-# Add credits via dashboard API (requires master key)
-curl -X POST https://dashboard.zakuro-ai.com/api/credits/add \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ZAKURO_MASTER_KEY" \
-  -d '{"user_id": "my-user", "amount": 100.0, "description": "Initial deposit"}'
-
-# Check balance via broker (proxies to dashboard API)
-curl http://broker:9000/credits/my-user \
-  -H "Authorization: Bearer $API_KEY"
-```
-
-**Architecture**: Brokers use `ZAKURO_API_URL` + `ZAKURO_BROKER_API_KEY` to communicate with the dashboard API. Direct PostgreSQL access (`DATABASE_URL`) is only used in local/development mode.
-
-#### Discovery Modes
-
-| Mode | Trigger | Cost |
-|------|---------|------|
-| **Tailscale** | VPN network detected | Per-resource pricing |
-| **Local** | No Tailscale | Free (development) |
-
-### Function Decorator
-
-Make functions remotely executable:
+### Run a function on a remote worker — three lines
 
 ```python
 import zakuro as zk
 
 @zk.fn
-def compute_heavy(x: int) -> int:
-    return x ** 2
+def square(x: int) -> int:
+    return x * x
 
-# Run locally
-result = compute_heavy(10)  # 100
-
-# Run remotely
-compute = zk.Compute(cpus=4, memory="8Gi")
-result = compute_heavy.to(compute)(10)  # 100, executed on worker
+# Run on a remote worker (QUIC transport, fast).
+result = square.to(zk.Compute(uri="quic://worker:4433"))(7)  # → 49
 ```
 
-### Class Decorator
+No worker? Zakuro falls back to running the function **in-process** so your code keeps working:
 
-Remote class instantiation:
+```python
+# No `uri`, no `host` → standalone fallback; the call runs locally.
+result = square.to(zk.Compute())(7)  # → 49
+```
+
+### Adapt across a pool — Adam-style allocator
 
 ```python
 import zakuro as zk
 
-@zk.cls
-class Model:
-    def __init__(self, name: str):
-        self.name = name
+workers = [zk.Worker.spawn(name=f"w{i}") for i in range(3)]
+adaptive = zk.AdaptiveCompute(
+    workers=[w.compute(verify=False) for w in workers],
+    beta1=0.9,
+    softmax_temperature=0.02,  # exploration; set 0 for greedy argmin
+)
+adaptive.warmup(rounds=3)                # auto-calibrate per-worker priors
+adaptive.start_health_probes(interval=0.5, max_strikes=2)  # detect drop-outs
 
-    def predict(self, x):
-        return f"{self.name}: {x * 2}"
+@zk.fn
+def expensive(x): ...
 
-# Create remote instance
-compute = zk.Compute(gpus=1)
-model = Model.to(compute)("my-model")
-result = model.predict(10)  # "my-model: 20"
+# The allocator picks the worker with the lowest expected time-to-serve,
+# tracks per-worker latency EMA + variance, soft-demotes drifted workers,
+# suspends failed ones.
+result = expensive.to(adaptive)(42)
 ```
+
+## Installation
+
+### From source (recommended while the 0.3 series is pre-release)
+
+```bash
+git clone https://github.com/zakuro-ai/zakuro
+cd zakuro
+uv sync --extra worker         # pulls FastAPI + uvicorn + aioquic for the worker CLI
+```
+
+### From PyPI
+
+```bash
+# Core only (enough to be a client):
+pip install zakuro-ai
+
+# Core + worker (needed to run `zakuro-worker`):
+pip install 'zakuro-ai[worker]'
+```
+
+### Optional extras
+
+| extra | adds |
+|---|---|
+| `[worker]` | FastAPI, uvicorn, aioquic, psutil — needed to **run** a worker |
+| `[ray]` | Ray processor |
+| `[dask]` | Dask processor |
+| `[spark]` | PySpark processor |
+| `[dev]` | pytest, ruff, mypy |
+
+You **do not** need `[worker]` just to call into a running worker — `import zakuro` stays lean on purpose.
+
+### `zc` CLI (optional)
+
+`zc` is the Rust broker + CLI at [zakuro-ai/zc](https://github.com/zakuro-ai/zc). It's useful for multi-node meshes but not required for a single-process or small-cluster setup.
+
+```bash
+# macOS / Linux one-liner — installs to /usr/local/bin
+curl -sSL https://raw.githubusercontent.com/zakuro-ai/zc/master/scripts/install.sh | bash
+```
+
+## Concepts
+
+### `Compute`
+
+A target for remote execution.
+
+| How it's constructed | Where the call runs |
+|---|---|
+| `zk.Compute()` | **Standalone** — in-process fallback. No network, no workers required. |
+| `zk.Compute(uri="quic://host:4433")` | QUIC worker. Probed at construction; raises `ConnectionError` if unreachable. |
+| `zk.Compute(uri="zakuro://host:3960")` | HTTP worker. Same probe behaviour. |
+| `zk.Compute(uri="ray://head:10001")` | Ray cluster (requires `[ray]`). |
+
+Resource hints: `cpus=`, `gpus=`, `memory=`. All advisory on standalone; **an explicit `memory=` refuses to run in standalone** because we can't enforce it.
+
+### `@zk.fn` / `@zk.cls`
+
+Decorators that turn a function or class into something remotely callable. Under the hood the callable is cloudpickled and shipped to the worker on each call; `zk.cls` keeps the instance alive on a specific worker for subsequent method calls.
+
+### `zk.Worker.spawn()`
+
+Convenience wrapper around the `zakuro-worker` CLI. Takes `name=`, `transport="http"|"quic"`, `port=` (ephemeral if omitted). Polls `/health` until ready, registers an `atexit` hook so stray subprocesses die with the calling Python.
+
+### Transports
+
+| scheme | default port | transport | when to use |
+|---|---|---|---|
+| `zakuro://` | 3960 | HTTP (FastAPI + httpx) | interop with any load-balancer / reverse proxy |
+| `quic://` | 4433 | QUIC (aioquic) | fastest; connection-level resilience built in |
+| `ray://` | 10001 | Ray | existing Ray cluster |
+| `dask://` / `tcp://` | 8786 | Dask | existing Dask scheduler |
+| `spark://` | 7077 | Spark | existing Spark master |
+
+QUIC is the default for new work. It handles worker bounces natively (retry + 5 s idle timeout instead of aioquic's 30–60 s default — measured 12× faster detection).
+
+## Adaptive compute
+
+`zk.AdaptiveCompute` is the core differentiator. It tracks per-worker latency with Adam-style EMAs (fast + slow baseline), variance, queue depth, health-probe outcomes, and failure counts — and picks the worker with the lowest expected time-to-serve for every dispatch.
+
+### What it does, observed
+
+All numbers come from real subprocess workers running on the Mac (see `scripts/bench_*.py`):
+
+| Feature | Measured behaviour |
+|---|---|
+| **Warmup** | Auto-derives `backpressure_threshold = 1.5 × max(worker p95)` — `29 ms` on the 3-worker Mac mesh. No manual tuning. |
+| **Greedy vs softmax routing** | Greedy commits to the 3-ms-faster worker (100 %/0 %). Softmax `τ=0.02` keeps all three workers utilised (172/152/176). |
+| **Add / remove workers at runtime** | Removed worker drops to 0 picks within the batch; readmitted worker starts at mesh-median prior and earns traffic immediately. |
+| **Health probes** | Background thread detects SIGKILL in **18 ms** (tight config) / 743 ms (loose). Worker suspended; traffic reroutes. |
+| **Drift detection** | Injected 250 ms/call slowdown ⇒ 95 % traffic diversion at **t + 0.48 s**. Recovery via softmax + health-probe latencies. |
+| **QUIC retry** | In-flight request during worker SIGKILL surfaces `ConnectionError` in **5 s** (vs aioquic's 30–60 s default). |
+
+Full numbers in [`PLAN.md`](PLAN.md#measured-results-so-far).
+
+## Notebooks
+
+Each one runs end-to-end on a laptop and prints observed numbers — no faked data, no simulated failures. Verified by `jupyter nbconvert --execute`.
+
+| notebook | path | what it shows |
+|---|---|---|
+| **Standalone** | [`notebooks/standalone_mode.ipynb`](notebooks/standalone_mode.ipynb) | `Compute()` without a URI → in-process fallback; advisory resource hints; memory-enforcement refusal |
+| **Two workers** | [`notebooks/two_worker_demo.ipynb`](notebooks/two_worker_demo.ipynb) | Spawn two workers via `zk.Worker.spawn()`, chain calls between them |
+| **Mesh adaptation tour** | [`notebooks/mesh_adaptation_tour.ipynb`](notebooks/mesh_adaptation_tour.ipynb) | Every `AdaptiveCompute` knob — warmup, soft/greedy, add/remove, health, drift |
+| **QUIC resilience** | [`notebooks/quic_resilience.ipynb`](notebooks/quic_resilience.ipynb) | Baseline → SIGKILL → respawn; 5 s detection; post-respawn recovery |
+
+The sakura repo adds [`bert_demo/hf_async_features.ipynb`](https://github.com/zakuro-ai/sakura/blob/master/bert_demo/hf_async_features.ipynb) — every `SakuraHFCallback` knob on a real BERT fine-tune.
+
+## Benchmarks
+
+All under `scripts/` and take a handful of seconds to a minute each. Output is JSON-dumpable via `--log <path>` where supported.
+
+| script | scenario | headline |
+|---|---|---|
+| `bench_mesh_adaptation.py` | 2-worker warmup → dispatch → remove → readmit | `29 ms` auto-bp, rebalance within one batch |
+| `bench_health_detection.py` | SIGKILL worker mid-run | `18–743 ms` detection depending on probe cadence |
+| `bench_drift_detection.py` | Induce `sleep(0.25)` on one worker | drift detected `t + 0.48 s`, 95 % traffic diverted |
+| `bench_quic_retry.py` | SIGKILL + respawn on same QUIC port | 60 s → 5 s dead-connection detection |
+| `bench_all.py` | Runs the four above in one go | consolidated summary table |
+
+```bash
+uv run python scripts/bench_all.py --log /tmp/zakuro-bench.json
+```
+
+## Docs
+
+- [`PRD.md`](PRD.md) — product vision (what we're building and why)
+- [`PLAN.md`](PLAN.md) — engineering plan (what's shipped with measured numbers)
+- [`docs/getting-started.md`](docs/getting-started.md) — end-to-end guide, "laptop-only" and "networked" paths
+- [`docs/cli.md`](docs/cli.md) — `zakuro-worker` CLI reference
+- [`docs/PROTOCOL.md`](docs/PROTOCOL.md) — QUIC wire protocol (so new bindings can implement against it)
+- [`docs/zc-quic-patch/`](docs/zc-quic-patch/) — Rust broker-side QUIC caller, shipped at [zakuro-ai/zc#31](https://github.com/zakuro-ai/zc/pull/31)
+
+## Related projects
+
+- [**sakura**](https://github.com/zakuro-ai/sakura) — ML framework integrations (PyTorch Lightning, HuggingFace Trainer, TensorFlow/Keras) that use Zakuro under the hood to hide eval latency behind training
+- [**zc**](https://github.com/zakuro-ai/zc) — Rust broker with QUIC transport, credit-based billing, P2P mesh
 
 ## Development
 
-### Prerequisites
-
-- Python 3.10+
-- [Task](https://taskfile.dev) (build automation)
-- [uv](https://github.com/astral-sh/uv) (package management)
-
-### Commands
-
 ```bash
-# Run tests
-task test:unit
+# Tests
+uv run pytest tests/
 
-# Run linting
-task ci:lint
+# Specific benchmark
+uv run python scripts/bench_mesh_adaptation.py --n-workers 3
 
-# Format code
-task ci:format
-
-# Build wheel
+# Build a wheel
 task build:wheel
 
-# Run all CI checks
+# Full CI set
 task ci:all
 ```
 
-### Docker
-
-```bash
-# Build worker image
-task docker:build
-
-# Start worker
-task docker:up
-
-# View logs
-task docker:logs
-
-# Stop worker
-task docker:down
-```
-
-### P2P Mesh Deployment
-
-Deploy a 2-node mesh where each node runs a broker + worker pair connected via Tailscale. Local execution is free; remote execution is charged via the credit ledger.
-
-```
-  Node 1 (standard)                          Node 2 (premium)
-  ┌──────────────────────┐                   ┌──────────────────────┐
-  │ Broker + Worker      │◄══ Tailscale ════►│ Broker + Worker      │
-  │ + Tailscale          │    mesh           │ + Tailscale          │
-  │ cpu=$0.001/s (free)  │                   │ cpu=$0.003/s (free)  │
-  └──────────┬───────────┘                   └──────────┬───────────┘
-           │                                        │
-           └────────── Dashboard API ──────────────┘
-              (credit operations via HTTPS)
-```
-
-```bash
-cd docker
-
-# Set Tailscale auth keys
-export ZK0NODE01_API_KEY=tskey-auth-...
-export ZK0NODE02_API_KEY=tskey-auth-...
-
-# Set Tailscale IPs (from `tailscale ip -4` on each node)
-export NODE1_TAILSCALE_IP=100.x.x.x
-export NODE2_TAILSCALE_IP=100.y.y.y
-
-# Set dashboard API URL (brokers communicate via API)
-export ZAKURO_API_URL=https://dashboard.zakuro-ai.com
-
-# Start the mesh (6 containers: 2x broker + worker + tailscale)
-docker compose -f docker-compose.mesh.yml up -d --build
-
-# Verify both nodes see 2 workers
-curl http://localhost:9001/workers   # node1 broker
-curl http://localhost:9002/workers   # node2 broker
-
-# Run the demo (tests all routing strategies)
-pip install cloudpickle requests
-python mesh-demo.py http://localhost:9001 node1-user
-```
-
-The demo sends real cloudpickle-serialized Python functions through the broker:
-- `best_price` picks the local worker (free, cost=0)
-- `round_robin` alternates between local and remote (remote is charged)
-- `best_latency` picks based on response time history
-
-See `docker/docker-compose.mesh.yml` for the full compose configuration.
-
-### Development Server
-
-```bash
-# Start development worker with hot reload
-docker compose --profile dev up zakuro-worker-dev
-```
-
-## Configuration
-
-Zakuro can be configured via environment variables:
-
-### Worker Configuration
-
-| Variable | Description | Default |
-| -------- | ----------- | ------- |
-| `ZAKURO_HOST` | Default worker host | `127.0.0.1` |
-| `ZAKURO_PORT` | Default worker port | `3960` |
-| `ZAKURO_URI` | Default processor URI | `zakuro://127.0.0.1:3960` |
-| `ZAKURO_AUTH` | Authentication token | - |
-| `ZAKURO_WORKER_NAME` | Worker name for discovery | `worker-{hostname}` |
-| `ZAKURO_WORKER_TYPE` | Worker type identifier | `zakuro` |
-| `ZAKURO_CPU_PRICE` | Price per CPU-second | `0.001` |
-| `ZAKURO_MEMORY_PRICE` | Price per GiB-second | `0.0001` |
-| `ZAKURO_GPU_PRICE` | Price per GPU-second | `0.01` |
-| `TAILSCALE_AUTHKEY` | Tailscale auth key | - |
-
-### Broker Configuration
-
-| Variable | Description | Default |
-| -------- | ----------- | ------- |
-| `ZAKURO_MASTER_KEY` | Master API key for admin operations | - |
-| `DATABASE_URL` | PostgreSQL connection for ledger | `postgresql://zakuro_broker:broker_secret@localhost:5432/zakuro` |
-| `ZAKURO_PEER_KEY` | Shared secret for P2P broker communication | - |
-| `ZAKURO_P2P` | Enable P2P broker-to-broker mode | `false` |
-| `ZAKURO_OWNER_ID` | Broker's unique ID for authority assignment | - |
-| `ZAKURO_PEERS` | Comma-separated peer broker URLs | - |
+Python 3.10+ is required. `uv` is the recommended package manager (`pip install uv`).
 
 ## License
 
-BSD-3-Clause
+BSD-3-Clause. See [`LICENSE`](LICENSE).
