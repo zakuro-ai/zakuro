@@ -1,0 +1,73 @@
+name: Auto-release
+
+# On every push to master, bump the patch version, tag it, and create a
+# GitHub release. The existing `publish.yml` workflow is triggered by the
+# release creation and handles PyPI + Docker publishing.
+#
+# Skip a commit with `[skip release]` in the message. Skip docs-only
+# changes via a path filter to keep the release cadence sane.
+
+on:
+  push:
+    branches: [master, main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "notebooks/**"
+      - ".github/workflows/*.yml"   # don't auto-release on CI edits
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  bump-and-release:
+    if: "!contains(github.event.head_commit.message, '[skip release]')"
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump patch version
+        id: bump
+        run: |
+          set -euo pipefail
+          CURRENT=$(grep -E '^__version__ = ' zakuro/__init__.py | sed -E 's/.*"([^"]+)".*/\1/')
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          NEW="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          echo "  current: $CURRENT"
+          echo "  new    : $NEW"
+          sed -i.bak -E "s/^__version__ = \".*\"/__version__ = \"$NEW\"/" zakuro/__init__.py
+          rm zakuro/__init__.py.bak
+          echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Commit + tag
+        run: |
+          set -euo pipefail
+          git add zakuro/__init__.py
+          git commit -m "chore(release): v${{ steps.bump.outputs.new_version }} [skip release]"
+          git tag "${{ steps.bump.outputs.tag }}"
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin "${{ steps.bump.outputs.tag }}"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.bump.outputs.tag }}" \
+            --title "${{ steps.bump.outputs.tag }}" \
+            --generate-notes
