@@ -69,6 +69,14 @@ class Compute:
     # deprioritised proportionally to (price * predicted_time).
     price_per_hour: Optional[float] = None
 
+    # Optional topology tags. When the allocator knows its own region/rack
+    # (see ``AdaptiveCompute(local_region=…, local_rack=…)``), it softly
+    # prefers same-region / same-rack workers on otherwise-tied decisions.
+    # Never a hard constraint — a sufficiently faster remote worker still
+    # wins.
+    region: Optional[str] = None
+    rack: Optional[str] = None
+
     def __post_init__(self) -> None:
         """Validate, resolve, and verify the backend is reachable when explicit."""
         uri_explicit = self.uri is not None
