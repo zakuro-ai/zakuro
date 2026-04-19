@@ -58,6 +58,16 @@ class ProcessorRegistry:
         for scheme in BrokerProcessor.schemes:
             discovered[scheme] = BrokerProcessor
 
+        # QUIC processor (requires aioquic; in the `[worker]` extra).
+        try:
+            from zakuro.processors.quic import QuicProcessor
+
+            if QuicProcessor.is_available():
+                for scheme in QuicProcessor.schemes:
+                    discovered[scheme] = QuicProcessor
+        except ImportError:
+            pass
+
         # Try importing optional processors
         try:
             from zakuro.processors.ray_processor import RayProcessor

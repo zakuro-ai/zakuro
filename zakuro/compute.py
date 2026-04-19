@@ -44,7 +44,7 @@ class Compute:
     """
 
     cpus: float = 1.0
-    memory: str = "1Gi"
+    memory: Optional[str] = None
     gpus: int = 0
     image: Optional[str] = None
     env: dict[str, str] = field(default_factory=dict)
@@ -59,13 +59,22 @@ class Compute:
     # Backend-specific options
     processor_options: dict[str, Any] = field(default_factory=dict)
 
+    # Probe the backend at construction when uri is explicit. Set to False to
+    # inspect a Compute without performing network I/O (e.g. in tests).
+    verify: bool = True
+
     def __post_init__(self) -> None:
-        """Validate and normalize resources."""
+        """Validate, resolve, and verify the backend is reachable when explicit."""
+        uri_explicit = self.uri is not None
         self._validate_memory()
         self._resolve_uri()
+        if uri_explicit and self.verify:
+            self._verify_reachable()
 
     def _validate_memory(self) -> None:
-        """Validate memory format (e.g., '1Gi', '512Mi')."""
+        """Validate memory format (e.g., '1Gi', '512Mi'). None means no cap requested."""
+        if self.memory is None:
+            return
         pattern = r"^\d+(\.\d+)?(Gi|Mi|Ki|G|M|K)?$"
         if not re.match(pattern, self.memory):
             raise ValueError(
@@ -74,7 +83,12 @@ class Compute:
             )
 
     def _resolve_uri(self) -> None:
-        """Resolve URI from explicit uri or host/port."""
+        """Resolve URI from explicit uri or host/port.
+
+        If neither uri nor host is given, uri stays ``None`` — detection runs
+        at call time and falls back to standalone (in-process) execution when
+        no backend is reachable.
+        """
         if self.uri is not None:
             # Parse URI to extract host/port for backward compatibility
             from zakuro.processors.base import ProcessorConfig
@@ -85,16 +99,40 @@ class Compute:
                 self.host = config.host
             if self.port == 9000:  # default port
                 self.port = config.port
-        elif self.host is None:
-            # No URI and no host - use production broker
-            from zakuro.config import Config
-            config = Config.load()
-            self.host = config.default_host
-            self.port = config.default_port
-            self.uri = f"zc://{self.host}:{self.port}"
-        else:
+        elif self.host is not None:
             # Build URI from host/port - use broker by default
             self.uri = f"zc://{self.host}:{self.port}"
+
+    def _verify_reachable(self) -> None:
+        """Probe host:port; raise ConnectionError on failure.
+
+        TCP connect for stream schemes; DNS resolution for QUIC (UDP-based,
+        no cheap reachability probe short of a real handshake).
+        """
+        import socket
+
+        if self.host is None or self.port is None:
+            return
+        if self.scheme == "quic":
+            try:
+                socket.getaddrinfo(
+                    self.host, self.port, type=socket.SOCK_DGRAM
+                )
+                return
+            except socket.gaierror as exc:
+                raise ConnectionError(
+                    f"Backend at {self.uri} has an unresolvable host ({exc}). "
+                    "Fix the URI, or pass verify=False to skip this check."
+                ) from exc
+        try:
+            with socket.create_connection((self.host, self.port), timeout=2.0):
+                return
+        except (OSError, socket.gaierror) as exc:
+            raise ConnectionError(
+                f"Backend at {self.uri} is not reachable ({exc}). "
+                "Start the worker / cluster, fix the URI, or pass verify=False "
+                "to skip this check."
+            ) from exc
 
     def _discover_worker(self) -> str:
         """Discover worker via Tailscale or fallback to localhost."""
@@ -104,20 +142,39 @@ class Compute:
 
     @property
     def scheme(self) -> str:
-        """Get the processor scheme from URI."""
+        """Get the processor scheme from URI, or 'zc' when unresolved (standalone-capable)."""
         if self.uri is None:
-            return "zakuro"
+            return "zc"
         from zakuro.processors.base import ProcessorConfig
 
         return ProcessorConfig.from_uri(self.uri).scheme
 
     @property
     def endpoint(self) -> str:
-        """Get the worker HTTP endpoint."""
+        """Get the worker HTTP endpoint, or a standalone marker if unresolved.
+
+        Compute may be constructed without a URI or host — detection runs at
+        call time and, if no backend is reachable, the function executes
+        in-process. Accessing .endpoint before resolution emits a warning and
+        returns ``"zc://in-process"`` instead of a bogus
+        ``http://None:9000``.
+        """
+        if self.host is None:
+            import warnings
+
+            warnings.warn(
+                "Compute has no resolved backend; endpoint is not meaningful in "
+                "standalone mode. Call .to(...) with a uri/host or run "
+                "zakuro.detect_backend() to resolve.",
+                stacklevel=2,
+            )
+            return "zc://in-process"
         return f"http://{self.host}:{self.port}"
 
     def memory_bytes(self) -> int:
-        """Convert memory string to bytes."""
+        """Convert memory string to bytes. Raises if no memory is set."""
+        if self.memory is None:
+            raise ValueError("Compute.memory is not set; cannot convert to bytes.")
         match = re.match(r"^(\d+(?:\.\d+)?)(Gi|Mi|Ki|G|M|K)?$", self.memory)
         if not match:
             raise ValueError(f"Invalid memory format: {self.memory}")

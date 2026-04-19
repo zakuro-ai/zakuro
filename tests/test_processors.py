@@ -265,7 +265,7 @@ class TestComputeUriIntegration:
 
     def test_uri_field(self) -> None:
         """Test Compute with explicit URI."""
-        compute = Compute(uri="ray://head:10001", cpus=4)
+        compute = Compute(uri="ray://head:10001", cpus=4, verify=False)
         assert compute.uri == "ray://head:10001"
         assert compute.host == "head"
         assert compute.port == 10001
@@ -278,7 +278,7 @@ class TestComputeUriIntegration:
 
     def test_scheme_property(self) -> None:
         """Test scheme property extracts from URI."""
-        compute = Compute(uri="dask://scheduler:8786")
+        compute = Compute(uri="dask://scheduler:8786", verify=False)
         assert compute.scheme == "dask"
 
     def test_default_scheme_is_zakuro(self) -> None:
