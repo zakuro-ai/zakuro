@@ -113,6 +113,86 @@ class TestBackpressure:
         assert ac.is_backpressured()
 
 
+class TestNodeLifecycle:
+    def test_add_worker_seeds_with_mesh_median(self) -> None:
+        """A new worker's EMA should start at the mesh median, not at zero."""
+        ac = AdaptiveCompute(
+            workers=[_fast_worker(), _slow_worker()],
+            beta1=0.9,
+            initial_latency=5.0,
+        )
+        for _ in range(30):
+            ac._update_ema(ac._stats[0], 0.5)
+            ac._update_ema(ac._stats[1], 1.5)
+        # Median of {~0.5, ~1.5} ≈ 1.0.
+        new_idx = ac.add_worker(Compute(host="newcomer.local", verify=False))
+        stats = ac.stats()[new_idx]
+        assert 0.4 < stats["latency_ema"] < 2.0
+
+    def test_remove_worker(self) -> None:
+        ac = AdaptiveCompute(
+            workers=[_fast_worker(), _slow_worker()],
+        )
+        dropped = ac.remove_worker(0)
+        assert dropped.host == "fast.local"
+        assert len(ac.workers) == 1
+
+    def test_cannot_remove_last_worker(self) -> None:
+        ac = AdaptiveCompute(workers=[_fast_worker()])
+        with pytest.raises(ValueError, match="last worker"):
+            ac.remove_worker(0)
+
+
+class TestWarmup:
+    def test_warmup_seeds_stats(self) -> None:
+        """warmup should run probes and update per-worker EMAs."""
+        # Single-worker adaptive; the worker has no URI/host → standalone
+        # fallback runs the probe in-process (fast + reliable for tests).
+        ac = AdaptiveCompute(
+            workers=[Compute(cpus=1)],
+            initial_latency=10.0,  # deliberately bad prior to see warmup fix it
+        )
+        with patch("zakuro.standalone.detect_backend", return_value=None):
+            report = ac.warmup(rounds=3, timeout=5.0, verbose=False)
+
+        assert report["workers"][0]["ok"]
+        assert report["workers"][0]["rounds_succeeded"] == 3
+        # Stats are seeded from real measurements, not the 10.0 bootstrap.
+        assert ac.stats()[0]["step"] == 3
+        assert ac.stats()[0]["latency_ema"] < 1.0
+
+    def test_warmup_sets_backpressure_from_p95(self) -> None:
+        ac = AdaptiveCompute(
+            workers=[Compute(cpus=1)],
+            backpressure_threshold=999.0,
+        )
+        with patch("zakuro.standalone.detect_backend", return_value=None):
+            report = ac.warmup(rounds=4, verbose=False)
+        assert report["applied_backpressure"] is True
+        # Should now be ~1.5× observed p95, not the 999 we started with.
+        assert ac.backpressure_threshold < 5.0
+        assert (
+            abs(ac.backpressure_threshold - 1.5 * report["workers"][0]["latency_p95"])
+            < 1e-6
+        )
+
+    def test_warmup_ejects_unreachable_worker(self) -> None:
+        """A worker whose probe raises every round should be dropped."""
+        good = Compute(cpus=1)  # standalone-ok
+        # Bad worker: explicit URI → verify at construction probe-reachable
+        # won't match (unroutable). Use verify=False to delay the failure to
+        # the warmup probe itself.
+        bad = Compute(uri="quic://192.0.2.1:4444", verify=False)
+        ac = AdaptiveCompute(workers=[good, bad])
+
+        with patch("zakuro.standalone.detect_backend", return_value=None):
+            report = ac.warmup(rounds=2, timeout=2.0, verbose=False)
+        # good remains; bad gets ejected.
+        assert len(ac.workers) == 1
+        assert report["ejected"] == [1]
+        assert any(r["ok"] is False for r in report["workers"])
+
+
 class TestDispatch:
     def test_dispatch_times_and_records(self) -> None:
         """AdaptiveCompute.dispatch should run the fn and update stats."""
