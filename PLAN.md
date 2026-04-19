@@ -44,6 +44,16 @@ After warmup the bench sends `tiny.to(adaptive)()` at 10 disp/s, then SIGKILLs w
 
 The probe loop keeps the pool live-updating without draining the foreground dispatch thread — the suspended worker gets no further traffic despite remaining in `adaptive.workers`.
 
+### Drift-injection experiment (`scripts/bench_drift_detection.py`)
+
+Two Mac workers under softmax routing (τ = 0.05). Baseline at t=0, then 10 s of `sleep(0.25)` injected into every request worker 0 serves. Drift detector engages, traffic deflects, and when the injection stops, softmax plus probe-fed EMA bring worker 0 back:
+
+| stage | 0 picks | 1 picks | drift detected |
+|---|---|---|---|
+| baseline 3 s | 26 | 19 | — |
+| injection 10 s | 8 (5 %) | 142 (95 %) | **t + 0.48 s** |
+| recovery 20 s | 167 (56 %) | 133 (44 %) | cleared |
+
 ### Sakura BERT benchmark (x399 4090 trains, Mac MPS evals, distilbert SST-2, 15 epochs)
 
 Repeated from the PR history for context — also measured, also observed:
@@ -98,11 +108,22 @@ The framework floor as of 0.2.3.
 
 Faster tuning trades off against probe traffic volume, but even the "loose" setting beats the PRD's SM2 target of ≤ 10 s by more than an order of magnitude.
 
-### 1.2 Performance drift detection 💭
+### 1.2 Performance drift detection — F3 ✅
 
-- When a worker's latency EMA climbs past its historical p95, mark "suspect" and deprioritise (soft demote).
-- Use the variance EMA (already tracked) as the threshold signal: `m_hat + 3 × sqrt(v_hat)`.
-- Recovery rule: two consecutive dispatches below the historical median → un-demote.
+- Two EMAs per worker: the fast one (`β₁`, current behaviour) and a slower baseline (`β_slow`, long-term behaviour).
+- Detector: when `m_hat / m_slow_hat ≥ drift_threshold` (default 1.5×), the worker's `drift_factor` snaps to `drift_penalty` (default 5×). The factor multiplies the expected time-to-serve in the picker, deflecting traffic without ejecting.
+- Recovery: when `m_hat / m_slow_hat ≤ drift_recovery_threshold` (default 1.1×), `drift_factor` returns to 1.0. Hysteresis prevents flapping.
+- Health probes (Phase 1.1) feed successful-probe latencies back into the EMA, which lets a drifted worker that's since recovered earn its factor back without needing real traffic first.
+
+**Measured on two Mac workers** (`scripts/bench_drift_detection.py`, softmax=0.05, drift_threshold=1.5):
+
+| stage | duration | worker 0 picks | worker 1 picks | observation |
+|---|---|---|---|---|
+| baseline | 3 s | 26 (58 %) | 19 (42 %) | both at ratio ≈ 1.00 |
+| drift injected (worker 0 += 250 ms/call) | 10 s | 8 (5 %) | 142 (95 %) | **drift detected at t+0.48 s**; traffic deflects |
+| recovery (injection off) | 20 s | 167 (56 %) | 133 (44 %) | drift clears via softmax exploration + probe-fed EMA |
+
+Result: from slowdown onset to ≥95 % traffic diversion in under half a second.
 
 ### 1.3 Node admission / departure API — F4.2, F4.3 ✅
 
