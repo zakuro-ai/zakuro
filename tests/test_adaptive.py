@@ -328,6 +328,119 @@ class TestHealthProbe:
         assert ac._probe_thread is None
 
 
+class TestPriceAware:
+    def test_zero_coef_ignores_price(self) -> None:
+        a = Compute(host="a.local", verify=False, price_per_hour=10.0)
+        b = Compute(host="b.local", verify=False, price_per_hour=0.1)
+        ac = AdaptiveCompute(workers=[a, b], cost_coefficient=0.0)
+        for _ in range(30):
+            ac._update_ema(ac._stats[0], 0.01)
+            ac._update_ema(ac._stats[1], 0.01)
+        picks = [ac.pick() for _ in range(20)]
+        # Latencies equal, no cost weighting → first-index argmin tie-break.
+        assert all(p == 0 for p in picks)
+
+    def test_positive_coef_prefers_cheaper(self) -> None:
+        expensive = Compute(host="a.local", verify=False, price_per_hour=10.0)
+        cheap = Compute(host="b.local", verify=False, price_per_hour=0.1)
+        ac = AdaptiveCompute(
+            workers=[expensive, cheap],
+            cost_coefficient=0.5,
+            softmax_temperature=0.0,
+        )
+        for _ in range(30):
+            ac._update_ema(ac._stats[0], 0.01)
+            ac._update_ema(ac._stats[1], 0.01)
+        # Equal latency + cost-aware → always picks the cheap worker.
+        picks = [ac.pick() for _ in range(20)]
+        assert all(p == 1 for p in picks)
+
+
+class TestBandwidthAware:
+    def test_picker_prefers_higher_bandwidth_for_big_payloads(self) -> None:
+        """Same latency, different bandwidth: big payloads pick the fatter pipe."""
+        a, b = _fast_worker(), _slow_worker()
+        ac = AdaptiveCompute(workers=[a, b], softmax_temperature=0.0)
+        # Warm both workers to the same latency.
+        for _ in range(30):
+            ac._update_ema(ac._stats[0], 0.01)
+            ac._update_ema(ac._stats[1], 0.01)
+        # Worker 0 is 1 Gbps, worker 1 is 10 Mbps.
+        ac._stats[0].bandwidth_bps = 1e9
+        ac._stats[1].bandwidth_bps = 1e7
+
+        # Small payload: latency dominates, either worker is fine (we expect
+        # worker 0 as tiebreaker).
+        assert ac.pick(payload_bytes=1_000) == 0
+        # Large payload: 100 MiB → worker 1's transfer time = ~80 s, worker 0
+        # = ~0.8 s. Worker 0 wins by a mile.
+        assert ac.pick(payload_bytes=100 * 1024 * 1024) == 0
+
+    def test_warmup_seeds_bandwidth_estimate(self, tmp_path) -> None:
+        """warmup should attach a bandwidth_bps estimate when probing."""
+        from unittest.mock import patch as _patch
+
+        ac = AdaptiveCompute(workers=[Compute(cpus=1)])
+        with _patch("zakuro.standalone.detect_backend", return_value=None):
+            report = ac.warmup(
+                rounds=3,
+                bandwidth_probe_bytes=64 * 1024,
+                verbose=False,
+            )
+        assert report["workers"][0]["ok"] is True
+        # In standalone the "network" is a no-op — transfer should look
+        # very fast, so bandwidth estimate should be positive (finite) and
+        # large (standalone has no real wire).
+        bw = report["workers"][0]["bandwidth_bps"]
+        assert bw is not None
+        assert bw > 1e4  # at least 10 KB/s plausibly in-process
+
+
+class TestDecisionLog:
+    def test_log_write_enabled(self, tmp_path) -> None:
+        """Every dispatch should append one JSON line with prediction + outcome."""
+        import json as _json
+
+        import zakuro as zk
+
+        @zk.fn
+        def identity(x):
+            return x
+
+        log_path = tmp_path / "allocator.jsonl"
+        ac = AdaptiveCompute(workers=[Compute(cpus=1)], initial_latency=0.0001)
+        ac.enable_decision_log(str(log_path))
+
+        with patch("zakuro.standalone.detect_backend", return_value=None):
+            for i in range(5):
+                identity.to(ac)(i)
+
+        rows = [_json.loads(l) for l in log_path.read_text().splitlines() if l.strip()]
+        assert len(rows) == 5
+        for r in rows:
+            assert r["fn"] == "identity"
+            assert r["picked"] == 0
+            assert r["ok"] is True
+            assert r["actual_secs"] > 0
+            assert "expected_secs" in r
+            assert r["error"] is None
+
+    def test_log_disabled_does_not_write(self, tmp_path) -> None:
+        import zakuro as zk
+
+        @zk.fn
+        def noop():
+            return None
+
+        log_path = tmp_path / "should-not-exist.jsonl"
+        ac = AdaptiveCompute(workers=[Compute(cpus=1)])
+
+        with patch("zakuro.standalone.detect_backend", return_value=None):
+            noop.to(ac)()
+
+        assert not log_path.exists()
+
+
 class TestDispatch:
     def test_dispatch_times_and_records(self) -> None:
         """AdaptiveCompute.dispatch should run the fn and update stats."""

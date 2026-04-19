@@ -63,6 +63,12 @@ class Compute:
     # inspect a Compute without performing network I/O (e.g. in tests).
     verify: bool = True
 
+    # Optional price hint, in USD per hour (or any consistent unit — the
+    # allocator only ever uses ratios). When ``AdaptiveCompute`` is built
+    # with ``cost_coefficient > 0``, workers with higher price are
+    # deprioritised proportionally to (price * predicted_time).
+    price_per_hour: Optional[float] = None
+
     def __post_init__(self) -> None:
         """Validate, resolve, and verify the backend is reachable when explicit."""
         uri_explicit = self.uri is not None
