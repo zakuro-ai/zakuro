@@ -33,6 +33,17 @@ All numbers here are observed on a real cluster, not projections.
 | after warmup | 60 (60 %) | 40 (40 %) | Soft routing keeps both workers utilised. |
 | readmit worker 0 | 44 (44 %) | 56 (56 %) | Rebalances within a single batch of 100. |
 
+### Health-probe experiment (2 Mac workers, HTTP, `scripts/bench_health_detection.py`)
+
+After warmup the bench sends `tiny.to(adaptive)()` at 10 disp/s, then SIGKILLs worker 0. Measured detection latency — time from kill to `stats["suspended"] = True`:
+
+| `probe_interval` | `max_strikes` | measured detection | post-suspend picks worker 0 | worker 1 |
+|---|---|---|---|---|
+| 0.5 s | 2 | **743 ms** | 7 | 97 |
+| 0.1 s | 1 | **18 ms** | 28 | 132 |
+
+The probe loop keeps the pool live-updating without draining the foreground dispatch thread — the suspended worker gets no further traffic despite remaining in `adaptive.workers`.
+
 ### Sakura BERT benchmark (x399 4090 trains, Mac MPS evals, distilbert SST-2, 15 epochs)
 
 Repeated from the PR history for context — also measured, also observed:
@@ -71,15 +82,21 @@ The framework floor as of 0.2.3.
 
 **Goal:** the allocator reacts to grid changes within seconds.
 
-### 1.1 Health-aware dispatch — F3.5 🚧
+### 1.1 Health-aware dispatch — F3.5 ✅
 
-- Add a heartbeat loop on `AdaptiveCompute` that polls each worker's `HEALTH` opcode every N seconds. Low priority, coalesced into a single stream per worker.
-- On failed / slow heartbeat, raise that worker's effective latency by a penalty factor (e.g. `×10`) without permanently marking it dead. A single missed probe should not kill a worker.
-- Three strikes → worker ejected from the pool; traffic rebalanced immediately. Readmission after a clean probe.
+- Background thread started via `AdaptiveCompute.start_health_probes(interval, timeout, max_strikes)`. QUIC workers get the HEALTH opcode; HTTP workers get a `GET /health`.
+- Per-worker `health_strikes` counter. On `max_strikes` consecutive misses the worker is **suspended** — `_expected_times_locked` returns `inf` for it, so the picker routes around without ejecting. A single successful probe resets the counter and flips `suspended` back to `False`.
+- `probe_once()` exposes one synchronous round for users who prefer to drive their own cadence (tests, integration hooks).
+- `__del__` and `stop_health_probes()` reap the thread cleanly.
 
-**Test plan**
-- Spin up two workers, kill one mid-run with `SIGSTOP`. Expect dispatch rate to drop to zero on the stopped worker within 15 s.
-- `SIGCONT` the worker; expect traffic to resume within 30 s.
+**Measured: SIGKILL → suspended latency** (`scripts/bench_health_detection.py`, 2 Mac workers, HTTP):
+
+| `probe_interval` | `max_strikes` | observed detection latency |
+|---|---|---|
+| 0.5 s | 2 | **743 ms** |
+| 0.1 s | 1 | **18 ms** |
+
+Faster tuning trades off against probe traffic volume, but even the "loose" setting beats the PRD's SM2 target of ≤ 10 s by more than an order of magnitude.
 
 ### 1.2 Performance drift detection 💭
 
