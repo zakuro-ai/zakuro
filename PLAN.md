@@ -54,6 +54,17 @@ Two Mac workers under softmax routing (τ = 0.05). Baseline at t=0, then 10 s of
 | injection 10 s | 8 (5 %) | 142 (95 %) | **t + 0.48 s** |
 | recovery 20 s | 167 (56 %) | 133 (44 %) | cleared |
 
+### State-dict serialiser: cloudpickle vs torch.save (x399 CPU, distilbert 268 MB)
+
+Producer-side dump cost — matters because it runs in the pool thread while training is still happening on the main thread:
+
+| serialiser | wall time | concurrent-thread CPU share |
+|---|---|---|
+| `cloudpickle.dumps(state_dict)` | 481.6 ms | **39 %** of baseline |
+| `torch.save(state_dict, BytesIO)` | **282.0 ms** | **72 %** of baseline |
+
+Switching to `torch.save` halves both the wall time and the GIL hold, so the training step gets ~2× as much CPU while the epoch-end snapshot is being packaged.
+
 ### Async CUDA-stream snapshot (x399 4090, distilbert fp32, 5-epoch fine-tune)
 
 Main-thread cost per epoch of `on_epoch_end`, measured via
@@ -209,6 +220,8 @@ Replace the "cloudpickle state_dict in callback" pattern with a **non-blocking c
 | **main-thread total** | **172 ms/epoch** | **75 ms/epoch** |
 
 **Measured savings: 101.3 ms per epoch, 57.5 % reduction** on the main training thread. Per 15-epoch fine-tune: 1.5 s of training time reclaimed.
+
+**Pool-thread improvement (sakura #39):** the same state_dict blob used to get `cloudpickle.dumps`d (481 ms, 39 % GIL-share). Switched to `torch.save(sd, BytesIO)` — **282 ms, 72 % GIL-share**. Training step now has roughly 2× the CPU during the pool's packaging window.
 
 Next-up slices:
 - In-memory `torch.Tensor` views as handle type (zero-copy on same host).
