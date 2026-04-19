@@ -44,10 +44,13 @@ the queue before its latency estimate has time to degrade.
 
 from __future__ import annotations
 
+import json
 import math
+import os
 import random
 import threading
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 if TYPE_CHECKING:
@@ -101,6 +104,8 @@ class _WorkerStats:
         "health_strikes", "suspended",
         # Drift-detection state (Phase 1.2).
         "m_slow", "drift_factor",
+        # Bandwidth state (Phase 4.1). Seeded by warmup's large-payload probe.
+        "bandwidth_bps",
     )
 
     def __init__(self) -> None:
@@ -116,6 +121,9 @@ class _WorkerStats:
         # against. 1.0 = healthy; > 1.0 = deprioritised proportionally.
         self.m_slow: float = 0.0
         self.drift_factor: float = 1.0
+        # Bytes-per-second throughput estimate. ``None`` means "unknown,
+        # treat as infinite" so bandwidth-unaware callers don't regress.
+        self.bandwidth_bps: Optional[float] = None
 
     def m_hat(self, beta1: float) -> float:
         """Bias-corrected first moment. Zero until the first completed call."""
@@ -147,6 +155,7 @@ class _WorkerStats:
             "last_latency": self.last_latency,
             "health_strikes": self.health_strikes,
             "suspended": self.suspended,
+            "bandwidth_bps": self.bandwidth_bps,
         }
 
 
@@ -189,6 +198,7 @@ class AdaptiveCompute:
         softmax_temperature: float = 0.0,
         initial_latency: float = 1.0,
         backpressure_threshold: float = 30.0,
+        cost_coefficient: float = 0.0,
     ) -> None:
         self._workers: list["Compute"] = list(workers)
         if not self._workers:
@@ -207,6 +217,11 @@ class AdaptiveCompute:
         # Slower EMA used as "this worker's normal performance". Drift is
         # detected when the fast EMA rises significantly above this baseline.
         self._beta_slow = beta_slow
+        # Cost weighting (Phase 4.3). 0 = ignore price entirely; positive
+        # values scale each worker's expected time by (1 + coef × price).
+        if cost_coefficient < 0:
+            raise ValueError("cost_coefficient must be >= 0")
+        self._cost_coef = float(cost_coefficient)
         # `fast_ema > drift_threshold * baseline` → mark as drifted.
         self._drift_threshold = float(drift_threshold)
         # Multiplier applied to the drifted worker's expected time-to-serve.
@@ -226,6 +241,12 @@ class AdaptiveCompute:
         self._probe_interval: float = 5.0
         self._probe_timeout: float = 2.0
         self._max_strikes: int = 3
+
+        # Decision log (Phase 6.1). Append one JSON object per dispatch with
+        # the allocator's prediction and the observed outcome. Users can
+        # replay this offline to audit decisions / debug weird routing.
+        self._log_path: Optional[Path] = None
+        self._log_lock: threading.Lock = threading.Lock()
 
     # .................................................................. API
 
@@ -259,14 +280,66 @@ class AdaptiveCompute:
         with self._lock:
             return self._best_expected_time() > self._backpressure
 
-    def pick(self) -> int:
+    def pick(self, payload_bytes: int = 0) -> int:
         """Return the index of the worker to dispatch to next.
 
         Argmin of expected time-to-complete when ``softmax_temperature == 0``;
         otherwise samples softmax-weighted over expected times.
+
+        ``payload_bytes`` (optional): hint the size of the request body so
+        the picker can factor `payload / bandwidth_bps` into each worker's
+        expected time. Call-sites that handle very large state_dicts
+        (sakura's HF callback, DDP async-eval) should pass this; small
+        RPCs can leave it 0.
         """
         with self._lock:
-            return self._pick_locked()
+            return self._pick_locked(payload_bytes=payload_bytes)
+
+    # ........................................................ decision log
+
+    def enable_decision_log(self, path: Optional[str] = None) -> Path:
+        """Turn on per-dispatch logging to a JSONL file.
+
+        Each dispatch appends one line:
+
+            {"t": <unix>, "fn": "<fn_name>", "picked": <idx>,
+             "expected_secs": <allocator's estimate>,
+             "actual_secs": <observed latency>,
+             "ok": <bool>, "queue_before": <int>,
+             "drift_factor": <float>}
+
+        Default path is ``$HOME/.zakuro/allocator.jsonl`` (or
+        ``$ZAKURO_DECISION_LOG`` if set). Directory is created on demand.
+
+        Call with ``path=None`` to disable.
+        """
+        if path is None:
+            env = os.environ.get("ZAKURO_DECISION_LOG")
+            if env:
+                path = env
+            else:
+                home = os.environ.get("HOME") or os.environ.get("USERPROFILE") or "/tmp"
+                path = str(Path(home) / ".zakuro" / "allocator.jsonl")
+        log_path = Path(path)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        self._log_path = log_path
+        return log_path
+
+    def disable_decision_log(self) -> None:
+        self._log_path = None
+
+    def _log_decision(self, row: dict[str, Any]) -> None:
+        """Best-effort append — never raises, never blocks the dispatch path."""
+        if self._log_path is None:
+            return
+        try:
+            line = json.dumps(row, default=str) + "\n"
+            with self._log_lock:
+                with open(self._log_path, "a", encoding="utf-8") as fp:
+                    fp.write(line)
+        except Exception:
+            # Observability must never break the hot path.
+            pass
 
     # ........................................................ node lifecycle
 
@@ -316,6 +389,7 @@ class AdaptiveCompute:
         timeout: float = 10.0,
         eject_on_failure: bool = True,
         set_backpressure: bool = True,
+        bandwidth_probe_bytes: int = 1024 * 1024,
         verbose: bool = True,
     ) -> dict[str, Any]:
         """Probe every worker before real traffic to calibrate priors.
@@ -390,6 +464,32 @@ class AdaptiveCompute:
                 observed.sort()
                 mean = sum(observed) / len(observed)
                 p95 = observed[min(len(observed) - 1, int(0.95 * len(observed)))]
+
+                # Bandwidth probe: one transfer of a bytes payload, measure
+                # round-trip minus the latency floor to estimate the
+                # worker's effective throughput. Bandwidth dominates over
+                # raw latency once payloads cross a few MiB (see Phase 4.1
+                # in PLAN.md) — the allocator mixes it into expected time.
+                bandwidth_bps: Optional[float] = None
+                if bandwidth_probe_bytes > 0:
+                    big_payload = b"\x00" * bandwidth_probe_bytes
+                    bw_samples: list[float] = []
+                    for _ in range(2):
+                        try:
+                            t0 = time.perf_counter()
+                            probe.to(compute)(big_payload)
+                            bw_samples.append(time.perf_counter() - t0)
+                        except Exception:
+                            break
+                    if bw_samples:
+                        # Best-case: subtract the latency floor so we don't
+                        # count fixed RTT overhead against throughput. Round-
+                        # trip moves the bytes twice (client → worker, back);
+                        # we count only the outbound leg for simplicity.
+                        best = min(bw_samples)
+                        transfer = max(best - mean, 1e-3)
+                        bandwidth_bps = bandwidth_probe_bytes / transfer
+
                 worker_reports.append(
                     {
                         "idx": orig_idx,
@@ -399,6 +499,7 @@ class AdaptiveCompute:
                         "latency_mean": mean,
                         "latency_p95": p95,
                         "observed": list(observed),
+                        "bandwidth_bps": bandwidth_bps,
                     }
                 )
                 # Seed the corresponding stats with the mean — look up by
@@ -419,6 +520,7 @@ class AdaptiveCompute:
                             s.m_slow = mean * (1.0 - self._beta_slow**step)
                             s.step = step
                             s.last_latency = observed[-1]
+                            s.bandwidth_bps = bandwidth_bps
                             self._stats[i] = s
                             break
             else:
@@ -639,13 +741,21 @@ class AdaptiveCompute:
         with self._lock:
             idx = self._pick_locked()
             self._stats[idx].queue += 1
+            expected = self._expected_times_locked()[idx]
+            queue_before = self._stats[idx].queue
+            drift_factor = self._stats[idx].drift_factor
         compute = self._workers[idx]
+        fn_name = getattr(getattr(fn, "_func", fn), "__name__", "<fn>")
         t0 = time.perf_counter()
+        ok = False
+        error: Optional[str] = None
         try:
             fn.to(compute)
             result = fn._execute_single_compute(*args, **kwargs)  # type: ignore[attr-defined]
+            ok = True
             return result
-        except Exception:
+        except Exception as exc:
+            error = repr(exc)
             with self._lock:
                 self._stats[idx].failures += 1
             raise
@@ -655,11 +765,24 @@ class AdaptiveCompute:
                 s = self._stats[idx]
                 s.queue = max(0, s.queue - 1)
                 self._update_ema(s, latency)
+            # Cheap, optional, never-raises observability hook.
+            if self._log_path is not None:
+                self._log_decision({
+                    "t": time.time(),
+                    "fn": fn_name,
+                    "picked": idx,
+                    "expected_secs": expected,
+                    "actual_secs": latency,
+                    "ok": ok,
+                    "queue_before": queue_before,
+                    "drift_factor": drift_factor,
+                    "error": error,
+                })
 
     # ........................................................... internals
 
-    def _pick_locked(self) -> int:
-        expected = self._expected_times_locked()
+    def _pick_locked(self, payload_bytes: int = 0) -> int:
+        expected = self._expected_times_locked(payload_bytes=payload_bytes)
         if self._tau <= 0.0:
             # Argmin with stable tie-breaking — prefer the earlier worker.
             return min(range(len(expected)), key=lambda i: (expected[i], i))
@@ -676,9 +799,11 @@ class AdaptiveCompute:
                 return i
         return len(weights) - 1  # numerical safety
 
-    def _expected_times_locked(self) -> list[float]:
+    def _expected_times_locked(
+        self, payload_bytes: int = 0,
+    ) -> list[float]:
         out = []
-        for s in self._stats:
+        for i, s in enumerate(self._stats):
             if s.suspended:
                 # Suspended workers get sent to infinity so the picker routes
                 # around them — but they stay in the pool, so a successful
@@ -690,7 +815,20 @@ class AdaptiveCompute:
             # drift_factor softly demotes a drifted worker without ejecting:
             # it still gets some traffic (so the fast EMA can recover if the
             # underlying symptom clears) but its expected time is stretched.
-            out.append((s.queue + 1) * lat * s.drift_factor)
+            expected = (s.queue + 1) * lat * s.drift_factor
+            # Bandwidth-aware: for large payloads, transfer time often
+            # dominates over latency. Fold it in when we have an estimate.
+            if payload_bytes > 0 and s.bandwidth_bps and s.bandwidth_bps > 0:
+                expected += payload_bytes / s.bandwidth_bps
+            # Price-aware: if the Compute has a price_per_hour hint and the
+            # user opted into cost-aware routing (cost_coefficient > 0),
+            # deprioritise more-expensive workers proportionally to
+            # (coef × price). At coef=0 this is a no-op.
+            if self._cost_coef > 0:
+                price = getattr(self._workers[i], "price_per_hour", None)
+                if price is not None and price > 0:
+                    expected *= 1.0 + self._cost_coef * price
+            out.append(expected)
         return out
 
     def _best_expected_time(self) -> float:
