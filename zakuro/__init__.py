@@ -17,6 +17,7 @@ Example:
 __version__ = "0.2.2"
 __build__ = "2026-02-15T15:47:22+0000"
 
+from zakuro.adaptive import AdaptiveCompute
 from zakuro.compute import Compute
 from zakuro.config import Config
 from zakuro.fn import Fn, cls, fn
@@ -25,6 +26,7 @@ from zakuro.standalone import detect_backend, is_standalone
 from zakuro.worker.runner import Worker
 
 __all__ = [
+    "AdaptiveCompute",
     "Compute",
     "Config",
     "Fn",
