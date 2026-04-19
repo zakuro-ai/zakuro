@@ -1,0 +1,301 @@
+"""QUIC worker server.
+
+Binary, length-prefixed QUIC protocol replacing the HTTP ``/execute`` hot
+path. See ``docs/PROTOCOL.md`` for the full wire spec. The semantics of the
+EXECUTE payload are identical to the HTTP worker's ``/execute`` endpoint —
+cloudpickle of ``{"func", "args", "kwargs"}`` in, cloudpickle of the result
+(or exception) out — so callers can swap transport without touching payload
+serialisation.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import datetime
+import json
+import logging
+import multiprocessing
+import os
+import platform
+import signal
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from typing import Any, Callable, Optional
+
+import cloudpickle
+
+try:
+    from aioquic.asyncio import QuicConnectionProtocol, serve
+    from aioquic.quic.configuration import QuicConfiguration
+    from aioquic.quic.events import StreamDataReceived
+except ImportError as exc:  # pragma: no cover
+    raise ImportError(
+        "QUIC worker transport requires aioquic; install the `[worker]` extra."
+    ) from exc
+
+logger = logging.getLogger(__name__)
+
+OP_EXECUTE = 1
+OP_INFO = 2
+OP_HEALTH = 3
+
+STAT_OK = 0
+STAT_USER_ERROR = 1
+STAT_PROTOCOL_ERROR = 2
+
+ALPN = ["zk-worker"]
+DEFAULT_PORT = 4433
+_CERT_DIR = Path.home() / ".zakuro"
+_CERT_PATH = _CERT_DIR / "quic_worker_cert.pem"
+_KEY_PATH = _CERT_DIR / "quic_worker_key.pem"
+
+
+def _execute_payload(payload: bytes) -> tuple[int, bytes]:
+    """Run an EXECUTE payload and return ``(status, response_bytes)``.
+
+    Differentiates protocol errors (``stat=2``: malformed cloudpickle) from
+    user errors (``stat=1``: function raised). Must run on a worker thread.
+    """
+    try:
+        data = cloudpickle.loads(payload)
+    except Exception as exc:
+        return STAT_PROTOCOL_ERROR, f"malformed cloudpickle: {exc!r}".encode()
+    try:
+        func = data["func"]
+        args = data.get("args", ())
+        kwargs = data.get("kwargs", {})
+    except Exception as exc:
+        return STAT_PROTOCOL_ERROR, f"malformed request dict: {exc!r}".encode()
+    try:
+        result = func(*args, **kwargs)
+    except Exception as exc:
+        return STAT_USER_ERROR, cloudpickle.dumps(exc)
+    return STAT_OK, cloudpickle.dumps(result)
+
+
+def _info_payload() -> bytes:
+    """Build the INFO JSON response body. Shape mirrors HTTP ``/info``."""
+    cpus = multiprocessing.cpu_count()
+    try:
+        import psutil
+
+        vm = psutil.virtual_memory()
+        memory_total, memory_available = vm.total, vm.available
+    except ImportError:
+        memory_total = 8 * 1024**3
+        memory_available = memory_total
+    return json.dumps(
+        {
+            "name": os.environ.get(
+                "ZAKURO_WORKER_NAME", f"worker-{platform.node()}"
+            ),
+            "worker_type": os.environ.get("ZAKURO_WORKER_TYPE", "zakuro"),
+            "version": "0.2.0",
+            "transport": "quic",
+            "resources": {
+                "cpus_total": float(cpus),
+                "cpus_available": float(cpus),
+                "memory_total": memory_total,
+                "memory_available": memory_available,
+                "gpus_total": 0,
+                "gpus_available": 0,
+            },
+        },
+        separators=(",", ":"),
+    ).encode()
+
+
+def _frame(status: int, payload: bytes) -> bytes:
+    return bytes([status]) + len(payload).to_bytes(4, "big") + payload
+
+
+class _StreamBuffer:
+    """Per-stream framing state: accumulates bytes until a full request is in."""
+
+    __slots__ = ("buf", "op", "expected")
+
+    def __init__(self) -> None:
+        self.buf = bytearray()
+        self.op: Optional[int] = None
+        self.expected: Optional[int] = None
+
+    def feed(self, data: bytes) -> Optional[tuple[int, bytes]]:
+        """Append bytes; return ``(op, payload)`` once a full frame is ready."""
+        self.buf.extend(data)
+        if self.op is None:
+            if len(self.buf) < 5:
+                return None
+            self.op = self.buf[0]
+            self.expected = int.from_bytes(self.buf[1:5], "big")
+            del self.buf[:5]
+        assert self.expected is not None
+        if len(self.buf) < self.expected:
+            return None
+        payload = bytes(self.buf[: self.expected])
+        del self.buf[: self.expected]
+        return self.op, payload
+
+
+class WorkerQuicProtocol(QuicConnectionProtocol):
+    """One instance per accepted QUIC connection.
+
+    Streams are independent; each carries exactly one request/response pair.
+    """
+
+    def __init__(self, *args: Any, executor: ThreadPoolExecutor, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._executor = executor
+        self._streams: dict[int, _StreamBuffer] = {}
+
+    def quic_event_received(self, event: Any) -> None:
+        if isinstance(event, StreamDataReceived):
+            sb = self._streams.setdefault(event.stream_id, _StreamBuffer())
+            frame = sb.feed(event.data)
+            if frame is not None:
+                self._streams.pop(event.stream_id, None)
+                asyncio.ensure_future(
+                    self._handle_request(event.stream_id, frame[0], frame[1])
+                )
+
+    async def _handle_request(self, stream_id: int, op: int, payload: bytes) -> None:
+        try:
+            if op == OP_EXECUTE:
+                loop = asyncio.get_event_loop()
+                status, body = await loop.run_in_executor(
+                    self._executor, _execute_payload, payload
+                )
+            elif op == OP_INFO:
+                status, body = STAT_OK, _info_payload()
+            elif op == OP_HEALTH:
+                status, body = STAT_OK, b'{"status":"ok"}'
+            else:
+                status, body = (
+                    STAT_PROTOCOL_ERROR,
+                    f"unknown opcode: {op}".encode(),
+                )
+        except Exception as exc:  # defensive — worker bug
+            logger.exception("unhandled server error")
+            status, body = STAT_PROTOCOL_ERROR, f"server: {exc!r}".encode()
+
+        self._quic.send_stream_data(stream_id, _frame(status, body), end_stream=True)
+        self.transmit()
+
+
+def _ensure_certificate() -> tuple[Path, Path]:
+    """Generate a self-signed cert + key if absent; return their paths."""
+    if _CERT_PATH.exists() and _KEY_PATH.exists():
+        return _CERT_PATH, _KEY_PATH
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    _CERT_DIR.mkdir(parents=True, exist_ok=True)
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    subject = issuer = x509.Name(
+        [x509.NameAttribute(NameOID.COMMON_NAME, "localhost")]
+    )
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(issuer)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(minutes=5))
+        .not_valid_after(now + datetime.timedelta(days=365 * 5))
+        .add_extension(
+            x509.SubjectAlternativeName([x509.DNSName("localhost")]),
+            critical=False,
+        )
+        .sign(key, hashes.SHA256())
+    )
+    _CERT_PATH.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    _KEY_PATH.write_bytes(
+        key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
+    return _CERT_PATH, _KEY_PATH
+
+
+async def _run_server(
+    host: str,
+    port: int,
+    executor: ThreadPoolExecutor,
+    ready: Optional[asyncio.Event],
+) -> None:
+    cert_path, key_path = _ensure_certificate()
+    config = QuicConfiguration(
+        alpn_protocols=ALPN,
+        is_client=False,
+        max_datagram_frame_size=65536,
+    )
+    config.load_cert_chain(str(cert_path), str(key_path))
+
+    def _factory(*args: Any, **kwargs: Any) -> WorkerQuicProtocol:
+        return WorkerQuicProtocol(*args, executor=executor, **kwargs)
+
+    server = await serve(
+        host=host,
+        port=port,
+        configuration=config,
+        create_protocol=_factory,
+    )
+    logger.info("QUIC worker listening on %s:%s", host, port)
+    if ready is not None:
+        ready.set()
+
+    stop_event = asyncio.Event()
+    try:
+        loop = asyncio.get_event_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, stop_event.set)
+            except NotImplementedError:
+                # Windows or sub-thread: callers drive the stop via ready/cancel.
+                pass
+        await stop_event.wait()
+    finally:
+        server.close()
+
+
+def run_quic_worker(
+    host: str = "0.0.0.0",
+    port: int = DEFAULT_PORT,
+    max_workers: Optional[int] = None,
+) -> None:
+    """Blocking entry point. Runs the QUIC worker until SIGINT/SIGTERM."""
+    executor = ThreadPoolExecutor(
+        max_workers=max_workers or multiprocessing.cpu_count(),
+    )
+    try:
+        asyncio.run(_run_server(host, port, executor, ready=None))
+    finally:
+        executor.shutdown(wait=True)
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Zakuro QUIC worker")
+    parser.add_argument("--host", default=os.environ.get("ZAKURO_HOST", "0.0.0.0"))
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("ZAKURO_PORT", str(DEFAULT_PORT))),
+    )
+    parser.add_argument("--worker-name", default=None)
+    args = parser.parse_args()
+    if args.worker_name:
+        os.environ["ZAKURO_WORKER_NAME"] = args.worker_name
+    logging.basicConfig(level=logging.INFO)
+    run_quic_worker(host=args.host, port=args.port)
+
+
+if __name__ == "__main__":
+    main()

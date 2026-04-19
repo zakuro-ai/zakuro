@@ -104,11 +104,26 @@ class Compute:
             self.uri = f"zc://{self.host}:{self.port}"
 
     def _verify_reachable(self) -> None:
-        """Probe host:port with a TCP connect; raise ConnectionError on failure."""
+        """Probe host:port; raise ConnectionError on failure.
+
+        TCP connect for stream schemes; DNS resolution for QUIC (UDP-based,
+        no cheap reachability probe short of a real handshake).
+        """
         import socket
 
         if self.host is None or self.port is None:
             return
+        if self.scheme == "quic":
+            try:
+                socket.getaddrinfo(
+                    self.host, self.port, type=socket.SOCK_DGRAM
+                )
+                return
+            except socket.gaierror as exc:
+                raise ConnectionError(
+                    f"Backend at {self.uri} has an unresolvable host ({exc}). "
+                    "Fix the URI, or pass verify=False to skip this check."
+                ) from exc
         try:
             with socket.create_connection((self.host, self.port), timeout=2.0):
                 return
