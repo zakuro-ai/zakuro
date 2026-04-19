@@ -9,10 +9,15 @@ class TestCompute:
     """Test cases for Compute resource class."""
 
     def test_default_resources(self) -> None:
-        """Test default resource values."""
+        """Test default resource values.
+
+        ``memory`` defaults to ``None`` — the standalone fallback raises if an
+        explicit memory constraint is set but cannot be enforced, so leaving it
+        unset by default keeps the fallback path usable.
+        """
         compute = Compute(host="localhost")  # Override discovery
         assert compute.cpus == 1.0
-        assert compute.memory == "1Gi"
+        assert compute.memory is None
         assert compute.gpus == 0
 
     def test_custom_resources(self) -> None:

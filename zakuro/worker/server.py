@@ -8,8 +8,17 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import cloudpickle
-from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
+
+try:
+    from fastapi import FastAPI, HTTPException, Request, Response
+    from fastapi.responses import JSONResponse
+except ImportError as exc:
+    raise ImportError(
+        "Running the Zakuro worker requires the `[worker]` extra "
+        "(fastapi, uvicorn, psutil). Install it with "
+        "`pip install 'zakuro-ai[worker]'` (or `uv pip install '.[worker]'` "
+        "from a source checkout)."
+    ) from exc
 
 from zakuro.worker.executor import execute_function
 

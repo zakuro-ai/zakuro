@@ -52,23 +52,33 @@ class Fn(Generic[R]):
         return self._execute_remote(*args, **kwargs)
 
     def _execute_remote(self, *args: Any, **kwargs: Any) -> R:
-        """Send function to worker for execution."""
+        """Send function to worker for execution, or run in-process if no backend."""
         if self._compute is None:
             raise RuntimeError("No compute target. Use .to(compute) first.")
 
-        from zakuro.processors.registry import get_processor
-
-        # Serialize function
-        func_bytes = cloudpickle.dumps(self._func)
-
-        # Get processor based on URI scheme
         uri = self._compute.uri
-        if uri is None:
+        if uri is None and self._compute.host is not None:
             uri = f"zakuro://{self._compute.host}:{self._compute.port}"
 
-        processor = get_processor(uri, self._compute)
+        if uri is None:
+            from zakuro.standalone import (
+                applied_resource_limits,
+                detect_backend,
+                ensure_standalone_is_safe,
+            )
 
-        # Execute via processor
+            uri = detect_backend()
+            if uri is None:
+                ensure_standalone_is_safe(self._compute)
+                # Standalone fallback: execute in-process under advisory limits.
+                with applied_resource_limits(self._compute):
+                    return self._func(*args, **kwargs)
+            self._compute.uri = uri
+
+        from zakuro.processors.registry import get_processor
+
+        func_bytes = cloudpickle.dumps(self._func)
+        processor = get_processor(uri, self._compute)
         with processor:
             return processor.execute(func_bytes, args, kwargs)
 
@@ -166,6 +176,21 @@ class Cls(Generic[T]):
         """Instantiate the class locally or remotely."""
         if self._compute is None:
             return self._klass(*args, **kwargs)
+
+        if self._compute.uri is None and self._compute.host is None:
+            from zakuro.standalone import (
+                applied_resource_limits,
+                detect_backend,
+                ensure_standalone_is_safe,
+            )
+
+            uri = detect_backend()
+            if uri is None:
+                ensure_standalone_is_safe(self._compute)
+                # Standalone fallback: instantiate in-process under advisory limits.
+                with applied_resource_limits(self._compute):
+                    return self._klass(*args, **kwargs)
+            self._compute.uri = uri
 
         # Remote instantiation - returns a proxy
         from zakuro.proxy import RemoteProxy

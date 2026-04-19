@@ -73,6 +73,7 @@ class ProcessorConfig:
             "spark": 7077,
             "zc": 9000,
             "broker": 9000,
+            "quic": 4433,
         }
         return defaults.get(scheme, 3960)
 
