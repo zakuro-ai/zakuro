@@ -80,7 +80,11 @@ class WorkerQuicClientProtocol:
 
 def _build_client_protocol_class() -> type:
     from aioquic.asyncio import QuicConnectionProtocol
-    from aioquic.quic.events import StreamDataReceived
+    from aioquic.quic.events import (
+        ConnectionTerminated,
+        StreamDataReceived,
+        StreamReset,
+    )
 
     class _Client(QuicConnectionProtocol):
         def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -89,21 +93,33 @@ def _build_client_protocol_class() -> type:
             self._bufs: dict[int, bytearray] = {}
 
         def quic_event_received(self, event: Any) -> None:  # noqa: D401
-            if not isinstance(event, StreamDataReceived):
-                return
-            buf = self._bufs.setdefault(event.stream_id, bytearray())
-            buf.extend(event.data)
-            if len(buf) < 5:
-                return
-            expected = int.from_bytes(buf[1:5], "big")
-            if len(buf) < 5 + expected:
-                return
-            status = buf[0]
-            payload = bytes(buf[5 : 5 + expected])
-            self._bufs.pop(event.stream_id, None)
-            fut = self._pending.pop(event.stream_id, None)
-            if fut is not None and not fut.done():
-                fut.set_result((status, payload))
+            if isinstance(event, StreamDataReceived):
+                buf = self._bufs.setdefault(event.stream_id, bytearray())
+                buf.extend(event.data)
+                if len(buf) < 5:
+                    return
+                expected = int.from_bytes(buf[1:5], "big")
+                if len(buf) < 5 + expected:
+                    return
+                status = buf[0]
+                payload = bytes(buf[5 : 5 + expected])
+                self._bufs.pop(event.stream_id, None)
+                fut = self._pending.pop(event.stream_id, None)
+                if fut is not None and not fut.done():
+                    fut.set_result((status, payload))
+            elif isinstance(event, (ConnectionTerminated, StreamReset)):
+                # The underlying connection / stream went away before the
+                # server finished responding. Fail every pending request
+                # with ConnectionError so the caller can decide whether to
+                # reconnect and retry.
+                err = ConnectionError(
+                    f"QUIC connection terminated: {getattr(event, 'reason_phrase', '')}"
+                    or "QUIC connection dropped"
+                )
+                for fut in list(self._pending.values()):
+                    if not fut.done():
+                        fut.set_exception(err)
+                self._pending.clear()
 
         async def request(self, op: int, payload: bytes) -> tuple[int, bytes]:
             stream_id = self._quic.get_next_available_stream_id(
@@ -174,6 +190,11 @@ class QuicProcessor(Processor):
             is_client=True,
             alpn_protocols=ALPN,
             verify_mode=ssl.CERT_NONE,
+            # Default aioquic idle timeout is very long (30–60 s). For a
+            # distributed-compute pool, 5 s is plenty — anything longer is
+            # an unrecoverable failure and the caller would rather see
+            # ConnectionError quickly so the allocator can route around it.
+            idle_timeout=5.0,
         )
         self._cm = connect(
             self._config.host,
@@ -209,7 +230,21 @@ class QuicProcessor(Processor):
         payload = cloudpickle.dumps(
             {"func": func, "args": args, "kwargs": kwargs}
         )
-        status, body = _run_sync(self._protocol.request(OP_EXECUTE, payload))
+
+        # One retry on connection-level failure: if the underlying QUIC
+        # connection dropped (worker bounced, network blip, stale pool
+        # connection), tear it down, dial again, and re-dispatch once.
+        # Protocol-level errors from the worker (stat != OK) are NOT
+        # retried — that's a deterministic failure the caller should see.
+        try:
+            status, body = _run_sync(self._protocol.request(OP_EXECUTE, payload))
+        except (ConnectionError, OSError, RuntimeError) as first_exc:
+            if not self._reconnect():
+                # Propagate the original failure — caller can decide what
+                # to do. Reconnect attempt itself logs via Worker / Adaptive.
+                raise first_exc
+            status, body = _run_sync(self._protocol.request(OP_EXECUTE, payload))
+
         if status == STAT_OK:
             return cloudpickle.loads(body)
         if status == STAT_USER_ERROR:
@@ -217,6 +252,21 @@ class QuicProcessor(Processor):
         raise RuntimeError(
             f"QUIC protocol error from worker: {body.decode(errors='replace')}"
         )
+
+    def _reconnect(self) -> bool:
+        """Tear down the current connection and dial again. Returns ``True``
+        on success."""
+        try:
+            _run_sync(self._async_disconnect(), timeout=3.0)
+        except Exception:
+            pass
+        self._connected = False
+        try:
+            _run_sync(self._async_connect())
+            self._connected = True
+            return True
+        except Exception:
+            return False
 
     def info(self) -> dict[str, Any]:
         if not self._connected or self._protocol is None:

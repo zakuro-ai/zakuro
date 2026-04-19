@@ -55,3 +55,47 @@ def test_quic_worker_many_calls_one_connection() -> None:
 
         compute = worker.compute(verify=False)
         assert [square.to(compute)(i) for i in range(10)] == [i * i for i in range(10)]
+
+
+def test_quic_execute_retries_on_transient_connection_error() -> None:
+    """When the in-flight request fails with ConnectionError, the processor
+    should tear down + reconnect + retry once before propagating."""
+    from unittest.mock import MagicMock, patch
+
+    from zakuro.processors.base import ProcessorConfig
+    from zakuro.processors.quic import QuicProcessor
+
+    # A throwaway QuicProcessor to manipulate directly — we mock the run-sync
+    # boundary so we don't actually need a live worker.
+    compute = zk.Compute(uri="quic://127.0.0.1:4455", verify=False)
+    config = ProcessorConfig(scheme="quic", host="127.0.0.1", port=4455)
+    proc = QuicProcessor(config, compute)
+    proc._connected = True
+    proc._protocol = MagicMock()
+
+    import cloudpickle
+
+    # First call: raise ConnectionError. Second call: succeed with status=OK
+    # and a cloudpickle-of-42 payload.
+    responses = iter([
+        ConnectionError("reset"),
+        (0, cloudpickle.dumps(42)),
+    ])
+
+    def fake_run_sync(_coro, timeout=None):
+        out = next(responses)
+        if isinstance(out, Exception):
+            raise out
+        return out
+
+    func_bytes = cloudpickle.dumps(lambda x: x)
+    args = (42,)
+    kwargs = {}
+
+    with (
+        patch("zakuro.processors.quic._run_sync", side_effect=fake_run_sync),
+        patch.object(proc, "_reconnect", return_value=True),
+    ):
+        result = proc.execute(func_bytes, args, kwargs)
+    # The bytes returned by fake_run_sync second call are a cloudpickle of 42.
+    assert result == 42
