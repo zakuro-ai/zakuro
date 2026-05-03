@@ -19,8 +19,8 @@ class TestConfig:
             with patch("pathlib.Path.exists", return_value=False):
                 config = Config.load()
 
-        assert config.default_host == "127.0.0.1"
-        assert config.default_port == 3960
+        assert config.default_host == "my.zakuro-ai.com"
+        assert config.default_port == 9000
         assert config.auth_token is None
         assert config.tailscale_enabled is True
 
