@@ -274,14 +274,14 @@ class TestComputeUriIntegration:
     def test_host_port_builds_uri(self) -> None:
         """Test Compute builds URI from host/port."""
         compute = Compute(host="worker", port=9000)
-        assert compute.uri == "zakuro://worker:9000"
+        assert compute.uri == "zc://worker:9000"
 
     def test_scheme_property(self) -> None:
         """Test scheme property extracts from URI."""
         compute = Compute(uri="dask://scheduler:8786", verify=False)
         assert compute.scheme == "dask"
 
-    def test_default_scheme_is_zakuro(self) -> None:
-        """Test default scheme is zakuro."""
+    def test_default_scheme_is_zc(self) -> None:
+        """Test default scheme is zc."""
         compute = Compute(host="localhost")
-        assert compute.scheme == "zakuro"
+        assert compute.scheme == "zc"
