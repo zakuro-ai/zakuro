@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1.4
+# =============================================================================
+# ZAKURO — Full platform image on top of compute
+# FROM compute (s6 + tailscale + minio + jupyterlab + spark/ray/dask)
+# Adds: zakuro-ai Python package + worker s6 service
+# =============================================================================
+
+ARG FRAMEWORK=all
+ARG HW=cpu
+ARG COMPUTE_TAG=${HW}
+
+FROM zakuroai/compute:${COMPUTE_TAG}
+
+USER root
+
+# Install zakuro-ai wheel with worker extras
+COPY dist/*.whl /tmp/
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    WHL=$(ls /tmp/*.whl) && \
+    uv pip install --system --break-system-packages "${WHL}[worker]" && \
+    rm -f /tmp/*.whl
+
+# Add zakuro worker s6 service
+COPY docker/static/zakuro_worker /etc/s6-overlay/s6-rc.d/zakuro_worker
+COPY docker/static/zakuro_worker-log /etc/s6-overlay/s6-rc.d/zakuro_worker-log
+RUN mkdir -p /etc/s6-overlay/s6-rc.d/zakuro_worker/dependencies.d \
+             /etc/s6-overlay/s6-rc.d/zakuro_worker-log/dependencies.d && \
+    echo longrun > /etc/s6-overlay/s6-rc.d/zakuro_worker/type && \
+    echo longrun > /etc/s6-overlay/s6-rc.d/zakuro_worker-log/type && \
+    touch /etc/s6-overlay/s6-rc.d/user/contents.d/zakuro_worker \
+          /etc/s6-overlay/s6-rc.d/user/contents.d/zakuro_worker-log \
+          /etc/s6-overlay/s6-rc.d/zakuro_worker/dependencies.d/base \
+          /etc/s6-overlay/s6-rc.d/zakuro_worker-log/dependencies.d/base && \
+    mkdir -p /var/log/zakuro_worker && \
+    chown foo:foo /var/log/zakuro_worker && \
+    chmod +x /etc/s6-overlay/s6-rc.d/zakuro_worker/run \
+             /etc/s6-overlay/s6-rc.d/zakuro_worker-log/run
+
+USER foo
+EXPOSE 3960

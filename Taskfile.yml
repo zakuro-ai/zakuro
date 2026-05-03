@@ -71,6 +71,28 @@ tasks:
       - pip uninstall -y zakuro-ai
       - pip install --break-system-packages dist/*.whl
 
+  build:wheel:
+    desc: Build zakuro-ai wheel
+    cmds:
+      - rm -rf dist/*.whl
+      - python -m build --wheel
+
+  build:image:
+    desc: Build zakuro image (FROM compute)
+    cmds:
+      - task: build:wheel
+      - docker build -f docker/Dockerfile.compute -t zakuroai/zakuro:${HW:-cpu} .
+
+  up:compute:
+    desc: Start zakuro on compute stack
+    cmds:
+      - docker compose -f docker/docker-compose.compute.yml up -d {{.CLI_ARGS}}
+
+  down:compute:
+    desc: Stop zakuro compute stack
+    cmds:
+      - docker compose -f docker/docker-compose.compute.yml down {{.CLI_ARGS}}
+
   demo:broker:
     desc: Run broker demo script (requires broker running)
     cmds:
