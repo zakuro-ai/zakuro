@@ -1,0 +1,16 @@
+#!/command/with-contenv bash
+set -e
+exec 2>&1
+
+. /opt/zakuro/sbin/common.sh
+
+FORCE_DISABLE_WORKER=${FORCE_DISABLE_WORKER:-0}
+if [ "$FORCE_DISABLE_WORKER" -eq 1 ]; then
+    echo "[zakuro_worker] Service disabled via FORCE_DISABLE_WORKER"
+    exit 125
+fi
+
+echo "[zakuro_worker] Starting Zakuro Worker on port 3960..."
+wait_network
+
+exec python -m zakuro.worker.server

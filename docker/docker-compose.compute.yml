@@ -1,0 +1,53 @@
+services:
+  zakuro:
+    image: zakuroai/zakuro:${HW:-cpu}
+    container_name: zak-zakuro
+    hostname: ${TS_HOSTNAME:-zak-zakuro}
+
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    devices:
+      - /dev/net/tun:/dev/net/tun
+
+    volumes:
+      - ./:/workspace
+      - zakuro-data:/data
+      - tailscale-state:/var/lib/tailscale
+
+    environment:
+      - S6_BEHAVIOUR_IF_STAGE2_FAILS=0
+      - S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0
+      - ZAKURO_AUTH=${ZAKURO_AUTH:-}
+      - ZAKURO_BROKER_URL=${ZAKURO_BROKER_URL:-}
+      - MASTER_HOST=${MASTER_HOST:-127.0.0.1}
+      - FORCE_DISABLE_JUPYTERLAB=${FORCE_DISABLE_JUPYTERLAB:-0}
+      - FORCE_DISABLE_SPARK=${FORCE_DISABLE_SPARK:-0}
+      - FORCE_DISABLE_RAY=${FORCE_DISABLE_RAY:-0}
+      - FORCE_DISABLE_DASK=${FORCE_DISABLE_DASK:-0}
+      - FORCE_DISABLE_WORKER=${FORCE_DISABLE_WORKER:-0}
+      - TAILSCALE_AUTHKEY=${TAILSCALE_AUTHKEY:-}
+      - TS_HOSTNAME=${TS_HOSTNAME:-zak-zakuro}
+
+    ports:
+      - "8089:8080"   # S6 Manager
+      - "8888:8888"   # JupyterLab
+      - "8787:8787"   # Dask Dashboard
+      - "7077:7077"   # Spark Master
+      - "8081:8081"   # Spark Master UI
+      - "6379:6379"   # Ray
+      - "3960:3960"   # Zakuro Worker
+
+    restart: unless-stopped
+    shm_size: '4gb'
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  zakuro-data:
+  tailscale-state:
