@@ -1,0 +1,45 @@
+name: Docker
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "docker/Dockerfile.compute"
+      - "docker/static/**"
+      - "zakuro/**"
+      - "pyproject.toml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel
+        run: |
+          pip install build
+          python -m build --wheel
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: zakuroai
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.compute
+          push: true
+          tags: zakuroai/zakuro:cpu,zakuroai/zakuro:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
