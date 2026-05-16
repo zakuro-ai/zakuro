@@ -222,6 +222,27 @@ task ci:all
 
 Python 3.10+ is required. `uv` is the recommended package manager (`pip install uv`).
 
+## Container images
+
+The worker is published in two variants, both built for `linux/amd64` and `linux/arm64`:
+
+| Tag suffix | Base image | Size | Use when |
+|---|---|---|---|
+| (none) — `:latest`, `:cpu` | `python:3.12-slim` | ~370 MB | Default. Has a shell + apt for debugging via `docker exec`. |
+| `-distroless` — `:latest-distroless` | `gcr.io/distroless/python3-debian12:nonroot` | ~155 MB | Production. No shell, no apt, runs as the distroless `nonroot` user (uid 65532). Minimal CVE surface. |
+
+Pull from either Docker Hub or GHCR:
+
+```bash
+docker pull zakuroai/zakuro-worker:latest          # slim
+docker pull zakuroai/zakuro-worker:latest-distroless
+
+docker pull ghcr.io/zakuro-ai/zakuro-worker:latest
+docker pull ghcr.io/zakuro-ai/zakuro-worker:latest-distroless
+```
+
+Both variants run the same FastAPI worker on port `3960` with the same in-process `/health` healthcheck.
+
 ## Verifying releases
 
 Every published wheel and container image is signed and attested. Detailed flow in [`docs/security/verifying-releases.md`](docs/security/verifying-releases.md); the one-liners are:
