@@ -74,6 +74,9 @@ path = "zakuro/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["zakuro"]
+# Ensure the PEP 561 marker ships in the wheel so mypy / pyright pick up
+# inline annotations on the public surface. See docs/STABILITY.md.
+include = ["zakuro/py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
