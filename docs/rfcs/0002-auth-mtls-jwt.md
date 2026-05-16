@@ -34,7 +34,7 @@ Rationale:
 **Step 0 — internal CA on the deployment cluster**
 
 - Install cert-manager via Helm (anticipates [#132](https://github.com/zakuro-ai/zakuro/issues/132)).
-- Bootstrap a self-signed cluster issuer `zakuro-internal-ca` whose root cert is stored in a SOPS-encrypted file (`secrets/ca-root.sops.yaml` — see [docs/secrets.md](../secrets.md)).
+- Bootstrap a self-signed cluster issuer `zakuro-internal-ca` whose root cert is stored in a SOPS-encrypted file (`secrets/ca-root.sops.yaml` — the SOPS workflow lands alongside this RFC in #118).
 - Every service deployment gets a `Certificate` CR issuing a SPIFFE-style SVID with a 24-hour lifetime + 12-hour renewal.
 - For laptop-dev runs (no cluster), a `scripts/dev-ca-bootstrap.sh` generates a one-shot CA + per-service cert into `./certs/` and the worker reads from there when `ZAKURO_CERT_DIR` is set.
 
@@ -64,7 +64,7 @@ Rationale:
 **Step 4 — observability + audit**
 
 - Every auth failure emits a structured log line (RFC 0003 format) with `tenant_id`, `subject_cn`, `reason`, plus a Prometheus counter `zakuro_auth_failure_total{reason=...}`.
-- Every Sentry event automatically gets the tag `auth.subject_cn` via [`zakuro.observability.set_request_context`](../../zakuro/observability/sentry.py) — already wired in #128.
+- Every Sentry event automatically gets the tag `auth.subject_cn` via [`zakuro.observability.set_request_context`](https://github.com/zakuro-ai/zakuro/blob/master/zakuro/observability/sentry.py) — already wired in #128.
 
 **Step 5 — flip strict**
 
