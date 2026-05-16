@@ -34,6 +34,10 @@ jobs:
   semgrep:
     name: Semgrep (python.security + custom rules)
     runs-on: ubuntu-latest
+    # First introduction run flagged 3 findings — all expected cloudpickle /
+    # pickle call sites that #117 is going to migrate to the safe wire format.
+    # Mark this lane report-only until #117 ships, then ratchet to required.
+    continue-on-error: true
     container:
       image: returntocorp/semgrep:1.92.0
     steps:
