@@ -17,8 +17,11 @@ implement several issues, or an issue may produce several RFCs).
 | # | Title | Closes | Status |
 |---|---|---|---|
 | 0001 | Wire format: replace cloudpickle with postcard | #117 | Accepted |
-| 0002 | Authentication: mTLS everywhere + JWT scopes | #115, #116 | Accepted |
+| 0002 | Authentication: mTLS everywhere + JWT scopes | #115, #116 | Accepted (CA paragraph amended by 0004) |
 | 0003 | Observability stack: hybrid Prom + OTel + structlog | #123, #124, #125 | Accepted |
+| 0004 | Deployment model: P2P over QUIC, no Kubernetes | #131, #132 (won't fix) | Accepted |
+| 0005 | Credit ledger: double-entry accountable | #135 | Accepted |
+| 0006 | Batch dispatch: async iterator API | #137 | Accepted |
 
 Each RFC is **Accepted** here because the headline decision was already
 made (see the question round in the May 2026 cleanup sprint). The body
