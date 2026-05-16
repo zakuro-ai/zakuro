@@ -26,7 +26,7 @@ RUN pip install --no-cache-dir uv
 # -------------------------------------------------------------------
 # Stage: Build zc2 binary
 # -------------------------------------------------------------------
-FROM rust:1.75-slim AS rust-builder
+FROM rust:1.95-slim AS rust-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
