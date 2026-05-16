@@ -96,3 +96,37 @@ jobs:
         with:
           sarif_file: gitleaks.sarif
           category: gitleaks
+
+  sops-encryption-check:
+    name: SOPS encryption check
+    # Closes the CI half of #118: refuse to merge if a file matching the
+    # secret naming convention is committed in plaintext. Strict by design
+    # (no continue-on-error) — a leaked secret is the one thing we do not
+    # want to ratchet.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Find files that look like secrets but are not encrypted
+        run: |
+          set -eu
+
+          # Files we expect to be SOPS-encrypted.
+          mapfile -t candidates < <(
+            git ls-files \
+              'secrets/*' \
+              '*.sops.yaml' \
+              '*.sops.json' \
+              '*.sops.env' \
+              | grep -v -E '^(secrets/README\.md|\.sops\.yaml)$' || true
+          )
+
+          fail=0
+          for f in "${candidates[@]}"; do
+            [ -n "$f" ] || continue
+            if ! grep -q '"sops":' "$f" 2>/dev/null \
+               && ! grep -q '^sops:' "$f" 2>/dev/null; then
+              echo "::error file=$f::file matches the secret naming convention but does not appear to be SOPS-encrypted"
+              fail=1
+            fi
+          done
+          exit "$fail"
