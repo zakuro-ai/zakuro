@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://docs.zakuro.ai/latest/rfcs/0002-auth-mtls-jwt/">
+        <link rel="canonical" href="https://docs.zakuro.ai/latest/rfcs/0004-deployment-p2p-quic/">
       
       
       
@@ -23,7 +23,7 @@
     
     
       
-        <title>RFC 0002 — Authentication: mTLS everywhere + JWT scopes - Zakuro</title>
+        <title>RFC 0004 — Deployment model: P2P over QUIC, no Kubernetes - Zakuro</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#rfc-0002-authentication-mtls-everywhere-jwt-scopes" class="md-skip">
+        <a href="#rfc-0004-deployment-model-p2p-over-quic-no-kubernetes" class="md-skip">
           Skip to content
         </a>
       
@@ -114,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              RFC 0002 — Authentication: mTLS everywhere + JWT scopes
+              RFC 0004 — Deployment model: P2P over QUIC, no Kubernetes
             
           </span>
         </div>
@@ -690,6 +690,67 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Implementation plan">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-bootstrap-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Bootstrap CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-ca-without-cert-manager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. CA without cert-manager
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#3-discovery-gossip-not-dns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Discovery: gossip, not DNS
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#4-upgrade-story" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Upgrade story
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#5-multi-arch-signed-binaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Multi-arch + signed binaries
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -714,17 +775,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#open-questions-for-implementation-time" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Open questions for implementation time
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -742,7 +792,7 @@
 
 
   
-    <a href="https://github.com/zakuro-ai/zakuro/edit/master/docs/rfcs/0002-auth-mtls-jwt.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/zakuro-ai/zakuro/edit/master/docs/rfcs/0004-deployment-p2p-quic.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -750,78 +800,81 @@
   
 
 
-<h1 id="rfc-0002-authentication-mtls-everywhere-jwt-scopes">RFC 0002 — Authentication: mTLS everywhere + JWT scopes<a class="headerlink" href="#rfc-0002-authentication-mtls-everywhere-jwt-scopes" title="Permanent link">&para;</a></h1>
+<h1 id="rfc-0004-deployment-model-p2p-over-quic-no-kubernetes">RFC 0004 — Deployment model: P2P over QUIC, no Kubernetes<a class="headerlink" href="#rfc-0004-deployment-model-p2p-over-quic-no-kubernetes" title="Permanent link">&para;</a></h1>
 <ul>
 <li><strong>Status:</strong> Accepted (2026-05)</li>
-<li><strong>Closes:</strong> <a href="https://github.com/zakuro-ai/zakuro/issues/115">#115</a>, <a href="https://github.com/zakuro-ai/zakuro/issues/116">#116</a></li>
-<li><strong>Depends on:</strong> <a href="../0001-wire-format-postcard/">RFC 0001</a> (HMAC keys for payload signing piggy-back on the JWT trust chain)</li>
+<li><strong>Closes:</strong> <a href="https://github.com/zakuro-ai/zakuro/issues/131">#131</a> (k8s operator + CRDs — <strong>won't fix</strong>), <a href="https://github.com/zakuro-ai/zakuro/issues/132">#132</a> (Helm chart — <strong>won't fix</strong>)</li>
+<li><strong>Amends:</strong> <a href="../0002-auth-mtls-jwt/">RFC 0002</a> (the cert-manager dependency in §"Internal CA on the deployment cluster" is dropped)</li>
 </ul>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
-<p>Today Zakuro authenticates with a single shared secret per worker (<code>ZAKURO_AUTH</code> env var). That model:</p>
-<ul>
-<li>has no rotation story</li>
-<li>gives the broker no way to enforce per-tenant quotas or isolation</li>
-<li>gives the worker no way to refuse a spoofed broker connection</li>
-<li>exposes any leaked env var as a full-tenant takeover</li>
-</ul>
-<p><a href="https://github.com/zakuro-ai/zakuro/issues/115">#115</a> wants mTLS across the runtime. <a href="https://github.com/zakuro-ai/zakuro/issues/116">#116</a> wants server-side auth enforcement. The two are inseparable: mTLS authenticates the <em>peer</em>, JWT authenticates the <em>request</em>.</p>
+<p>The earlier hardening backlog (#131, #132) assumed Kubernetes as the operational substrate — operator + CRDs to model nodes, Helm to package the release, cert-manager to issue mTLS certs. That assumption was reversed in the May 2026 strategy pass: Zakuro is now positioned as a <strong>P2P runtime over QUIC</strong>, not a k8s workload. The runtime should bootstrap itself, discover peers without an orchestrator, and require no cluster-side infrastructure to come up.</p>
+<p>This RFC documents that pivot and lays out the replacement deployment story so the consequential RFCs (0002 CA, 0007 gossip, 0008 isolation) have a consistent model to build on.</p>
 <h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
-<p><strong>mTLS at the transport, JWT-with-scopes at the request.</strong> Both required, neither alone is sufficient.</p>
-<ul>
-<li><strong>mTLS layer</strong> — every QUIC connection and every HTTP request between {client, broker, worker, dashboard} presents an X.509 client certificate. Certificates are issued by an internal CA managed by <a href="https://cert-manager.io/">cert-manager</a> on the deployment cluster; SPIFFE-compatible SAN identities (<code>spiffe://zakuro.ai/ns/&lt;tenant&gt;/sa/&lt;service&gt;</code>) so the SVID model lands cleanly later.</li>
-<li><strong>JWT layer</strong> — once mTLS verifies the peer, the request carries an <code>Authorization: Bearer &lt;jwt&gt;</code> header. The JWT is short-lived (15 min), signed by a per-cluster Ed25519 key, and carries <code>tenant-id</code>, <code>worker-id</code>, and a <code>scopes</code> claim (<code>exec:fn</code>, <code>exec:cls</code>, <code>admin:credits</code>, ...).</li>
-<li><strong>Refusal semantics</strong> — a worker that receives a connection without a valid client cert closes the QUIC stream before reading any bytes. A worker that receives a valid mTLS connection but a missing / expired / wrong-scope JWT returns 401 / QUIC error code 0x100 with no payload.</li>
-</ul>
-<p>Rationale:</p>
-<ul>
-<li>mTLS-only would force every authorisation decision into the cert subject — and certs are slow to rotate. JWT scopes carry the per-request authorisation cleanly.</li>
-<li>JWT-only would leave the peer identity unverified at the transport layer; a stolen JWT is a tenant takeover until expiry. mTLS short-circuits that.</li>
-<li>The "mTLS + JWT" pattern is the enterprise default (Istio, Linkerd, Google's <a href="https://cloud.google.com/beyondcorp">BeyondCorp</a>, AWS App Mesh). Following the pack here is the right call.</li>
-</ul>
+<p><strong>Zakuro nodes self-bootstrap, mutually authenticate over mTLS, and join a P2P mesh via gossip over QUIC.</strong> No Kubernetes, no Helm, no cert-manager. The deployment artefact is a single signed binary (broker) + a single signed wheel (worker), plus a one-shot bootstrap command.</p>
+<p>The three substrates the earlier model leaned on are replaced as follows:</p>
+<table>
+<thead>
+<tr>
+<th>Removed</th>
+<th>Replaced by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Kubernetes pods + Services</strong></td>
+<td>OS processes registered in the mesh via gossip. Each node has a stable <code>node_id</code> derived from its long-lived signing key.</td>
+</tr>
+<tr>
+<td><strong>cert-manager</strong></td>
+<td>A built-in self-signed CA bootstrapped by the first node, with new nodes admitted via a one-time <code>zakuro join --token &lt;secret&gt;</code> flow (token is a short-lived JWT issued by an existing mesh member). Long-lived rotation handled by re-issuance during the gossip handshake.</td>
+</tr>
+<tr>
+<td><strong>Helm chart</strong></td>
+<td>A single <code>zakuro install</code> CLI command that writes a systemd unit (Linux) / launchd plist (macOS) and provisions the working directory + age key. For container deployments, <code>docker run zakuroai/zakuro-worker</code> plus env vars is the documented path.</td>
+</tr>
+</tbody>
+</table>
+<p>A team that <em>does</em> want to deploy on Kubernetes still can — the worker image runs in any container scheduler and the broker has no k8s-specific dependencies. But k8s is no longer the recommended path and we do not maintain k8s-specific artefacts in this repo.</p>
 <h2 id="implementation-plan">Implementation plan<a class="headerlink" href="#implementation-plan" title="Permanent link">&para;</a></h2>
-<p><strong>Step 0 — internal CA without cert-manager</strong></p>
-<p>This paragraph is <strong>amended by <a href="../0004-deployment-p2p-quic/">RFC 0004</a></strong> — the original draft assumed Kubernetes + cert-manager. The deployment pivot to P2P-over-QUIC drops that dependency:</p>
+<h3 id="1-bootstrap-cli">1. Bootstrap CLI<a class="headerlink" href="#1-bootstrap-cli" title="Permanent link">&para;</a></h3>
+<p>A new entry point <code>zakuro init</code> lives in <code>zakuro/worker/cli.py</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>zakuro<span class="w"> </span>init<span class="w">                    </span><span class="c1"># First node in a mesh — generates the CA</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">                               </span><span class="c1"># root, the node&#39;s signing key, and a join</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">                               </span><span class="c1"># token. Prints the token + the listening</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">                               </span><span class="c1"># mesh address to stdout.</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>zakuro<span class="w"> </span>join<span class="w"> </span>--addr<span class="w"> </span>&lt;seed:4433&gt;<span class="w"> </span>--token<span class="w"> </span>&lt;token&gt;
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">                               </span><span class="c1"># Subsequent nodes — call the seed over</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">                               </span><span class="c1"># QUIC, present the token, receive a</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">                               </span><span class="c1"># signed mTLS cert valid for 24 h, write</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">                               </span><span class="c1"># it to ~/.zakuro/certs/.</span>
+</code></pre></div>
+<p>The token is a 15-minute Ed25519-signed claim with <code>purpose: "mesh-join"</code>. The seed verifies the token, signs the new node's CSR, and registers the node in its local gossip view. The new node receives a snapshot of the current peer list and starts gossiping.</p>
+<h3 id="2-ca-without-cert-manager">2. CA without cert-manager<a class="headerlink" href="#2-ca-without-cert-manager" title="Permanent link">&para;</a></h3>
+<p>A single per-mesh CA, rooted at the first node, stored encrypted under SOPS+age (see <a href="https://github.com/zakuro-ai/zakuro/blob/master/docs/secrets.md">docs/secrets.md</a>).</p>
 <ul>
-<li>The CA root is generated by the first node via <code>zakuro init</code> and stored in a SOPS-encrypted file at <code>secrets/ca-root.sops.yaml</code> (workflow in <a href="https://github.com/zakuro-ai/zakuro/blob/master/docs/secrets.md"><code>docs/secrets.md</code></a>).</li>
-<li>Intermediate certs (one per quorum member, 3–5 nodes) sign short-lived (24 h) node certs during the gossip handshake.</li>
-<li>New nodes join the mesh via <code>zakuro join --token &lt;one-time-jwt&gt;</code> — the seed verifies the token, signs the joiner's CSR, and registers them in the gossip view.</li>
-<li>For laptop-dev runs, <code>scripts/dev-ca-bootstrap.sh</code> generates a one-shot CA + per-service cert into <code>./certs/</code> and the worker reads from there when <code>ZAKURO_CERT_DIR</code> is set.</li>
+<li><strong>Root key:</strong> generated once by <code>zakuro init</code>, written to <code>secrets/ca-root.sops.yaml</code>. Operationally treated like an offline root — only loaded into memory during issuance.</li>
+<li><strong>Intermediate:</strong> one per mesh-quorum member (3–5 nodes), rotated quarterly. The intermediate is what signs short-lived (24 h) node certs during the gossip handshake.</li>
+<li><strong>Trust anchor distribution:</strong> every node ships with the previous-generation intermediate public key in its image; rotations are propagated via gossip so a node coming back online after a rotation can still verify its peers.</li>
 </ul>
-<p>The rest of this RFC (JWT issuance, transport-level mTLS, request-side enforcement, observability tags, strict-mode rollout) survives the deployment pivot unchanged — those are orthogonal to where the CA lives.</p>
-<p><strong>Step 1 — transport: QUIC + HTTP both require client certs</strong></p>
+<p>The RFC 0002 §"Internal CA on the deployment cluster" step is replaced by §"CA without cert-manager" below; the rest of RFC 0002 (JWT scopes, mTLS-at-transport, JWT verification middleware) survives unchanged.</p>
+<h3 id="3-discovery-gossip-not-dns">3. Discovery: gossip, not DNS<a class="headerlink" href="#3-discovery-gossip-not-dns" title="Permanent link">&para;</a></h3>
+<p>A separate forthcoming RFC will pick the gossip protocol shape (closing #138). Summary: each node periodically pushes its peer view to a random subset of peers; failure detection via phi-accrual. No external Consul / etcd / DNS-SD.</p>
+<p>For laptop-dev, <code>ZAKURO_SEED_ADDR</code> env var pins a seed; for production, the bootstrap CLI writes the discovered seed set into <code>~/.zakuro/peers.json</code>.</p>
+<h3 id="4-upgrade-story">4. Upgrade story<a class="headerlink" href="#4-upgrade-story" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>crates/sakura-wire</code> QUIC server config switches from <code>with_no_client_auth()</code> to <code>with_client_cert_verifier(...)</code> against the cluster CA.</li>
-<li><code>zakuro.worker.server</code> FastAPI app gets a middleware that reads the peer cert from <code>request.client.cert</code> (when behind a TLS-terminating ingress, the ingress passes it via the standard <code>X-Forwarded-Client-Cert</code> header per RFC 9440) and asserts the SVID matches the expected namespace.</li>
-<li><code>zakuro.client.ZakuroClient</code> reads its own cert from <code>ZAKURO_CERT_DIR/tls.crt</code> + <code>tls.key</code>, passes them to <code>httpx</code> and to <code>aioquic</code>'s <code>Configuration</code>.</li>
+<li><strong>Rolling, peer-driven.</strong> Each node restarts when its binary changes. Mesh re-stabilises within ~30 s of the restart (gossip TTL).</li>
+<li><strong>No drain-then-replace</strong> as in k8s. In-flight jobs are migrated to a healthy peer via the dispatcher's existing retry path (<code>AdaptiveCompute</code> already handles <code>ConnectionError</code> mid-flight).</li>
+<li><strong>Version skew.</strong> Both the wire format (RFC 0001 postcard envelope) and the gossip protocol (RFC 0007) carry an explicit <code>version</code> field. Two consecutive minor versions are guaranteed to interoperate; a major bump requires a full mesh restart at the maintainer's choice of window.</li>
 </ul>
-<p><strong>Step 2 — JWT issuance + verification</strong></p>
-<ul>
-<li>New tiny service / library <code>zakuro.auth.jwt</code>:</li>
-<li><code>issue(tenant_id, worker_id, scopes, ttl=900) -&gt; str</code> — used by the broker on behalf of a client after the client's cert is verified.</li>
-<li><code>verify(token: str, *, expected_audience) -&gt; Claims</code> — used by every server-side request handler.</li>
-<li>Signing key: Ed25519, stored in the broker as a SOPS-encrypted file (<code>secrets/jwt-signing.sops.yaml</code>). Public verification key bundled in the worker image at build time.</li>
-<li>Claims structure follows <a href="https://datatracker.ietf.org/doc/html/rfc7519">RFC 7519</a> + standard <code>aud</code>, <code>exp</code>, <code>nbf</code>, <code>jti</code> + custom <code>tenant_id</code>, <code>worker_id</code>, <code>scopes</code> (string array).</li>
-<li>Refresh: client refreshes its JWT 5 minutes before expiry by re-authenticating to the broker. No long-lived refresh tokens.</li>
-</ul>
-<p><strong>Step 3 — request-side enforcement</strong></p>
-<ul>
-<li>Worker handlers (<code>/execute</code>, <code>/cancel</code>, <code>/info</code>) require:</li>
-<li>mTLS peer cert validates against <code>zakuro-internal-ca</code>.</li>
-<li>JWT in <code>Authorization</code> is valid and includes the matching <code>exec:*</code> scope.</li>
-<li>The JWT's <code>worker_id</code> claim matches <code>os.environ['ZAKURO_WORKER_ID']</code> — prevents replay against the wrong worker.</li>
-<li>HMAC key for <a href="../0001-wire-format-postcard/">RFC 0001</a>'s payload signing is derived as <code>HKDF(jwt.signing_key, info=f"payload:{tenant_id}")</code>. Stored in the worker's local memory, never on disk.</li>
-</ul>
-<p><strong>Step 4 — observability + audit</strong></p>
-<ul>
-<li>Every auth failure emits a structured log line (RFC 0003 format) with <code>tenant_id</code>, <code>subject_cn</code>, <code>reason</code>, plus a Prometheus counter <code>zakuro_auth_failure_total{reason=...}</code>.</li>
-<li>Every Sentry event automatically gets the tag <code>auth.subject_cn</code> via <a href="https://github.com/zakuro-ai/zakuro/blob/master/zakuro/observability/sentry.py"><code>zakuro.observability.set_request_context</code></a> — already wired in #128.</li>
-</ul>
-<p><strong>Step 5 — flip strict</strong></p>
-<ul>
-<li>Remove the <code>ZAKURO_AUTH=demo</code> default from compose / charts.</li>
-<li>Document the rollout in <a href="../../STABILITY/"><code>docs/STABILITY.md</code></a> as a v0.4 breaking change (clients pre-v0.4 cannot talk to a v0.4 worker without certs).</li>
-<li>ALPN bump to <code>zk-worker-v2</code> (also serves RFC 0001's wire-format bump, so the two ship together).</li>
-</ul>
+<h3 id="5-multi-arch-signed-binaries">5. Multi-arch + signed binaries<a class="headerlink" href="#5-multi-arch-signed-binaries" title="Permanent link">&para;</a></h3>
+<p>The release pipeline already publishes Cosign-signed multi-arch images (RFC implicit — see #121, #133, #134). The CLI binary is added as a third signed artifact: GitHub Release attaches <code>zakuro-linux-{amd64,arm64}</code> and <code>zakuro-darwin-{amd64,arm64}</code>, each with a SLSA L3 attestation. Verification:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>slsa-verifier<span class="w"> </span>verify-artifact<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span>--provenance-path<span class="w"> </span>zakuro-linux-amd64.intoto.jsonl<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span>--source-uri<span class="w"> </span>github.com/zakuro-ai/zakuro<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span>--source-tag<span class="w"> </span>vX.Y.Z<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span>zakuro-linux-amd64
+</code></pre></div>
 <h2 id="rejected-alternatives">Rejected alternatives<a class="headerlink" href="#rejected-alternatives" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -832,35 +885,39 @@
 </thead>
 <tbody>
 <tr>
-<td>mTLS-only</td>
-<td>Forces every authorisation decision into the cert subject. Certs are slow to rotate; scopes are dynamic.</td>
+<td>Keep Kubernetes as the recommended path</td>
+<td>Imposes operator burden (cluster, kubelet, control plane) on every Zakuro consumer. Goes against the "decorate a function, ship it" pitch in <a href="https://github.com/zakuro-ai/zakuro/blob/master/PRD.md">PRD.md</a>.</td>
 </tr>
 <tr>
-<td>API keys + TLS</td>
-<td>Statu quo, no rotation, no per-request scoping. The whole reason we're rewriting.</td>
+<td>Standalone binary + manual peer config (no gossip)</td>
+<td>Works for ≤3 nodes; collapses at 10+. The mesh value-prop assumes auto-discovery.</td>
 </tr>
 <tr>
-<td>OIDC short-lived tokens (Sigstore-style)</td>
-<td>Powerful for CI-driven access but worse runtime ergonomics — the worker needs to verify each token against an OIDC discovery doc on every request, latency cost.</td>
+<td>Nomad / HashiCorp stack</td>
+<td>Lighter than k8s, but still external orchestrator. The P2P story is more compelling commercially (operates anywhere, no cluster required).</td>
 </tr>
 <tr>
-<td>SPIRE + SVIDs everywhere, no JWT</td>
-<td>SPIRE is the right long-term move for cert identity but its agent is heavier than cert-manager. JWT layer survives a SPIRE migration unchanged.</td>
+<td>libp2p as the transport</td>
+<td>Mature P2P stack but pulls in DHT, NAT-traversal, content-routing layers we don't need yet. QUIC + custom gossip stays leaner. Re-evaluate if NAT-traversal becomes a customer ask.</td>
 </tr>
 </tbody>
 </table>
 <h2 id="migration-rollout">Migration / rollout<a class="headerlink" href="#migration-rollout" title="Permanent link">&para;</a></h2>
-<p>The deployment can't go from "no auth" to "mTLS + JWT required" overnight. The plan is three flag gates:</p>
 <ol>
-<li><strong>0.3.x — soft enforcement.</strong> Both layers run, but failures only emit metrics + warnings. Existing <code>ZAKURO_AUTH</code> env-var path still accepted.</li>
-<li><strong>0.4.0 — hard enforcement, env-var still accepted.</strong> mTLS + JWT required for every new connection. Old shared-secret accepted only for connections initiated before the 0.4 worker boot.</li>
-<li><strong>0.5.0 — env-var removed.</strong> ZAKURO_AUTH path deleted. ALPN bump (zk-worker-v2 only).</li>
+<li>This RFC merges.</li>
+<li>
+<h1 id="131-k8s-operator-and-132-helm-chart-are-closed-as-wont-fix-with-a-back-link-to-this-rfc">131 (k8s operator) and #132 (Helm chart) are closed as <strong>won't fix</strong> with a back-link to this RFC.<a class="headerlink" href="#131-k8s-operator-and-132-helm-chart-are-closed-as-wont-fix-with-a-back-link-to-this-rfc" title="Permanent link">&para;</a></h1>
+</li>
+<li>RFC 0002 is amended: the cert-manager paragraph is replaced by the §"CA without cert-manager" model above.</li>
+<li>RFC 0007 (mesh gossip) lands separately — protocol details. This RFC commits us to <em>having</em> gossip; 0007 picks the wire shape.</li>
+<li>RFC 0008 (tenant isolation) lands separately — given no pods, isolation moves to per-process. Same dependency chain.</li>
+<li>The CLI bootstrap (<code>zakuro init</code>, <code>zakuro join</code>) ships in a v0.4 release; existing docker-compose flow remains supported for one minor.</li>
 </ol>
 <h2 id="open-questions-for-implementation-time">Open questions for implementation time<a class="headerlink" href="#open-questions-for-implementation-time" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Tenant key separation in CI/dev.</strong> Dev shouldn't share secrets with prod. Address by <code>secrets/&lt;env&gt;/jwt-signing.sops.yaml</code> with separate age recipient sets.</li>
-<li><strong>JWT revocation list.</strong> TTL is 15 min so a stolen token is short-lived, but a revocation list (Redis-backed, on-broker) gives faster cutoff. Defer until first incident or first customer asks.</li>
-<li><strong>Cert renewal on a long-running worker.</strong> cert-manager rotates the cert on disk; the worker must reload the rustls config without dropping in-flight QUIC streams. Track as its own implementation note in the rollout PR.</li>
+<li><strong>NAT traversal.</strong> Pure P2P over QUIC works on LAN and on internet-facing nodes with public IPs. Cross-NAT mesh members may need an embedded TURN-style relay node. Defer until the first customer asks for a behind-NAT cluster.</li>
+<li><strong>Multi-mesh federation.</strong> Joining two existing meshes is non-trivial (CA roots differ). Out of scope for v1; document as a deliberate non-goal.</li>
+<li><strong>Operator-style automation for power users.</strong> Some buyers (k8s-native shops) will still want a k8s operator. If demand surfaces, the operator becomes a <em>third-party</em> repo that wraps the <code>zakuro init/join</code> CLI, not a first-party deliverable.</li>
 </ul>
 
 

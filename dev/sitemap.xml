@@ -49,6 +49,18 @@
          <lastmod>2026-05-16</lastmod>
     </url>
     <url>
+         <loc>https://docs.zakuro.ai/latest/rfcs/0004-deployment-p2p-quic/</loc>
+         <lastmod>2026-05-16</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.zakuro.ai/latest/rfcs/0005-credit-ledger-double-entry/</loc>
+         <lastmod>2026-05-16</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.zakuro.ai/latest/rfcs/0006-batch-dispatch-async-iterator/</loc>
+         <lastmod>2026-05-16</lastmod>
+    </url>
+    <url>
          <loc>https://docs.zakuro.ai/latest/security/verifying-releases/</loc>
          <lastmod>2026-05-16</lastmod>
     </url>
