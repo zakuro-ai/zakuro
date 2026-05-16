@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://docs.zakuro.ai/latest/security/verifying-releases/">
+        <link rel="canonical" href="https://docs.zakuro.ai/latest/rfcs/0001-wire-format-postcard/">
       
       
       
@@ -23,7 +23,7 @@
     
     
       
-        <title>Verifying Zakuro releases - Zakuro</title>
+        <title>RFC 0001 — Wire format: replace cloudpickle with postcard - Zakuro</title>
       
     
     
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#verifying-zakuro-releases" class="md-skip">
+        <a href="#rfc-0001-wire-format-replace-cloudpickle-with-postcard" class="md-skip">
           Skip to content
         </a>
       
@@ -114,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Verifying Zakuro releases
+              RFC 0001 — Wire format: replace cloudpickle with postcard
             
           </span>
         </div>
@@ -660,10 +660,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#wheel-verify-slsa-provenance" class="md-nav__link">
+  <a href="#context" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Wheel — verify SLSA provenance
+        Context
       
     </span>
   </a>
@@ -671,10 +671,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#container-image-verify-cosign-signature" class="md-nav__link">
+  <a href="#decision" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Container image — verify Cosign signature
+        Decision
       
     </span>
   </a>
@@ -682,10 +682,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#container-image-retrieve-the-sbom" class="md-nav__link">
+  <a href="#implementation-plan" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Container image — retrieve the SBOM
+        Implementation plan
       
     </span>
   </a>
@@ -693,10 +693,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#pin-to-a-digest-for-production" class="md-nav__link">
+  <a href="#rejected-alternatives" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Pin to a digest for production
+        Rejected alternatives
       
     </span>
   </a>
@@ -704,10 +704,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#reporting-a-verification-failure" class="md-nav__link">
+  <a href="#migration-rollout" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Reporting a verification failure
+        Migration / rollout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions-for-implementation-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open questions for implementation time
       
     </span>
   </a>
@@ -731,7 +742,7 @@
 
 
   
-    <a href="https://github.com/zakuro-ai/zakuro/edit/master/docs/security/verifying-releases.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/zakuro-ai/zakuro/edit/master/docs/rfcs/0001-wire-format-postcard.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -739,102 +750,113 @@
   
 
 
-<h1 id="verifying-zakuro-releases">Verifying Zakuro releases<a class="headerlink" href="#verifying-zakuro-releases" title="Permanent link">&para;</a></h1>
-<p>Every Zakuro release is signed and attested:</p>
+<h1 id="rfc-0001-wire-format-replace-cloudpickle-with-postcard">RFC 0001 — Wire format: replace cloudpickle with postcard<a class="headerlink" href="#rfc-0001-wire-format-replace-cloudpickle-with-postcard" title="Permanent link">&para;</a></h1>
+<ul>
+<li><strong>Status:</strong> Accepted (2026-05)</li>
+<li><strong>Closes:</strong> <a href="https://github.com/zakuro-ai/zakuro/issues/117">#117</a></li>
+<li><strong>Authors:</strong> Maintainers + AI cleanup-sprint pass</li>
+</ul>
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<p>Today <code>zakuro.worker.server</code> and <code>zakuro.client.ZakuroClient</code> ship Python callables across the network using <code>cloudpickle.dumps</code> / <code>cloudpickle.loads</code>. This is:</p>
+<ol>
+<li><strong>An RCE primitive.</strong> <code>cloudpickle.loads</code> on an attacker-influenced byte stream executes arbitrary code in the worker's process. The plugin POC's <a href="https://github.com/zakuro-ai/sakura/blob/master/THREAT_MODEL.md"><code>THREAT_MODEL.md</code></a> calls this out as the highest single-point-of-risk in the runtime.</li>
+<li><strong>The blocker on the Semgrep ratchet.</strong> The <code>zakuro.deserialization.cloudpickle-loads-untrusted</code> rule (<code>.semgrep/zakuro.yml</code>) fires on every <code>cloudpickle.loads</code> call site. The SAST lane is <code>continue-on-error: true</code> <em>because</em> this rule cannot be honoured today. Removing the call sites flips the lane back to strict.</li>
+<li><strong>Cross-language brittle.</strong> A Rust broker (<code>zc</code>) cannot inspect a cloudpickle payload without bundling a CPython interpreter. The postcard pivot is what unlocks the broker doing routing decisions on payload metadata.</li>
+</ol>
+<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
+<p><strong>Adopt <code>postcard</code> (Rust + Python) as the wire format for <code>ExecutionPlan</code>, <code>ExecutionResult</code>, and the function-dispatch envelope. Restrict <code>cloudpickle</code> to a narrow, audited path used only for the <em>callable body</em> of an <code>@zk.fn</code> and only across mTLS-verified trusted peers.</strong></p>
+<p>Specifically:</p>
+<ul>
+<li>The <strong>envelope</strong> (job-id, tenant-id, resource limits, hash of the callable, hash of the args) is postcard-encoded <code>serde</code> structs defined in <code>crates/zakuro-wire</code>.</li>
+<li>The <strong>callable body</strong> (function bytecode + closure cells) and the <strong>args</strong> are carried as opaque <code>bytes</code> fields inside the postcard envelope.</li>
+<li>The body is signed (HMAC with a per-tenant key derived from the JWT — see <a href="../0002-auth-mtls-jwt/">RFC 0002</a>) and the signature is verified before any <code>cloudpickle.loads</code> call.</li>
+<li>A worker that receives an envelope whose signature does not verify drops the payload and emits a security event without invoking the deserialiser.</li>
+</ul>
+<p>Rationale for postcard:</p>
+<ul>
+<li>Already in <code>sakura</code>'s workspace deps (<code>postcard = "1.0"</code>) so the broker can decode without a new external dep.</li>
+<li>Zero-copy on the Rust side; ~2× faster than msgpack for our payload shape.</li>
+<li><code>serde</code>-driven on both ends — a Python binding via PyO3 + <code>serde-pyobject</code> gives ergonomic conversion to/from Pydantic models with no schema duplication.</li>
+<li>Forward-compatibility via <code>#[serde(default)]</code> and the new <code>Variant: Future</code> enum tail — same migration tools as JSON.</li>
+</ul>
+<h2 id="implementation-plan">Implementation plan<a class="headerlink" href="#implementation-plan" title="Permanent link">&para;</a></h2>
+<p><strong>Step 0 — schema crate</strong> (<code>crates/zakuro-wire</code>):</p>
+<ul>
+<li>Define <code>pub struct Envelope</code>, <code>pub struct Job</code>, <code>pub struct Result</code>, <code>pub enum Error</code> with <code>#[derive(Serialize, Deserialize)]</code>.</li>
+<li>Pin postcard to the workspace version. Re-export <code>postcard::to_allocvec</code> / <code>postcard::from_bytes</code> as the only API the binding crate calls.</li>
+<li>Snapshot tests against frozen byte vectors so future schema changes are explicit.</li>
+</ul>
+<p><strong>Step 1 — Python binding</strong> (<code>zakuro/_wire/</code>):</p>
+<ul>
+<li>New tiny extension via PyO3 + <code>serde-pyobject</code> exposing <code>pack(envelope: dict) -&gt; bytes</code> and <code>unpack(blob: bytes) -&gt; dict</code>.</li>
+<li>Wrap into <code>zakuro.wire.safe_loads(blob: bytes, *, public_key) -&gt; Envelope</code> that verifies the HMAC and refuses any unauthenticated input.</li>
+<li>Mark <code>zakuro.wire.unsafe_pickle_load</code> (the cloudpickle fallback) with a deprecation warning and a <code># type: ignore[zakuro-safe-pickle]</code> escape hatch the Semgrep rule already understands.</li>
+</ul>
+<p><strong>Step 2 — replace call sites</strong>:</p>
+<ul>
+<li><code>zakuro/worker/server.py</code> <code>/execute</code> handler — was <code>cloudpickle.loads(payload)</code>. Becomes:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">envelope</span> <span class="o">=</span> <span class="n">zakuro</span><span class="o">.</span><span class="n">wire</span><span class="o">.</span><span class="n">safe_loads</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="n">public_key</span><span class="o">=</span><span class="n">tenant_key</span><span class="p">(</span><span class="n">request</span><span class="p">))</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">callable_blob</span> <span class="o">=</span> <span class="n">envelope</span><span class="o">.</span><span class="n">callable</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># Inside the verified envelope, cloudpickle.loads is the trusted path.</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">func</span> <span class="o">=</span> <span class="n">cloudpickle</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">callable_blob</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li><code>zakuro/client.py</code> <code>execute()</code> — wrap the cloudpickled callable in <code>Envelope { callable: bytes, args: bytes, ... }</code> and serialise with <code>zakuro.wire.pack(...)</code> before sending.</li>
+<li><code>sakura/dispatch/remote.py:27</code> (the one Semgrep flags) — same shape on the sakura side.</li>
+</ul>
+<p><strong>Step 3 — flip Semgrep to strict</strong>:</p>
+<ul>
+<li>Drop the <code>--error</code>-disabled run in <code>.github/workflows/sast.yml</code>.</li>
+<li>Update <code>.semgrep/zakuro.yml</code> to allow <code>cloudpickle.loads</code> only inside <code>zakuro.wire.*</code> and <code>tests/</code>.</li>
+</ul>
+<p><strong>Step 4 — wire-protocol version bump</strong>:</p>
+<ul>
+<li>Bump the QUIC ALPN to <code>zk-worker-v2</code> so a v1 client cannot accidentally talk to a v2 worker (the v1 payload is raw cloudpickle; v2 is a postcard envelope).</li>
+<li>Document in <a href="../../PROTOCOL/"><code>docs/PROTOCOL.md</code></a> — v2 envelope shape + HMAC verification flow.</li>
+</ul>
+<h2 id="rejected-alternatives">Rejected alternatives<a class="headerlink" href="#rejected-alternatives" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>Artefact</th>
-<th>Signed with</th>
-<th>Provenance</th>
-<th>SBOM</th>
+<th>Option</th>
+<th>Why rejected</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>PyPI wheel <code>zakuro-ai-&lt;version&gt;-py3-none-any.whl</code></td>
-<td>SLSA L3 (built-in)</td>
-<td>SLSA generator</td>
-<td>CycloneDX, in <code>dist/sbom.cyclonedx.json</code> + GitHub Release asset</td>
+<td>msgpack</td>
+<td>Schema-less, but slower than postcard on our payload shape and adds a dep on both sides. Postcard already in workspace.</td>
 </tr>
 <tr>
-<td>Container image <code>zakuroai/zakuro-worker:&lt;tag&gt;</code></td>
-<td>Cosign keyless (Sigstore / Rekor)</td>
-<td>Cosign SLSA attestation</td>
-<td>CycloneDX, attached as <code>cosign attest</code> predicate + Release asset</td>
+<td>protobuf</td>
+<td>Schema-enforced and mature, but the build pipeline cost (proto compilation, generated code in two languages, breaking on schema changes) is high for the marginal benefit.</td>
 </tr>
 <tr>
-<td>Container image <code>zakuroai/zakuro-broker:&lt;tag&gt;</code></td>
-<td>Cosign keyless (Sigstore / Rekor)</td>
-<td>Cosign SLSA attestation</td>
-<td>CycloneDX, attached as <code>cosign attest</code> predicate + Release asset</td>
+<td>Pydantic-only JSON</td>
+<td>Already in deps and human-debuggable, but ~10× slower than postcard at the payload sizes we measure on the bench harness — not acceptable for high-RPS broker dispatch.</td>
 </tr>
 <tr>
-<td>Same images mirrored to <code>ghcr.io/zakuro-ai/...</code></td>
-<td>same</td>
-<td>same</td>
-<td>same</td>
+<td>Keep cloudpickle, add mTLS-only peer auth</td>
+<td>Closes the network-attacker case but leaves the in-process / sidecar attacker (someone who can talk to a worker over a Unix socket) with full RCE. Defence-in-depth requires payload-level signing too.</td>
 </tr>
 </tbody>
 </table>
-<p>All signatures are recorded in the public Rekor transparency log.</p>
-<p>The expected signing identity for every release is:</p>
-<table>
-<thead>
-<tr>
-<th>field</th>
-<th>value</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>certificate-identity-regexp</code></td>
-<td><code>^https://github\.com/zakuro-ai/zakuro/\.github/workflows/publish\.yml@refs/tags/.*$</code></td>
-</tr>
-<tr>
-<td><code>certificate-oidc-issuer</code></td>
-<td><code>https://token.actions.githubusercontent.com</code></td>
-</tr>
-</tbody>
-</table>
-<h2 id="wheel-verify-slsa-provenance">Wheel — verify SLSA provenance<a class="headerlink" href="#wheel-verify-slsa-provenance" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nv">TAG</span><span class="o">=</span>v0.2.5<span class="w">                                                      </span><span class="c1"># adjust</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nv">WHEEL</span><span class="o">=</span>zakuro_ai-<span class="si">${</span><span class="nv">TAG</span><span class="p">#v</span><span class="si">}</span>-py3-none-any.whl
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nv">ATT</span><span class="o">=</span><span class="si">${</span><span class="nv">WHEEL</span><span class="si">}</span>.intoto.jsonl
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># Download both from the release page:</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>gh<span class="w"> </span>release<span class="w"> </span>download<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$TAG</span><span class="s2">&quot;</span><span class="w"> </span>-R<span class="w"> </span>zakuro-ai/zakuro<span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$WHEEL</span><span class="s2">&quot;</span><span class="w"> </span>-p<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ATT</span><span class="s2">&quot;</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># slsa-verifier checks: signed by the right workflow, builder == GitHub Actions,</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="c1"># the wheel SHA matches what the workflow attested.</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>slsa-verifier<span class="w"> </span>verify-artifact<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span>--provenance-path<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$ATT</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span>--source-uri<span class="w"> </span>github.com/zakuro-ai/zakuro<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span>--source-tag<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$TAG</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="s2">&quot;</span><span class="nv">$WHEEL</span><span class="s2">&quot;</span>
-</code></pre></div>
-<p>If the wheel was tampered with, the digest comparison fails. If the attestation was forged, the Sigstore cert chain fails.</p>
-<h2 id="container-image-verify-cosign-signature">Container image — verify Cosign signature<a class="headerlink" href="#container-image-verify-cosign-signature" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nv">IMAGE</span><span class="o">=</span>ghcr.io/zakuro-ai/zakuro-worker:0.2.5<span class="w">   </span><span class="c1"># or zakuroai/zakuro-worker:0.2.5</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>cosign<span class="w"> </span>verify<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$IMAGE</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span>--certificate-identity-regexp<span class="w"> </span><span class="s1">&#39;^https://github\.com/zakuro-ai/zakuro/\.github/workflows/publish\.yml@refs/tags/.*$&#39;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span>--certificate-oidc-issuer<span class="w"> </span>https://token.actions.githubusercontent.com
-</code></pre></div>
-<p>Unsigned or tampered images fail verification. There is no fall-through path.</p>
-<h2 id="container-image-retrieve-the-sbom">Container image — retrieve the SBOM<a class="headerlink" href="#container-image-retrieve-the-sbom" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># CycloneDX SBOM attached as a Cosign attestation</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>cosign<span class="w"> </span>download<span class="w"> </span>attestation<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$IMAGE</span><span class="s2">&quot;</span><span class="w"> </span>--predicate-type<span class="o">=</span>cyclonedx<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span>.payload<span class="w"> </span><span class="p">|</span><span class="w"> </span>base64<span class="w"> </span>-d<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
-</code></pre></div>
-<h2 id="pin-to-a-digest-for-production">Pin to a digest for production<a class="headerlink" href="#pin-to-a-digest-for-production" title="Permanent link">&para;</a></h2>
-<p>After verifying once, prefer immutable pinning:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nv">DIGEST</span><span class="o">=</span><span class="k">$(</span>docker<span class="w"> </span>buildx<span class="w"> </span>imagetools<span class="w"> </span>inspect<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$IMAGE</span><span class="s2">&quot;</span><span class="w"> </span>--format<span class="w"> </span><span class="s1">&#39;{{.Manifest.Digest}}&#39;</span><span class="k">)</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$IMAGE</span><span class="s2">@</span><span class="nv">$DIGEST</span><span class="s2">&quot;</span>
-</code></pre></div>
-<p>Use <code>$IMAGE@$DIGEST</code> in <code>docker-compose.yml</code>, Helm values, Kubernetes manifests, etc. — the tag can be reassigned, the digest cannot.</p>
-<h2 id="reporting-a-verification-failure">Reporting a verification failure<a class="headerlink" href="#reporting-a-verification-failure" title="Permanent link">&para;</a></h2>
-<p>If <code>cosign verify</code> or <code>slsa-verifier verify-artifact</code> fails on a wheel or image we appear to have released, <strong>do not run the artefact</strong>. Report to <strong>security@zakuro.ai</strong> — a verification failure on a legitimate Zakuro release is either a supply-chain incident or a packaging bug, and we treat both at the same priority.</p>
+<h2 id="migration-rollout">Migration / rollout<a class="headerlink" href="#migration-rollout" title="Permanent link">&para;</a></h2>
+<ol>
+<li>RFC merged (this PR).</li>
+<li><code>crates/zakuro-wire</code> lands (Step 0). No runtime callers yet.</li>
+<li>Python binding lands (Step 1). Re-export wired into <code>zakuro.wire</code>; the existing cloudpickle path stays alongside under a feature flag.</li>
+<li>Worker + client switch over (Step 2). End-to-end bench harness checked: round-trip latency stays within −5 % / +5 % of cloudpickle.</li>
+<li>Semgrep ratcheted (Step 3).</li>
+<li>ALPN bump (Step 4) under a deprecation window — v1 supported for two minor releases, removed in the third.</li>
+</ol>
+<h2 id="open-questions-for-implementation-time">Open questions for implementation time<a class="headerlink" href="#open-questions-for-implementation-time" title="Permanent link">&para;</a></h2>
+<ul>
+<li>HMAC key derivation: per-tenant or per-worker? Decision deferred to RFC 0002.</li>
+<li><code>serde-pyobject</code> vs a hand-rolled <code>From&lt;PyAny&gt;</code> impl: defer to first implementation PR; benchmark both.</li>
+<li>Compression (zstd?) on the envelope's <code>args</code> field for ML payloads: defer to a separate "wire payload size" investigation once v2 is live.</li>
+</ul>
 
 
 

@@ -29,6 +29,26 @@
          <lastmod>2026-05-16</lastmod>
     </url>
     <url>
+         <loc>https://docs.zakuro.ai/latest/secrets/</loc>
+         <lastmod>2026-05-16</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.zakuro.ai/latest/rfcs/</loc>
+         <lastmod>2026-05-16</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.zakuro.ai/latest/rfcs/0001-wire-format-postcard/</loc>
+         <lastmod>2026-05-16</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.zakuro.ai/latest/rfcs/0002-auth-mtls-jwt/</loc>
+         <lastmod>2026-05-16</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.zakuro.ai/latest/rfcs/0003-observability-stack/</loc>
+         <lastmod>2026-05-16</lastmod>
+    </url>
+    <url>
          <loc>https://docs.zakuro.ai/latest/security/verifying-releases/</loc>
          <lastmod>2026-05-16</lastmod>
     </url>
