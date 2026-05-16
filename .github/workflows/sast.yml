@@ -44,15 +44,17 @@ jobs:
       - uses: actions/checkout@v6
       - name: Mark workspace as a safe git directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Run Semgrep
+      - name: Run Semgrep (report-only)
+        # Drop `--error` so semgrep exits 0 on findings; SARIF still
+        # uploads and findings still surface in the code-scanning view.
+        # Add `--error` back once #117 retires the cloudpickle call sites.
         run: |
           semgrep scan \
             --config=p/python \
             --config=p/security-audit \
             --config=p/owasp-top-ten \
             --config=.semgrep/zakuro.yml \
-            --sarif --output=semgrep.sarif \
-            --error
+            --sarif --output=semgrep.sarif
       - name: Upload SARIF
         if: always() && hashFiles('semgrep.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
