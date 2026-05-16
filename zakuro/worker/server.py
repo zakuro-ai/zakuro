@@ -50,10 +50,136 @@ async def shutdown() -> None:
         executor.shutdown(wait=True)
 
 
+async def _check_event_loop_responsive() -> bool:
+    """Yield to the loop and confirm we get scheduled back. Catches a
+    hung loop scenario where the worker process is up but starved."""
+    try:
+        await asyncio.wait_for(asyncio.sleep(0), timeout=1.0)
+        return True
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        return False
+
+
+async def _check_executor_ready() -> bool:
+    """Has the FastAPI startup event fired and the executor been wired?"""
+    return executor is not None
+
+
+async def _check_broker_reachable() -> tuple[bool, str | None]:
+    """Probe ZAKURO_BROKER_URL/health with a 2s timeout.
+
+    Returns (True, None) if the env var is unset (worker is broker-less),
+    (True, None) on a 2xx response, (False, reason) otherwise.
+    """
+    import os
+    broker_url = os.environ.get("ZAKURO_BROKER_URL", "").strip()
+    if not broker_url:
+        return True, None
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get(f"{broker_url.rstrip('/')}/health")
+        if 200 <= resp.status_code < 300:
+            return True, None
+        return False, f"broker {broker_url} returned {resp.status_code}"
+    except Exception as exc:
+        return False, f"broker {broker_url} unreachable: {exc.__class__.__name__}"
+
+
+async def _check_storage_reachable() -> tuple[bool, str | None]:
+    """Probe the configured MinIO endpoint with a 2s timeout.
+
+    Returns (True, None) if no storage is configured (the worker doesn't
+    depend on a bucket). Otherwise calls `list_buckets()` with a short
+    timeout and reports the outcome.
+    """
+    import os
+    endpoint = os.environ.get("ZAKURO_S3_ENDPOINT", "").strip()
+    access_key = os.environ.get("ZAKURO_S3_ACCESS_KEY", "").strip()
+    secret_key = os.environ.get("ZAKURO_S3_SECRET_KEY", "").strip()
+    if not endpoint or not access_key or not secret_key:
+        return True, None
+    try:
+        from minio import Minio  # type: ignore[import-not-found]
+        client = Minio(
+            endpoint,
+            access_key=access_key,
+            secret_key=secret_key,
+            secure=os.environ.get("ZAKURO_S3_SECURE", "true").lower() == "true",
+        )
+        # list_buckets is a cheap auth + reachability probe.
+        await asyncio.wait_for(
+            asyncio.to_thread(client.list_buckets), timeout=2.0
+        )
+        return True, None
+    except asyncio.TimeoutError:
+        return False, f"storage {endpoint} timed out (2s)"
+    except Exception as exc:
+        return False, f"storage {endpoint} unreachable: {exc.__class__.__name__}"
+
+
+@app.get("/live")
+async def live() -> dict[str, str]:
+    """Liveness probe: process up + event loop responsive.
+
+    Cheap, dependency-free. Kubernetes uses this to decide whether to
+    SIGKILL the pod. Never fail this unless the process is genuinely
+    unrecoverable — failing it triggers a pod restart.
+    """
+    if not await _check_event_loop_responsive():
+        raise HTTPException(status_code=503, detail="event loop unresponsive")
+    return {"status": "alive"}
+
+
+@app.get("/ready")
+async def ready() -> Response:
+    """Readiness probe: deep checks for the dependencies we need to serve.
+
+    Returns 200 only when:
+      - the FastAPI startup event has wired the thread-pool executor,
+      - the broker (if configured) responds 2xx within 2s,
+      - the object store (if configured) lists buckets within 2s.
+
+    A 503 here tells Kubernetes to drop the pod out of the Service while
+    leaving the process alive so in-flight requests can drain. (#126)
+    """
+    failures: list[str] = []
+    checks: dict[str, str | bool] = {}
+
+    if not await _check_executor_ready():
+        failures.append("executor not initialised")
+        checks["executor"] = "not-ready"
+    else:
+        checks["executor"] = "ready"
+
+    broker_ok, broker_reason = await _check_broker_reachable()
+    checks["broker"] = "ready" if broker_ok else (broker_reason or "fail")
+    if not broker_ok:
+        failures.append(broker_reason or "broker check failed")
+
+    storage_ok, storage_reason = await _check_storage_reachable()
+    checks["storage"] = "ready" if storage_ok else (storage_reason or "fail")
+    if not storage_ok:
+        failures.append(storage_reason or "storage check failed")
+
+    status_code = 200 if not failures else 503
+    body = {
+        "status": "ready" if not failures else "not-ready",
+        "checks": checks,
+        "failures": failures,
+    }
+    return JSONResponse(status_code=status_code, content=body)
+
+
 @app.get("/health")
-async def health() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"status": "healthy"}
+async def health() -> Response:
+    """Legacy alias for `/ready`.
+
+    Kept for backwards compatibility with existing Docker HEALTHCHECK
+    consumers and any external monitors that hit `/health`. New
+    integrations should use `/live` and `/ready` directly.
+    """
+    return await ready()
 
 
 @app.get("/info")

@@ -1,0 +1,93 @@
+# mkdocs-material + mike configuration for zakuro-ai/zakuro (#144).
+#
+# Versioned hosting is published to https://docs.zakuro.ai/ via the
+# .github/workflows/docs.yml workflow:
+#   - Every tag push deploys a /<version>/ slot using `mike`.
+#   - The `latest` alias is updated on the most recent release.
+#   - The root redirects to /latest/ via mike's --update-aliases.
+#
+# Local preview:
+#   uv pip install -r requirements-docs.txt
+#   uv run mkdocs serve
+
+site_name: Zakuro
+site_description: Context-aware distributed-ML runtime
+site_url: https://docs.zakuro.ai/
+repo_url: https://github.com/zakuro-ai/zakuro
+repo_name: zakuro-ai/zakuro
+edit_uri: edit/master/docs/
+copyright: BSD-3-Clause
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: deep purple
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+    - search.share
+
+plugins:
+  - search
+  - mike:
+      canonical_version: latest
+      version_selector: true
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [".."]
+          options:
+            show_source: true
+            show_root_heading: true
+            show_signature_annotations: true
+            separate_signature: true
+
+extra:
+  version:
+    provider: mike
+    default: latest
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Quick start: quick-start.md
+  - Reference:
+      - API stability: STABILITY.md
+      - CLI: cli.md
+      - Wire protocol: PROTOCOL.md
+  - Guides:
+      - Getting started: getting-started.md
+  # PRD.md and PLAN.md live at the repo root (outside docs/) so they
+  # remain the canonical product / engineering source of truth for the
+  # README. The Home page links to them via absolute GitHub URLs.

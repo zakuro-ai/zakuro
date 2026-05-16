@@ -194,10 +194,12 @@ uv run python scripts/bench_all.py --log /tmp/zakuro-bench.json
 
 - [`PRD.md`](PRD.md) — product vision (what we're building and why)
 - [`PLAN.md`](PLAN.md) — engineering plan (what's shipped with measured numbers)
+- [`docs/STABILITY.md`](docs/STABILITY.md) — public-API contract: stable surface, semver, deprecation policy, 1.0 LTS window
 - [`docs/getting-started.md`](docs/getting-started.md) — end-to-end guide, "laptop-only" and "networked" paths
 - [`docs/cli.md`](docs/cli.md) — `zakuro-worker` CLI reference
 - [`docs/PROTOCOL.md`](docs/PROTOCOL.md) — QUIC wire protocol (so new bindings can implement against it)
 - [`docs/zc-quic-patch/`](docs/zc-quic-patch/) — Rust broker-side QUIC caller, shipped at [zakuro-ai/zc#31](https://github.com/zakuro-ai/zc/pull/31)
+- Hosted docs (versioned via mkdocs + mike) are published from this repo to **<https://docs.zakuro.ai/>** on every tag; see [`mkdocs.yml`](mkdocs.yml).
 
 ## Related projects
 

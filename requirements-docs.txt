@@ -1,0 +1,8 @@
+# Pinned doc-build deps (kept out of pyproject so they don't pollute the
+# wheel's resolved closure). Update with care — these versions need to
+# stay coherent with each other.
+mkdocs-material>=9.5
+mike>=2.1
+mkdocstrings[python]>=0.27
+pymdown-extensions>=10.14
+pygments>=2.18
