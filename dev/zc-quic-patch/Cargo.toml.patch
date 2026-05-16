@@ -1,0 +1,9 @@
+--- Cargo.toml
++++ Cargo.toml
+@@ -34,6 +34,7 @@
+ rustls = { version = "0.21", features = ["dangerous_configuration", "quic"] }
+ broadcast = "0.1.0"
++thiserror = "1"
+
+ [build-dependencies]
+ built = { version = "0.5", features = ["chrono", "semver"] }
