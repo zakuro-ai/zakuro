@@ -1,29 +1,88 @@
 name: Docker
 
+# Multi-arch container builds (linux/amd64 + linux/arm64). Closes
+# zakuro#133 for the worker image; the compute image was already multi-arch.
+# Adds the distroless variant from zakuro#134 as a dual-publish from the
+# same build context.
+
 on:
   push:
     branches: [master, main]
     paths:
+      - "docker/Dockerfile"
+      - "docker/Dockerfile.distroless"
       - "docker/Dockerfile.compute"
       - "docker/static/**"
       - "zakuro/**"
       - "pyproject.toml"
+      - ".github/workflows/docker.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  build:
+  # ------------------------------------------------------------------
+  # 1. Build the wheel once, reuse it for every image build below.
+  # ------------------------------------------------------------------
+  build-wheel:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
       - name: Build wheel
         run: |
           pip install build
           python -m build --wheel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/*.whl
+          retention-days: 7
+
+  # ------------------------------------------------------------------
+  # 2. Build + push each image variant for linux/amd64 + linux/arm64.
+  # ------------------------------------------------------------------
+  build-image:
+    needs: build-wheel
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Worker — slim variant (existing surface)
+          - dockerfile: docker/Dockerfile
+            dockerhub_name: zakuroai/zakuro-worker
+            ghcr_name: ghcr.io/zakuro-ai/zakuro-worker
+            tag_suffix: ""             # plain :latest, :cpu
+            extra_tags: "zakuroai/zakuro-worker:cpu,ghcr.io/zakuro-ai/zakuro-worker:cpu"
+
+          # Worker — distroless variant (#134)
+          - dockerfile: docker/Dockerfile.distroless
+            dockerhub_name: zakuroai/zakuro-worker
+            ghcr_name: ghcr.io/zakuro-ai/zakuro-worker
+            tag_suffix: "-distroless"
+            extra_tags: ""
+
+          # Compute — already multi-arch pre-#133; kept here so the entire
+          # image matrix lives in one place.
+          - dockerfile: docker/Dockerfile.compute
+            dockerhub_name: zakuroai/zakuro
+            ghcr_name: ghcr.io/zakuro-ai/zakuro
+            tag_suffix: ""
+            extra_tags: "zakuroai/zakuro:cpu,ghcr.io/zakuro-ai/zakuro:cpu"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: wheel
+          path: dist
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -37,13 +96,31 @@ jobs:
           username: zakuroai
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute tags
+        id: tags
+        run: |
+          base_tags="${{ matrix.dockerhub_name }}:latest${{ matrix.tag_suffix }},${{ matrix.ghcr_name }}:latest${{ matrix.tag_suffix }}"
+          if [ -n "${{ matrix.extra_tags }}" ]; then
+            base_tags="${base_tags},${{ matrix.extra_tags }}"
+          fi
+          echo "tags=${base_tags}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push (multi-arch)
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/Dockerfile.compute
+          file: ${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: zakuroai/zakuro:cpu,zakuroai/zakuro:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha,scope=${{ matrix.dockerfile }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.dockerfile }}
+          provenance: mode=max
+          sbom: true

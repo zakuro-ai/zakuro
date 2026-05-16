@@ -1,0 +1,56 @@
+# Worker image (distroless variant) for zakuro#134.
+#
+# Multi-stage build: install everything into a slim builder, then copy the
+# fully-populated site-packages into a distroless runtime that does not
+# carry apt, a shell, or any unprivileged-by-default tooling. The result
+# is smaller (~150-180 MB), has zero apt packages, and runs as the
+# distroless `nonroot` user (uid 65532).
+#
+# Both base images are digest-pinned; Dependabot tracks both the tag and
+# the digest under the `docker` ecosystem (see .github/dependabot.yml).
+#
+# Healthcheck is in-process via urllib (no curl), identical to the slim
+# variant's check.
+
+# ----- builder stage ---------------------------------------------------
+# Use python:3.11-slim to match the distroless runtime's Python 3.11 ABI
+# — wheels with C extensions (pydantic-core, psutil, etc.) are not
+# portable across CPython minor versions.
+FROM python:3.11-slim@sha256:9a7765b36773a37061455b332f18e265e7f58f6fea9c419a550d2a8b0e9db834 AS builder
+
+RUN pip install --no-cache-dir uv
+
+WORKDIR /build
+COPY dist/*.whl /tmp/
+
+# Install into an isolated prefix we can copy verbatim into the runtime.
+ENV INSTALL_PREFIX=/install
+RUN mkdir -p "$INSTALL_PREFIX" \
+    && uv pip install --no-cache --target "$INSTALL_PREFIX" \
+        /tmp/*.whl \
+        fastapi \
+        "uvicorn[standard]" \
+        psutil \
+    && rm /tmp/*.whl
+
+# ----- runtime stage ---------------------------------------------------
+FROM gcr.io/distroless/python3-debian12:nonroot@sha256:7d1042ce588ab97019fe95c24ffca7bc5a82ccdac572511d5e09bda4435c89c5
+
+# Distroless's python3 image puts python at /usr/bin/python. Copy the
+# resolved site-packages from the builder.
+COPY --from=builder /install /app/site-packages
+ENV PYTHONPATH=/app/site-packages
+WORKDIR /app
+
+# Distroless's `nonroot` user is uid 65532 — no useradd needed.
+USER nonroot
+
+EXPOSE 3960
+
+# In-process healthcheck via stdlib. NOTE: distroless ships an `ENTRYPOINT`
+# pointing at /usr/bin/python so HEALTHCHECK arguments are positional after
+# CMD. The shell-form check below is rewritten to pass through Python.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD ["python", "-c", "import urllib.request as r,sys; sys.exit(0 if r.urlopen('http://localhost:3960/health', timeout=3).status==200 else 1)"]
+
+ENTRYPOINT ["python", "-m", "zakuro.worker.server"]
