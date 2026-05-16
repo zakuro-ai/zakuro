@@ -22,12 +22,12 @@ jobs:
     name: CodeQL (python)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: actions/checkout@v6
+      - uses: github/codeql-action/init@v4
         with:
           languages: python
           queries: security-extended,security-and-quality
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
         with:
           category: "/language:python"
 
@@ -41,7 +41,7 @@ jobs:
     container:
       image: returntocorp/semgrep:1.92.0
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Mark workspace as a safe git directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Run Semgrep
@@ -55,7 +55,7 @@ jobs:
             --error
       - name: Upload SARIF
         if: always() && hashFiles('semgrep.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep.sarif
           category: semgrep
@@ -64,7 +64,7 @@ jobs:
     name: gitleaks (secrets)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0   # gitleaks needs full history
       - name: Install gitleaks
@@ -90,7 +90,7 @@ jobs:
             --exit-code 1
       - name: Upload SARIF
         if: always() && hashFiles('gitleaks.sarif') != ''
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: gitleaks.sarif
           category: gitleaks
