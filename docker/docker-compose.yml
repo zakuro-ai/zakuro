@@ -38,7 +38,9 @@ services:
       POSTGRES_PASSWORD: zakuro_secret
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ../../zak-dashboard/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # In-tree bootstrap; the broker runs its own migrations on first start.
+      # Drop additional .sql files in docker/ if you need to pre-seed data.
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
     ports:
       - "5432:5432"
     networks:
@@ -54,9 +56,15 @@ services:
   # Broker - Routes requests to workers
   # ============================================================
   broker:
+    # Default: build the in-tree broker image. The previous build context
+    # `../../zak-zc` pointed at a sibling checkout that does not exist
+    # outside the org's local trees and broke `docker compose up` for fresh
+    # clones (see #111). To use a pre-built published image instead, set
+    # ZAKURO_BROKER_IMAGE in your environment.
+    image: ${ZAKURO_BROKER_IMAGE:-zakuroai/zakuro-broker:dev}
     build:
-      context: ../../zak-zc
-      dockerfile: docker/Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile.broker
     container_name: zakuro-broker
     ports:
       - "9000:9000"

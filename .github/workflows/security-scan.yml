@@ -1,0 +1,137 @@
+name: security-scan
+
+on:
+  push:
+    branches: [main, master, dev]
+  pull_request:
+  schedule:
+    # Daily run so newly disclosed advisories surface even on quiet weeks.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write   # upload SARIF to the GitHub code-scanning view
+
+concurrency:
+  group: security-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pip-audit:
+    name: pip-audit (PyPI advisories)
+    runs-on: ubuntu-latest
+    # report-only on introduction; SARIF/console output is published but the
+    # lane does not block PRs until the existing findings are cleaned up by
+    # Dependabot rollups + targeted bump PRs. Switch to `false` once the
+    # cleanup sprint lands to make this a required check.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+      - name: Export resolved requirements
+        # We feed the locked resolution into pip-audit so the audit reflects
+        # exactly what is installed, not just the loosely-pinned project
+        # specifiers in pyproject.toml.
+        run: |
+          uv export --format requirements-txt --no-hashes \
+            --all-extras --frozen > requirements.audit.txt
+      - name: Install pip-audit
+        run: pipx install pip-audit
+      - name: Run pip-audit
+        run: |
+          pip-audit \
+            --strict \
+            --requirement requirements.audit.txt \
+            --vulnerability-service osv
+      - name: Upload audit input on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-input
+          path: requirements.audit.txt
+          retention-days: 14
+
+  osv-scanner:
+    name: osv-scanner (lockfile)
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v1.9.2"
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    with:
+      scan-args: |-
+        --lockfile=uv.lock
+        --recursive
+
+  trivy-fs:
+    name: trivy fs (repo)
+    runs-on: ubuntu-latest
+    continue-on-error: true   # see pip-audit; ratchet once findings cleaned up
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run trivy fs
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: sarif
+          output: trivy-fs.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+      - name: Upload SARIF
+        if: always() && hashFiles('trivy-fs.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+  trivy-image:
+    name: trivy image
+    runs-on: ubuntu-latest
+    # Currently fails at the docker build step (`lstat /dist`); the Dockerfiles
+    # expect a pre-built wheel dist/ that this CI lane does not yet produce.
+    # Wiring the wheel build into the pipeline is its own ticket — until that
+    # lands, scope this lane as report-only so PR merges are not gated on a
+    # missing build step.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dockerfile: docker/Dockerfile
+            tag: zakuro-worker:scan
+            slug: worker
+          - dockerfile: docker/Dockerfile.broker
+            tag: zakuro-broker:scan
+            slug: broker
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          tags: ${{ matrix.tag }}
+          push: false
+          load: true
+      - name: Run trivy image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ matrix.tag }}
+          format: sarif
+          output: trivy-image-${{ matrix.slug }}.sarif
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+      - name: Upload SARIF
+        if: always() && hashFiles(format('trivy-image-{0}.sarif', matrix.slug)) != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image-${{ matrix.slug }}.sarif
+          category: trivy-image-${{ matrix.slug }}

@@ -63,7 +63,8 @@ all = ["zakuro-ai[worker,dev,all-processors,observability]"]
 [project.urls]
 Homepage = "https://zakuro.ai"
 Documentation = "https://docs.zakuro.ai"
-Repository = "https://github.com/zakuro-ai/zak-zakuro"
+Repository = "https://github.com/zakuro-ai/zakuro"
+Issues = "https://github.com/zakuro-ai/zakuro/issues"
 
 [project.scripts]
 zakuro-worker = "zakuro.worker.cli:main"

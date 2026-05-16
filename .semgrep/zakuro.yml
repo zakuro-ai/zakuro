@@ -1,0 +1,76 @@
+# Custom Semgrep rules for zakuro.
+#
+# Closes the SAST custom-rule half of #122. The first rule targets the
+# specific historical concern called out in the issue: cloudpickle / pickle
+# loads on attacker-influenced input is RCE-as-a-service. We forbid it on
+# anything that looks like a request body, broker payload, or untrusted
+# stream.
+#
+# To extend: add new rules under `rules:` with stable `id`s prefixed
+# `zakuro.<topic>.<short-name>`.
+
+rules:
+  - id: zakuro.deserialization.cloudpickle-loads-untrusted
+    severity: ERROR
+    languages: [python]
+    message: >-
+      cloudpickle.loads / pickle.loads on attacker-influenced input is a
+      remote-code-execution primitive. The Zakuro wire format is being
+      migrated off cloudpickle (#117); until that lands, every call site
+      that deserialises an untrusted byte stream must go through the
+      vetted `zakuro.wire.safe_loads` adapter, not raw cloudpickle.
+    metadata:
+      category: security
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+      references:
+        - https://docs.python.org/3/library/pickle.html#module-pickle
+        - https://github.com/zakuro-ai/zakuro/issues/117
+    patterns:
+      - pattern-either:
+          - pattern: cloudpickle.loads(...)
+          - pattern: pickle.loads(...)
+          - pattern: cloudpickle.load(...)
+          - pattern: pickle.load(...)
+      - pattern-not-inside: |
+          # type: ignore[zakuro-safe-pickle]
+          ...
+      - pattern-not-inside: |
+          def safe_loads(...):
+              ...
+
+  - id: zakuro.deserialization.fastapi-request-pickle
+    severity: ERROR
+    languages: [python]
+    message: >-
+      Deserialising a FastAPI request body with pickle / cloudpickle is a
+      direct RCE sink. Use a Pydantic model or zakuro.wire.safe_loads.
+    metadata:
+      category: security
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+    pattern-either:
+      - pattern: |
+          $X.loads(await $REQ.body())
+      - pattern: |
+          $X.loads($REQ.body())
+      - pattern: |
+          pickle.loads(await $REQ.body())
+      - pattern: |
+          cloudpickle.loads(await $REQ.body())
+
+  - id: zakuro.subprocess.shell-true
+    severity: WARNING
+    languages: [python]
+    message: >-
+      `subprocess.run(..., shell=True)` opens a shell-injection surface
+      whenever any part of the command list is derived from user input.
+      Prefer argv-list invocations.
+    metadata:
+      category: security
+      cwe: "CWE-78: OS Command Injection"
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.run(..., shell=True, ...)
+          - pattern: subprocess.Popen(..., shell=True, ...)
+          - pattern: subprocess.call(..., shell=True, ...)
+          - pattern: subprocess.check_call(..., shell=True, ...)
+          - pattern: subprocess.check_output(..., shell=True, ...)
