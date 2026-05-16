@@ -6,9 +6,18 @@ from typing import TYPE_CHECKING, Optional
 
 import httpx
 
+from zakuro.observability import init_sentry
+
 if TYPE_CHECKING:
     from zakuro.compute import Compute
     from zakuro.config import Config
+
+
+# Idempotent in practice: sentry_sdk.init is safe to call repeatedly and
+# returns the same hub. We trigger it lazily at first client construction
+# so client-side imports of zakuro stay free of Sentry side-effects until
+# something actually talks to a worker.
+_SENTRY_INITIALISED = False
 
 
 class ZakuroClient:
@@ -31,6 +40,10 @@ class ZakuroClient:
         compute: Compute,
         config: Optional[Config] = None,
     ) -> None:
+        global _SENTRY_INITIALISED
+        if not _SENTRY_INITIALISED:
+            init_sentry("client")
+            _SENTRY_INITIALISED = True
         self._compute = compute
         self._config = config
         self._client: Optional[httpx.Client] = None
