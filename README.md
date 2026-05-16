@@ -243,6 +243,26 @@ docker pull ghcr.io/zakuro-ai/zakuro-worker:latest-distroless
 
 Both variants run the same FastAPI worker on port `3960` with the same in-process `/health` healthcheck.
 
+## Verifying releases
+
+Every published wheel and container image is signed and attested. Detailed flow in [`docs/security/verifying-releases.md`](docs/security/verifying-releases.md); the one-liners are:
+
+```bash
+# Wheel — SLSA L3 provenance
+slsa-verifier verify-artifact \
+    --provenance-path zakuro_ai-X.Y.Z-py3-none-any.whl.intoto.jsonl \
+    --source-uri github.com/zakuro-ai/zakuro \
+    --source-tag vX.Y.Z \
+    zakuro_ai-X.Y.Z-py3-none-any.whl
+
+# Container image — Cosign keyless (signature lives in Rekor)
+cosign verify ghcr.io/zakuro-ai/zakuro-worker:X.Y.Z \
+    --certificate-identity-regexp '^https://github\.com/zakuro-ai/zakuro/\.github/workflows/publish\.yml@refs/tags/.*$' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+If verification fails on what appears to be a real release, **do not run the artefact** — report to `security@zakuro.ai`.
+
 ## License
 
 BSD-3-Clause. See [`LICENSE`](LICENSE).
