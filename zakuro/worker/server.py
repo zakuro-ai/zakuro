@@ -20,7 +20,12 @@ except ImportError as exc:
         "from a source checkout)."
     ) from exc
 
+from zakuro.observability import init_sentry
 from zakuro.worker.executor import execute_function
+
+# Init Sentry as early as possible so an exception during app/executor wiring
+# still surfaces. No-op when SENTRY_DSN is unset.
+init_sentry("worker")
 
 app = FastAPI(
     title="Zakuro Worker",
