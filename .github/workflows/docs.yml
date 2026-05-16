@@ -1,0 +1,83 @@
+name: docs
+
+# Versioned docs publishing (#144) via mkdocs-material + mike.
+#
+#   - Every tag push (vX.Y.Z) deploys to docs.zakuro.ai/X.Y/ and aliases
+#     `latest` to that version.
+#   - master pushes deploy a `dev` slot at docs.zakuro.ai/dev/ so we can
+#     preview changes before tagging.
+#   - PR builds run a strict mkdocs build to fail fast on broken refs but
+#     do not deploy.
+#
+# Manual setup required before first deploy (one-time admin work, not in
+# this PR):
+#   - Enable GitHub Pages on this repo, source = `gh-pages` branch.
+#   - Configure CNAME for docs.zakuro.ai pointing at <user>.github.io.
+#   - First release tag will populate the version dropdown.
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+    # No `paths:` filter: GitHub applies path filters to *every* push,
+    # including tag pushes. We want tag pushes to deploy a versioned
+    # slot regardless of which files changed, so we accept the small
+    # cost of an extra mkdocs build on unrelated master pushes.
+  pull_request:
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "requirements-docs.txt"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # mike commits the built site to the gh-pages branch
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # mike needs full history to rewrite gh-pages
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install doc deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-docs.txt
+          # zakuro itself, so mkdocstrings can introspect docstrings.
+          python -m pip install -e .
+
+      - name: Configure git for mike
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "zakuro-docs-bot"
+          git config user.email "docs@zakuro.ai"
+
+      - name: Strict build (PR preflight)
+        if: github.event_name == 'pull_request'
+        run: mkdocs build --strict
+
+      - name: Deploy dev slot (master push)
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+        run: mike deploy --push --update-aliases dev
+
+      - name: Deploy tagged release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          # vX.Y.Z -> X.Y so we keep one slot per minor.
+          full_tag="${GITHUB_REF##refs/tags/v}"
+          minor="${full_tag%.*}"
+          mike deploy --push --update-aliases "$minor" latest
+          mike set-default --push latest
