@@ -1,0 +1,29 @@
+# SOPS configuration for zakuro-ai/zakuro (#118).
+#
+# Encrypts in-tree secret files at rest with age public keys. Decryption
+# happens locally (devs with the corresponding age private keys) and in
+# CI/CD (via a runner-scoped age private key in repo secrets).
+#
+# See docs/secrets.md for the full developer workflow.
+#
+# Naming convention:
+#   *.sops.yaml    -> encrypted YAML
+#   *.sops.json    -> encrypted JSON
+#   *.sops.env     -> encrypted dotenv
+#   secrets/**     -> directory of encrypted files
+#
+# To rotate the recipient list, update `creation_rules.age` below and run
+# `sops updatekeys path/to/file.sops.yaml` for every file under that rule.
+
+creation_rules:
+  # Default rule: anything under `secrets/` or matching `*.sops.*` gets
+  # encrypted with the current team age keys.
+  - path_regex: '(^|/)secrets/.*$|.*\.sops\.(yaml|json|env)$'
+    encrypted_regex: '^(data|password|token|secret|key|dsn|credentials|.*_KEY|.*_TOKEN|.*_PASSWORD|.*_SECRET|.*_DSN)$'
+    age: >-
+      # team-key-2026 (placeholder until first key is generated):
+      # age1placeholder000000000000000000000000000000000000000000000
+      #
+      # Add real age public keys here, one per recipient, separated by
+      # commas. Generate with `age-keygen -o ~/.config/sops/age/keys.txt`.
+      age1placeholder000000000000000000000000000000000000000000000
