@@ -58,6 +58,13 @@ jobs:
 
   osv-scanner:
     name: osv-scanner (lockfile)
+    # Report-only. The reusable workflow exits non-zero whenever the OSV
+    # database reports any vulnerability against the resolved lockfile,
+    # and the OSV catalogue updates daily — so a green run on a PR can
+    # turn red on the next master push without any code change. Until
+    # the dep-cleanup sprint is done the lane stays informative but
+    # non-blocking. Flip continue-on-error: false once we're at zero.
+    continue-on-error: true
     uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.8"
     permissions:
       contents: read

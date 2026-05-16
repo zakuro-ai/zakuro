@@ -59,6 +59,7 @@ jobs:
             ghcr_name: ghcr.io/zakuro-ai/zakuro-worker
             tag_suffix: ""             # plain :latest, :cpu
             extra_tags: "zakuroai/zakuro-worker:cpu,ghcr.io/zakuro-ai/zakuro-worker:cpu"
+            platforms: "linux/amd64,linux/arm64"
 
           # Worker — distroless variant (#134)
           - dockerfile: docker/Dockerfile.distroless
@@ -66,14 +67,18 @@ jobs:
             ghcr_name: ghcr.io/zakuro-ai/zakuro-worker
             tag_suffix: "-distroless"
             extra_tags: ""
+            platforms: "linux/amd64,linux/arm64"
 
-          # Compute — already multi-arch pre-#133; kept here so the entire
-          # image matrix lives in one place.
+          # Compute — amd64 only. Its base image (zakuroai/compute:cpu) has
+          # never been published for arm64 ("no match for platform in
+          # manifest" when buildkit tries to resolve it). Once an arm64
+          # build of zakuroai/compute is published, add arm64 back here.
           - dockerfile: docker/Dockerfile.compute
             dockerhub_name: zakuroai/zakuro
             ghcr_name: ghcr.io/zakuro-ai/zakuro
             tag_suffix: ""
             extra_tags: "zakuroai/zakuro:cpu,ghcr.io/zakuro-ai/zakuro:cpu"
+            platforms: "linux/amd64"
 
     steps:
       - uses: actions/checkout@v6
@@ -117,7 +122,7 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile }}
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platforms }}
           push: true
           tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha,scope=${{ matrix.dockerfile }}
