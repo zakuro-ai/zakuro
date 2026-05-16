@@ -1,0 +1,96 @@
+# RFC 0002 — Authentication: mTLS everywhere + JWT scopes
+
+- **Status:** Accepted (2026-05)
+- **Closes:** [#115](https://github.com/zakuro-ai/zakuro/issues/115), [#116](https://github.com/zakuro-ai/zakuro/issues/116)
+- **Depends on:** [RFC 0001](0001-wire-format-postcard.md) (HMAC keys for payload signing piggy-back on the JWT trust chain)
+
+## Context
+
+Today Zakuro authenticates with a single shared secret per worker (`ZAKURO_AUTH` env var). That model:
+
+- has no rotation story
+- gives the broker no way to enforce per-tenant quotas or isolation
+- gives the worker no way to refuse a spoofed broker connection
+- exposes any leaked env var as a full-tenant takeover
+
+[#115](https://github.com/zakuro-ai/zakuro/issues/115) wants mTLS across the runtime. [#116](https://github.com/zakuro-ai/zakuro/issues/116) wants server-side auth enforcement. The two are inseparable: mTLS authenticates the *peer*, JWT authenticates the *request*.
+
+## Decision
+
+**mTLS at the transport, JWT-with-scopes at the request.** Both required, neither alone is sufficient.
+
+- **mTLS layer** — every QUIC connection and every HTTP request between {client, broker, worker, dashboard} presents an X.509 client certificate. Certificates are issued by an internal CA managed by [cert-manager](https://cert-manager.io/) on the deployment cluster; SPIFFE-compatible SAN identities (`spiffe://zakuro.ai/ns/<tenant>/sa/<service>`) so the SVID model lands cleanly later.
+- **JWT layer** — once mTLS verifies the peer, the request carries an `Authorization: Bearer <jwt>` header. The JWT is short-lived (15 min), signed by a per-cluster Ed25519 key, and carries `tenant-id`, `worker-id`, and a `scopes` claim (`exec:fn`, `exec:cls`, `admin:credits`, ...).
+- **Refusal semantics** — a worker that receives a connection without a valid client cert closes the QUIC stream before reading any bytes. A worker that receives a valid mTLS connection but a missing / expired / wrong-scope JWT returns 401 / QUIC error code 0x100 with no payload.
+
+Rationale:
+
+- mTLS-only would force every authorisation decision into the cert subject — and certs are slow to rotate. JWT scopes carry the per-request authorisation cleanly.
+- JWT-only would leave the peer identity unverified at the transport layer; a stolen JWT is a tenant takeover until expiry. mTLS short-circuits that.
+- The "mTLS + JWT" pattern is the enterprise default (Istio, Linkerd, Google's [BeyondCorp](https://cloud.google.com/beyondcorp), AWS App Mesh). Following the pack here is the right call.
+
+## Implementation plan
+
+**Step 0 — internal CA on the deployment cluster**
+
+- Install cert-manager via Helm (anticipates [#132](https://github.com/zakuro-ai/zakuro/issues/132)).
+- Bootstrap a self-signed cluster issuer `zakuro-internal-ca` whose root cert is stored in a SOPS-encrypted file (`secrets/ca-root.sops.yaml` — see [docs/secrets.md](../secrets.md)).
+- Every service deployment gets a `Certificate` CR issuing a SPIFFE-style SVID with a 24-hour lifetime + 12-hour renewal.
+- For laptop-dev runs (no cluster), a `scripts/dev-ca-bootstrap.sh` generates a one-shot CA + per-service cert into `./certs/` and the worker reads from there when `ZAKURO_CERT_DIR` is set.
+
+**Step 1 — transport: QUIC + HTTP both require client certs**
+
+- `crates/sakura-wire` QUIC server config switches from `with_no_client_auth()` to `with_client_cert_verifier(...)` against the cluster CA.
+- `zakuro.worker.server` FastAPI app gets a middleware that reads the peer cert from `request.client.cert` (when behind a TLS-terminating ingress, the ingress passes it via the standard `X-Forwarded-Client-Cert` header per RFC 9440) and asserts the SVID matches the expected namespace.
+- `zakuro.client.ZakuroClient` reads its own cert from `ZAKURO_CERT_DIR/tls.crt` + `tls.key`, passes them to `httpx` and to `aioquic`'s `Configuration`.
+
+**Step 2 — JWT issuance + verification**
+
+- New tiny service / library `zakuro.auth.jwt`:
+  - `issue(tenant_id, worker_id, scopes, ttl=900) -> str` — used by the broker on behalf of a client after the client's cert is verified.
+  - `verify(token: str, *, expected_audience) -> Claims` — used by every server-side request handler.
+- Signing key: Ed25519, stored in the broker as a SOPS-encrypted file (`secrets/jwt-signing.sops.yaml`). Public verification key bundled in the worker image at build time.
+- Claims structure follows [RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519) + standard `aud`, `exp`, `nbf`, `jti` + custom `tenant_id`, `worker_id`, `scopes` (string array).
+- Refresh: client refreshes its JWT 5 minutes before expiry by re-authenticating to the broker. No long-lived refresh tokens.
+
+**Step 3 — request-side enforcement**
+
+- Worker handlers (`/execute`, `/cancel`, `/info`) require:
+  1. mTLS peer cert validates against `zakuro-internal-ca`.
+  2. JWT in `Authorization` is valid and includes the matching `exec:*` scope.
+  3. The JWT's `worker_id` claim matches `os.environ['ZAKURO_WORKER_ID']` — prevents replay against the wrong worker.
+- HMAC key for [RFC 0001](0001-wire-format-postcard.md)'s payload signing is derived as `HKDF(jwt.signing_key, info=f"payload:{tenant_id}")`. Stored in the worker's local memory, never on disk.
+
+**Step 4 — observability + audit**
+
+- Every auth failure emits a structured log line (RFC 0003 format) with `tenant_id`, `subject_cn`, `reason`, plus a Prometheus counter `zakuro_auth_failure_total{reason=...}`.
+- Every Sentry event automatically gets the tag `auth.subject_cn` via [`zakuro.observability.set_request_context`](../../zakuro/observability/sentry.py) — already wired in #128.
+
+**Step 5 — flip strict**
+
+- Remove the `ZAKURO_AUTH=demo` default from compose / charts.
+- Document the rollout in [`docs/STABILITY.md`](../STABILITY.md) as a v0.4 breaking change (clients pre-v0.4 cannot talk to a v0.4 worker without certs).
+- ALPN bump to `zk-worker-v2` (also serves RFC 0001's wire-format bump, so the two ship together).
+
+## Rejected alternatives
+
+| Option | Why rejected |
+|---|---|
+| mTLS-only | Forces every authorisation decision into the cert subject. Certs are slow to rotate; scopes are dynamic. |
+| API keys + TLS | Statu quo, no rotation, no per-request scoping. The whole reason we're rewriting. |
+| OIDC short-lived tokens (Sigstore-style) | Powerful for CI-driven access but worse runtime ergonomics — the worker needs to verify each token against an OIDC discovery doc on every request, latency cost. |
+| SPIRE + SVIDs everywhere, no JWT | SPIRE is the right long-term move for cert identity but its agent is heavier than cert-manager. JWT layer survives a SPIRE migration unchanged. |
+
+## Migration / rollout
+
+The deployment can't go from "no auth" to "mTLS + JWT required" overnight. The plan is three flag gates:
+
+1. **0.3.x — soft enforcement.** Both layers run, but failures only emit metrics + warnings. Existing `ZAKURO_AUTH` env-var path still accepted.
+2. **0.4.0 — hard enforcement, env-var still accepted.** mTLS + JWT required for every new connection. Old shared-secret accepted only for connections initiated before the 0.4 worker boot.
+3. **0.5.0 — env-var removed.** ZAKURO_AUTH path deleted. ALPN bump (zk-worker-v2 only).
+
+## Open questions for implementation time
+
+- **Tenant key separation in CI/dev.** Dev shouldn't share secrets with prod. Address by `secrets/<env>/jwt-signing.sops.yaml` with separate age recipient sets.
+- **JWT revocation list.** TTL is 15 min so a stolen token is short-lived, but a revocation list (Redis-backed, on-broker) gives faster cutoff. Defer until first incident or first customer asks.
+- **Cert renewal on a long-running worker.** cert-manager rotates the cert on disk; the worker must reload the rustls config without dropping in-flight QUIC streams. Track as its own implementation note in the rollout PR.
