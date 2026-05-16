@@ -23,6 +23,7 @@ implement several issues, or an issue may produce several RFCs).
 | 0005 | Credit ledger: double-entry accountable | #135 | Accepted |
 | 0006 | Batch dispatch: async iterator API | #137 | Accepted |
 | 0007 | Tenant isolation: Docker + ephemeral single-tenant workers | #136 | Accepted |
+| 0008 | Mesh gossip: SWIM over QUIC, postcard messages | #138 | Accepted |
 
 Each RFC is **Accepted** here because the headline decision was already
 made (see the question round in the May 2026 cleanup sprint). The body
