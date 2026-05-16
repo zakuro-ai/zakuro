@@ -1,0 +1,41 @@
+# gitleaks configuration for zakuro-ai/zakuro.
+#
+# Inherits the default ruleset (~140 secret-detection patterns) and adds
+# repo-specific allowlists for known false positives.
+#
+# Why this file exists:
+#   - mkdocs + mike publish a static site to a `dev/` slot on `gh-pages`.
+#     The site includes a flattened search_index.json that contains every
+#     code block from every doc page — including the CLI doc's `curl -s
+#     http://...` examples. The default gitleaks `curl-auth-user` rule
+#     matches on short-flag curl patterns and treats this as a leak,
+#     even though there's no actual credential (it's a `-s` flag, the
+#     rule's regex is over-eager around `curl -[a-z] http`).
+#   - Local mkdocs builds (`./site/`), uv venvs (`./.docvenv/`), and the
+#     build wheel staging (`./dist/`) can all contain similar derived
+#     content. They never carry real secrets — only what's already
+#     committed under `docs/`.
+#
+# When in doubt, prefer fixing the source content over silencing the
+# scanner. The path allowlist is for built/generated artefacts only.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Built / generated artefacts and known-safe doc files"
+
+paths = [
+    '''^dev/.*''',               # mike-published `dev` site slot (gh-pages)
+    '''^[0-9]+\.[0-9]+/.*''',    # mike-published versioned site slots (gh-pages)
+    '''^latest/.*''',            # mike `latest` alias (gh-pages)
+    '''^site/.*''',              # local mkdocs build output
+    '''^\.docvenv/.*''',         # local docs venv
+    '''^dist/.*''',              # local wheel build output
+    '''^docs/.*\.json$''',       # any JSON embedded in docs/ (search indices, fixtures)
+    '''^secrets/UNENCRYPTED-TEST\.sops\.yaml$''',  # synthetic CI test fixture for the sops-encryption-check job
+]
+
+# When a finding lands in a file outside the allowlist above, fail the
+# job. We intentionally do NOT relax curl-auth-user globally; only the
+# built-site paths are excused.
