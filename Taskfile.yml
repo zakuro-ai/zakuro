@@ -71,12 +71,10 @@ tasks:
       - pip uninstall -y zakuro-ai
       - pip install --break-system-packages dist/*.whl
 
-  build:wheel:
-    desc: Build zakuro-ai wheel
-    cmds:
-      - rm -rf dist/*.whl
-      - python -m build --wheel
-
+  # build:wheel comes from taskfiles/build.yml via the `build` include;
+  # the previous inline duplicate conflicted with the included version
+  # and produced `task: Found multiple tasks (build:wheel) included by
+  # "build"`. Kept only build:image here because it isn't in build.yml.
   build:image:
     desc: Build zakuro image (FROM compute)
     cmds:
