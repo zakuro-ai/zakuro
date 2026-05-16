@@ -58,22 +58,38 @@ jobs:
 
   osv-scanner:
     name: osv-scanner (lockfile)
-    # Report-only. The reusable workflow exits non-zero whenever the OSV
-    # database reports any vulnerability against the resolved lockfile,
-    # and the OSV catalogue updates daily — so a green run on a PR can
-    # turn red on the next master push without any code change. Until
-    # the dep-cleanup sprint is done the lane stays informative but
-    # non-blocking. Flip continue-on-error: false once we're at zero.
+    # Report-only. OSV's database updates daily, so the lane can flip
+    # red on a master push without any code change. Drop the strict
+    # reusable workflow and run the binary directly so we can mark the
+    # job continue-on-error — `continue-on-error` is not allowed on
+    # `uses: ...` reusable-workflow callers, which is what broke the
+    # earlier attempt (the entire workflow refused to parse).
+    runs-on: ubuntu-latest
     continue-on-error: true
-    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.8"
-    permissions:
-      contents: read
-      security-events: write
-      actions: read
-    with:
-      scan-args: |-
-        --lockfile=uv.lock
-        --recursive
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install osv-scanner
+        run: |
+          OSV_VERSION=2.0.0
+          curl -sSL \
+            "https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/osv-scanner_linux_amd64" \
+            -o /usr/local/bin/osv-scanner
+          chmod +x /usr/local/bin/osv-scanner
+          osv-scanner --version
+      - name: Run osv-scanner against uv.lock
+        run: |
+          osv-scanner \
+            --lockfile=uv.lock \
+            --recursive \
+            --format=sarif \
+            --output=osv-scanner.sarif \
+            || true
+      - name: Upload SARIF
+        if: always() && hashFiles('osv-scanner.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: osv-scanner.sarif
+          category: osv-scanner
 
   trivy-fs:
     name: trivy fs (repo)
