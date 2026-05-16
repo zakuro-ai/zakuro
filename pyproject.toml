@@ -44,6 +44,12 @@ ray = ["ray>=2.0.0"]
 dask = ["dask>=2023.0.0", "distributed>=2023.0.0"]
 spark = ["pyspark>=3.0.0"]
 all-processors = ["zakuro-ai[ray,dask,spark]"]
+observability = [
+    # Sentry SDK is opt-in: zakuro.observability.init_sentry is a no-op when
+    # the package is not installed or SENTRY_DSN is unset. Install via
+    # `pip install 'zakuro-ai[observability]'` or `uv sync --extra observability`.
+    "sentry-sdk>=2.0.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -52,7 +58,7 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0",
 ]
-all = ["zakuro-ai[worker,dev,all-processors]"]
+all = ["zakuro-ai[worker,dev,all-processors,observability]"]
 
 [project.urls]
 Homepage = "https://zakuro.ai"
