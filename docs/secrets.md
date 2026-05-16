@@ -22,7 +22,7 @@ Zakuro encrypts in-tree secrets at rest with [SOPS](https://github.com/getsops/s
    # The public key (starts with `age1...`) is printed on stderr.
    ```
 
-3. **Get added to the recipient list.** Share your `age1...` public key with a maintainer; they will append it to [`.sops.yaml`](../.sops.yaml) under `creation_rules.age` and run `sops updatekeys` on every existing encrypted file so you can decrypt them too.
+3. **Get added to the recipient list.** Share your `age1...` public key with a maintainer; they will append it to [`.sops.yaml`](https://github.com/zakuro-ai/zakuro/blob/master/.sops.yaml) under `creation_rules.age` and run `sops updatekeys` on every existing encrypted file so you can decrypt them too.
 
 4. **Edit / read a secret.**
 
@@ -60,7 +60,7 @@ A minimal init wrapper lives at `scripts/sops-decrypt-runtime.sh` and is invoked
 ## Verification flow
 
 - **Local:** `sops --decrypt secrets/<file>.sops.yaml | jq '.'` returns plaintext if your age key is in the recipient list, fails cleanly otherwise.
-- **CI:** the `secrets-pre-commit-check` workflow refuses to merge a PR that contains a file matching the secret naming convention but is *not* actually encrypted (see [`.github/workflows/sast.yml`](../.github/workflows/sast.yml) — `secrets-encryption-check` job).
+- **CI:** the `secrets-pre-commit-check` workflow refuses to merge a PR that contains a file matching the secret naming convention but is *not* actually encrypted (see [`.github/workflows/sast.yml`](https://github.com/zakuro-ai/zakuro/blob/master/.github/workflows/sast.yml) — `sops-encryption-check` job).
 - **Releases:** the supply-chain pipeline (PR #148) does not embed any secret in shipped artifacts; secrets are only injected at boot.
 
 ## Rotation
