@@ -35,7 +35,7 @@ services:
     environment:
       POSTGRES_DB: zakuro
       POSTGRES_USER: zakuro
-      POSTGRES_PASSWORD: ***REMOVED***
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zakuro_dev_password}
     volumes:
       - pgdata:/var/lib/postgresql/data
       # In-tree bootstrap; the broker runs its own migrations on first start.
@@ -75,7 +75,7 @@ services:
       - "9000:9000"
     environment:
       ZAKURO_AUTH: ${ZAKURO_AUTH:-demo}
-      DATABASE_URL: postgresql://zakuro:***REMOVED***@postgres:5432/zakuro
+      DATABASE_URL: postgresql://zakuro:${POSTGRES_PASSWORD:-zakuro_dev_password}@postgres:5432/zakuro
       ZAKURO_MASTER_KEY: ${ZAKURO_MASTER_KEY:-master-key-change-me}
     volumes:
       - broker-data:/app/data
