@@ -91,3 +91,45 @@ Rationale for postcard:
 - HMAC key derivation: per-tenant or per-worker? Decision deferred to RFC 0002.
 - `serde-pyobject` vs a hand-rolled `From<PyAny>` impl: defer to first implementation PR; benchmark both.
 - Compression (zstd?) on the envelope's `args` field for ML payloads: defer to a separate "wire payload size" investigation once v2 is live.
+
+## Amendment — v0.2 wire (#174, #175)
+
+**Status:** Accepted (2026-05). Crate version bumped to `zakuro-wire = 0.2.0`.
+
+v0.2 introduces three new types alongside (not replacing) the v0.1 `Envelope`. v0.1 callers stay byte-compatible; v0.2-capable workers accept both.
+
+### Added types
+
+- `EnvelopeV2` — same shape as `Envelope` plus:
+  - `cache_key: Option<String>` — when present, the worker stores the (reconstructed) callable bytes in its bounded LRU under this key.
+  - `delta_against: Option<String>` — when present, `callable` is a delta against the value cached under this key. The worker reconstructs the full payload before invoking the deserialiser. Cache-miss is signalled as `ErrorKind::WorkerUnavailable { reason: "cache_miss" }`; the caller retries with the full payload.
+- `ChunkFrame` — one frame in a multi-chunk streaming dispatch:
+  - `stream_id: u64` — distinguishes concurrent chunked dispatches.
+  - `seq: u32` — 0-indexed monotonic sequence within the stream.
+  - `last: bool` — true on the final chunk; triggers reassembly.
+  - `bytes: Vec<u8>` — chunk payload. Concatenation in `seq` order yields a postcard-encoded `EnvelopeV2`.
+- `V2Message` — top-level enum: `Envelope(EnvelopeV2)` or `Chunk(ChunkFrame)`. Callers serialise this so the worker dispatches on the variant tag.
+
+### Wire-format invariants
+
+- `Envelope` v0.1 byte layout is **unchanged**. A regression test (`v1_envelope_first_byte_unchanged`) asserts the first byte is still `0x00`.
+- `EnvelopeV2` starts with `0x01` (`WireVersion::V2`). v0.1 workers reject this as `UnknownWireVersion`.
+- `Option<String>` follows postcard convention: `0x00` = None; `0x01` + length-prefixed UTF-8 when Some. A None-valued v0.2 envelope is byte-shorter than a Some-valued one (regression test asserts this so an absent-deltas dispatch isn't unfairly penalised).
+
+### Backwards / forwards compat
+
+- A v0.1 broker dispatching v0.1 `Envelope`s to a v0.2 worker → works unchanged.
+- A v0.2 broker dispatching `EnvelopeV2` to a v0.1 worker → worker rejects with `UnknownWireVersion` (the first-byte tag is `0x01`, which doesn't exist in v0.1's `WireVersion` enum). Broker falls back to v0.1 `Envelope` per the worker's `/info`-advertised wire-version (forthcoming claim on `/info`).
+- A v0.2 broker dispatching `EnvelopeV2` with `delta_against: Some(...)` to a v0.2 worker whose cache is cold → worker replies `WorkerUnavailable { reason: "cache_miss" }`; broker retries with full payload (no delta).
+
+### Cache eviction policy
+
+Cache lives on the worker, bounded by an LRU of N entries × cap-per-entry, both configurable via `ZAKURO_CACHE_MAX_ENTRIES` / `ZAKURO_CACHE_MAX_BYTES`. Defaults: 32 entries / 4 GB. Eviction is silent — callers that suffer a cache-miss on a delta retry with the full payload, which is the same code path as never having cached.
+
+### Phase 2 follow-up
+
+This PR ships the schema substrate only. The worker-side reassembly + delta-apply logic lands as a Phase 2 PR (mirroring the #115 / #116 / #117 substrate-vs-wiring split). Until that lands, v0.2 envelopes round-trip through the schema cleanly but the worker treats `cache_key` / `delta_against` as advisory metadata.
+
+### Cross-repo
+
+`zc` adopts `zakuro-wire = 0.2.0` simultaneously per the multi-repo coherence rule. The integration test in `.github/workflows/integration.yml` covers the matrix: v0.1 broker × v0.1 worker (today), v0.1 broker × v0.2 worker (back-compat), and v0.2 broker × v0.2 worker (new path) once the matrix expands.
