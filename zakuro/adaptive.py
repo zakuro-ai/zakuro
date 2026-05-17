@@ -48,6 +48,7 @@ import contextlib
 import json
 import math
 import os
+import queue
 import random
 import threading
 import time
@@ -57,6 +58,96 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from zakuro.compute import Compute
+
+
+# Phase 6.1 (NF1): per-dispatch decision-log record schema. Kept stable
+# across minor versions — replay tooling (zc allocator replay) is bound
+# to these field names. Schema version bumps go in DECISION_LOG_SCHEMA.
+DECISION_LOG_SCHEMA = "v1"
+
+# Background-writer queue depth. When the queue is full, the *oldest*
+# record is dropped and the dropped-count is incremented in the next
+# emitted record. Defaults to ~30 minutes of records at 100 RPS.
+_DECISION_LOG_QUEUE_MAX = 200_000
+
+
+class _DecisionLogWriter:
+    """Background-thread JSONL writer for AdaptiveCompute decisions.
+
+    Designed so the hot dispatch path never blocks on disk I/O. The
+    public surface is :meth:`put` (non-blocking enqueue) and
+    :meth:`close` (drain + stop). Use via :meth:`AdaptiveCompute.enable_decision_log`.
+    """
+
+    def __init__(self, path: Path, *, queue_max: int = _DECISION_LOG_QUEUE_MAX) -> None:
+        self.path = path
+        self._queue: queue.Queue[str | None] = queue.Queue(maxsize=queue_max)
+        self._dropped = 0
+        self._drop_lock = threading.Lock()
+        self._thread: threading.Thread = threading.Thread(
+            target=self._run, name="zakuro-allocator-log", daemon=True
+        )
+        self._thread.start()
+
+    def put(self, record: dict[str, Any]) -> None:
+        """Enqueue a record. Never blocks; oldest record is dropped on overflow."""
+        # Account for any drops since the last emission so consumers can
+        # detect under-sampling in their analysis.
+        with self._drop_lock:
+            if self._dropped:
+                record = {**record, "dropped_since_last": self._dropped}
+                self._dropped = 0
+        line = json.dumps(record, default=str)
+        try:
+            self._queue.put_nowait(line)
+        except queue.Full:
+            # Drop the oldest line to make room. Best-effort — under
+            # severe contention some records may still be lost.
+            with contextlib.suppress(queue.Empty):
+                self._queue.get_nowait()
+            with self._drop_lock:
+                self._dropped += 1
+            with contextlib.suppress(queue.Full):
+                self._queue.put_nowait(line)
+
+    def close(self, timeout: float = 5.0) -> None:
+        """Drain the queue + stop the background thread."""
+        self._queue.put(None)
+        self._thread.join(timeout=timeout)
+
+    def flush(self, timeout: float = 2.0) -> None:
+        """Block until the background queue is empty.
+
+        Useful for tests + tools that read the JSONL file immediately
+        after a batch of dispatches. The hot path never calls this.
+        """
+        deadline = time.monotonic() + timeout
+        while not self._queue.empty():
+            if time.monotonic() > deadline:
+                return
+            time.sleep(0.005)
+
+    def _run(self) -> None:
+        # One open() for the lifetime of the writer — re-open on errors
+        # so a transient OSError (e.g. disk-full) doesn't permanently
+        # silence the log. Records are flushed per-line; tail -f works.
+        while True:
+            try:
+                with open(self.path, "a", encoding="utf-8") as fp:
+                    while True:
+                        item = self._queue.get()
+                        if item is None:
+                            return
+                        try:
+                            fp.write(item + "\n")
+                            fp.flush()
+                        except OSError:
+                            # File-handle gone wrong — close + reopen.
+                            break
+            except OSError:
+                # Couldn't even open the file. Sleep briefly + retry; the
+                # dispatch path keeps queueing in the meantime.
+                time.sleep(1.0)
 
 
 def _identity(x: Any) -> Any:
@@ -265,11 +356,11 @@ class AdaptiveCompute:
         self._probe_timeout: float = 2.0
         self._max_strikes: int = 3
 
-        # Decision log (Phase 6.1). Append one JSON object per dispatch with
-        # the allocator's prediction and the observed outcome. Users can
-        # replay this offline to audit decisions / debug weird routing.
+        # Decision log (Phase 6.1, #176). Background-thread JSONL writer.
+        # ``None`` means disabled — the hot path checks ``self._log_writer``
+        # once and skips the snapshot if disabled.
+        self._log_writer: _DecisionLogWriter | None = None
         self._log_path: Path | None = None
-        self._log_lock: threading.Lock = threading.Lock()
 
     # .................................................................. API
 
@@ -318,20 +409,36 @@ class AdaptiveCompute:
     # ........................................................ decision log
 
     def enable_decision_log(self, path: str | None = None) -> Path:
-        """Turn on per-dispatch logging to a JSONL file.
+        """Turn on per-dispatch logging to a JSONL file (NF1, #176).
 
-        Each dispatch appends one line:
+        Each dispatch appends one line. Stable schema (frozen at
+        :data:`DECISION_LOG_SCHEMA`)::
 
-            {"t": <unix>, "fn": "<fn_name>", "picked": <idx>,
-             "expected_secs": <allocator's estimate>,
-             "actual_secs": <observed latency>,
-             "ok": <bool>, "queue_before": <int>,
-             "drift_factor": <float>}
+            {
+              "schema":         "v1",
+              "t":              <unix seconds, float>,
+              "fn":             "<fn name>",
+              "picked":         <chosen worker idx>,
+              "expected_secs":  <allocator estimate for picked>,
+              "actual_secs":    <observed latency>,
+              "ok":             <true | false>,
+              "error":          <repr(exc) | null>,
+              "queue_depth":    [<int per worker>, ...],
+              "ema_latency_ms": [<float per worker>, ...],
+              "drift_factor":   <float, picked worker's drift>,
+              "dropped_since_last": <int, optional — only present after a drop>
+            }
+
+        Writes are non-blocking: a background thread drains a bounded
+        queue. If the queue overflows, the oldest record is dropped and
+        the next emitted record carries a ``dropped_since_last`` count
+        so post-hoc tooling can detect undersampling.
 
         Default path is ``$HOME/.zakuro/allocator.jsonl`` (or
         ``$ZAKURO_DECISION_LOG`` if set). Directory is created on demand.
 
-        Call with ``path=None`` to disable.
+        Calling :func:`enable_decision_log` twice rotates the writer to
+        the new path; the old one drains + closes first.
         """
         if path is None:
             env = os.environ.get("ZAKURO_DECISION_LOG")
@@ -342,23 +449,38 @@ class AdaptiveCompute:
                 path = str(Path(home) / ".zakuro" / "allocator.jsonl")
         log_path = Path(path)
         log_path.parent.mkdir(parents=True, exist_ok=True)
+        # Rotate: close any prior writer before replacing it.
+        if self._log_writer is not None:
+            self._log_writer.close()
+        self._log_writer = _DecisionLogWriter(log_path)
         self._log_path = log_path
         return log_path
 
     def disable_decision_log(self) -> None:
+        if self._log_writer is not None:
+            self._log_writer.close()
+        self._log_writer = None
         self._log_path = None
 
+    def flush_decision_log(self, timeout: float = 2.0) -> None:
+        """Block until the background writer has drained every enqueued record.
+
+        Useful in tests + replay-tool wrappers that want to read the JSONL
+        file immediately after a batch of dispatches. The hot dispatch
+        path never calls this.
+        """
+        if self._log_writer is not None:
+            self._log_writer.flush(timeout=timeout)
+
     def _log_decision(self, row: dict[str, Any]) -> None:
-        """Best-effort append — never raises, never blocks the dispatch path."""
-        if self._log_path is None:
+        """Best-effort enqueue — never raises, never blocks the dispatch path."""
+        if self._log_writer is None:
             return
-        try:
-            line = json.dumps(row, default=str) + "\n"
-            with self._log_lock, open(self._log_path, "a", encoding="utf-8") as fp:
-                fp.write(line)
-        except Exception:
-            # Observability must never break the hot path.
-            pass
+        # Stamp the schema version on every record so replay tools can
+        # detect a future change without parsing the payload.
+        # pragma: no cover — observability never breaks the hot path
+        with contextlib.suppress(Exception):
+            self._log_writer.put({"schema": DECISION_LOG_SCHEMA, **row})
 
     # ........................................................ node lifecycle
 
@@ -778,8 +900,16 @@ class AdaptiveCompute:
                 s = self._stats[idx]
                 s.queue = max(0, s.queue - 1)
                 self._update_ema(s, latency)
+                # Snapshot under-lock so the record sees a consistent
+                # fleet view across queue depths + EMAs.
+                if self._log_writer is not None:
+                    queue_depth = [w.queue for w in self._stats]
+                    ema_latency_ms = [w.m_hat(self._beta1) * 1000.0 for w in self._stats]
+                else:
+                    queue_depth = []
+                    ema_latency_ms = []
             # Cheap, optional, never-raises observability hook.
-            if self._log_path is not None:
+            if self._log_writer is not None:
                 self._log_decision(
                     {
                         "t": time.time(),
@@ -789,6 +919,8 @@ class AdaptiveCompute:
                         "actual_secs": latency,
                         "ok": ok,
                         "queue_before": queue_before,
+                        "queue_depth": queue_depth,
+                        "ema_latency_ms": ema_latency_ms,
                         "drift_factor": drift_factor,
                         "error": error,
                     }
