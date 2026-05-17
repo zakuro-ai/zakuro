@@ -9,8 +9,9 @@ on:
         description: "Tag or commit to publish"
         required: true
 
-# Hardened release pipeline. Each artifact (the PyPI wheel + the worker and
-# broker container images) is published with:
+# Hardened release pipeline. Each artifact (the PyPI wheel + the worker
+# container image — broker = zc, see https://github.com/zakuro-ai/zc, has
+# its own release pipeline) is published with:
 #   * Trusted Publishing via OIDC (no long-lived PyPI token)        (#114)
 #   * a CycloneDX SBOM                                              (#120)
 #   * SLSA L3 provenance attached to the GitHub Release             (#120)
@@ -122,10 +123,9 @@ jobs:
             ghcr_name: ghcr.io/zakuro-ai/zakuro-worker
             dockerhub_name: zakuroai/zakuro-worker
             sbom_slug: worker
-          - dockerfile: docker/Dockerfile.broker
-            ghcr_name: ghcr.io/zakuro-ai/zakuro-broker
-            dockerhub_name: zakuroai/zakuro-broker
-            sbom_slug: broker
+          # NOTE: the broker is `zc`, lives at https://github.com/zakuro-ai/zc
+          # and publishes its own `zakuroai/zc` image on its own release
+          # pipeline. zakuro publishes the worker only.
     steps:
       - uses: actions/checkout@v6
 

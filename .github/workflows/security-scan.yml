@@ -135,9 +135,12 @@ jobs:
           - dockerfile: docker/Dockerfile
             tag: zakuro-worker:scan
             slug: worker
-          - dockerfile: docker/Dockerfile.broker
-            tag: zakuro-broker:scan
-            slug: broker
+          # NOTE: the broker (zc) is a separate repo
+          # (https://github.com/zakuro-ai/zc) and runs its own trivy
+          # image scan in its own CI. We do NOT scan
+          # `zakuroai/zc` from zakuro — that would duplicate scope and
+          # confuse provenance. If you need a cross-repo combined scan,
+          # add it as a downstream tracking workflow elsewhere.
     steps:
       - uses: actions/checkout@v6
       - name: Build image (no push, allowed to fail)
