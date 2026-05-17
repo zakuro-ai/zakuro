@@ -1,0 +1,254 @@
+# Prometheus alerting + recording rules for Zakuro SLOs (#127, RFC 0003).
+#
+# Load with:
+#   prometheus --config.file=prometheus.yml --rule-files=ops/alerts/zakuro-slos.yml
+#
+# Each alert pairs a "fast burn" (P1 page) with a "slow burn" (P2 ticket).
+# Both must fire across their two configured windows to suppress flapping —
+# see docs/observability/slos.md for the methodology.
+
+groups:
+  # ---------------------------------------------------------------------------
+  # Recording rules — pre-aggregate the SLIs so alert expressions stay readable
+  # and PromQL doesn't re-compute the same sum() on every evaluation.
+  # ---------------------------------------------------------------------------
+  - name: zakuro_slo_recording_rules
+    interval: 30s
+    rules:
+      - record: zakuro:dispatch_latency:p99_5m
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (rate(zakuro_dispatch_latency_seconds_bucket[5m]))
+          )
+
+      - record: zakuro:dispatch_latency_slow_ratio_5m
+        expr: |
+          1 - (
+            sum(rate(zakuro_dispatch_latency_seconds_bucket{le="0.25"}[5m]))
+            /
+            sum(rate(zakuro_dispatch_latency_seconds_count[5m]))
+          )
+
+      - record: zakuro:dispatch_latency_slow_ratio_1h
+        expr: |
+          1 - (
+            sum(rate(zakuro_dispatch_latency_seconds_bucket{le="0.25"}[1h]))
+            /
+            sum(rate(zakuro_dispatch_latency_seconds_count[1h]))
+          )
+
+      - record: zakuro:dispatch_latency_slow_ratio_6h
+        expr: |
+          1 - (
+            sum(rate(zakuro_dispatch_latency_seconds_bucket{le="0.25"}[6h]))
+            /
+            sum(rate(zakuro_dispatch_latency_seconds_count[6h]))
+          )
+
+      - record: zakuro:auth_failure_ratio_5m
+        expr: |
+          sum(rate(zakuro_auth_failure_total[5m]))
+          /
+          clamp_min(sum(rate(zakuro_http_requests_total[5m])), 1)
+
+      - record: zakuro:auth_failure_ratio_1h
+        expr: |
+          sum(rate(zakuro_auth_failure_total[1h]))
+          /
+          clamp_min(sum(rate(zakuro_http_requests_total[1h])), 1)
+
+      - record: zakuro:auth_failure_ratio_6h
+        expr: |
+          sum(rate(zakuro_auth_failure_total[6h]))
+          /
+          clamp_min(sum(rate(zakuro_http_requests_total[6h])), 1)
+
+      - record: zakuro:ready_failure_ratio_5m
+        expr: |
+          sum by (worker_id) (rate(zakuro_http_requests_total{path="/ready",status!~"2.."}[5m]))
+          /
+          clamp_min(
+            sum by (worker_id) (rate(zakuro_http_requests_total{path="/ready"}[5m])),
+            1
+          )
+
+      - record: zakuro:ready_failure_ratio_1h
+        expr: |
+          sum by (worker_id) (rate(zakuro_http_requests_total{path="/ready",status!~"2.."}[1h]))
+          /
+          clamp_min(
+            sum by (worker_id) (rate(zakuro_http_requests_total{path="/ready"}[1h])),
+            1
+          )
+
+      - record: zakuro:ready_failure_ratio_6h
+        expr: |
+          sum by (worker_id) (rate(zakuro_http_requests_total{path="/ready",status!~"2.."}[6h]))
+          /
+          clamp_min(
+            sum by (worker_id) (rate(zakuro_http_requests_total{path="/ready"}[6h])),
+            1
+          )
+
+  # ---------------------------------------------------------------------------
+  # SLO-1 — Dispatch latency: 99% under 250ms over 30d (budget 1.0%)
+  # ---------------------------------------------------------------------------
+  - name: zakuro_slo1_dispatch_latency
+    rules:
+      - alert: ZakuroDispatchLatencyFastBurn
+        # 14.4× budget burn ⇒ fail-fraction > 14.4% over 1h (windowed at 5m + 1h)
+        expr: |
+          (
+            zakuro:dispatch_latency_slow_ratio_5m > (14.4 * 0.01)
+            and
+            zakuro:dispatch_latency_slow_ratio_1h > (14.4 * 0.01)
+          )
+        for: 2m
+        labels:
+          severity: page
+          slo: dispatch_latency
+          burn: fast
+        annotations:
+          summary: "Dispatch p99 latency budget burning fast (>14.4×)"
+          description: |
+            Over the last hour, more than 14.4% of dispatches took longer than
+            250 ms — burning the 30-day error budget at 14.4×. At this rate
+            the entire monthly budget (1%) goes in 2 hours. Pageable.
+            Runbook: docs/observability/slos.md#slo-1
+          dashboard: "{{ $externalURL }}/d/zakuro-overview/zakuro-overview?viewPanel=2"
+
+      - alert: ZakuroDispatchLatencySlowBurn
+        # 6× budget burn over 6h (windowed at 30m + 6h)
+        expr: |
+          (
+            zakuro:dispatch_latency_slow_ratio_6h > (6 * 0.01)
+            and
+            avg_over_time(zakuro:dispatch_latency_slow_ratio_5m[30m]) > (6 * 0.01)
+          )
+        for: 15m
+        labels:
+          severity: ticket
+          slo: dispatch_latency
+          burn: slow
+        annotations:
+          summary: "Dispatch latency drifting (6× burn over 6h)"
+          description: |
+            Sustained dispatch slowdown over the last 6 hours — burning the
+            30-day budget at 6×. Not pageable; investigate within 1 business day.
+            Runbook: docs/observability/slos.md#slo-1
+
+  # ---------------------------------------------------------------------------
+  # SLO-2 — Auth success rate: ≥ 99.5% over 30d (budget 0.5%)
+  # ---------------------------------------------------------------------------
+  - name: zakuro_slo2_auth_success
+    rules:
+      - alert: ZakuroAuthFailureFastBurn
+        expr: |
+          (
+            zakuro:auth_failure_ratio_5m > (14.4 * 0.005)
+            and
+            zakuro:auth_failure_ratio_1h > (14.4 * 0.005)
+          )
+        for: 2m
+        labels:
+          severity: page
+          slo: auth_success
+          burn: fast
+        annotations:
+          summary: "Auth failure rate burning fast (>7.2% of authed requests failing)"
+          description: |
+            Likely candidates: (a) JWT public key rotation went sideways,
+            (b) clock skew on the worker host exceeded leeway, (c) ongoing
+            brute-force / scope-confusion attack.
+            Runbook: docs/observability/slos.md#slo-2
+
+      - alert: ZakuroAuthFailureSlowBurn
+        expr: |
+          (
+            zakuro:auth_failure_ratio_6h > (6 * 0.005)
+            and
+            avg_over_time(zakuro:auth_failure_ratio_5m[30m]) > (6 * 0.005)
+          )
+        for: 15m
+        labels:
+          severity: ticket
+          slo: auth_success
+          burn: slow
+        annotations:
+          summary: "Auth failure rate drifting (6× burn over 6h)"
+          description: |
+            Sustained auth-failure elevation. Often surfaces a slow clock-skew
+            issue on a single worker, or a bad-token campaign that's hitting
+            real users via shared infra.
+            Runbook: docs/observability/slos.md#slo-2
+
+  # ---------------------------------------------------------------------------
+  # SLO-3 — Worker availability: ≥ 99.9% over 30d (budget 0.1%), per worker
+  # ---------------------------------------------------------------------------
+  - name: zakuro_slo3_worker_availability
+    rules:
+      - alert: ZakuroWorkerReadyFastBurn
+        expr: |
+          (
+            zakuro:ready_failure_ratio_5m > (14.4 * 0.001)
+            and
+            zakuro:ready_failure_ratio_1h > (14.4 * 0.001)
+          )
+        for: 2m
+        labels:
+          severity: page
+          slo: worker_availability
+          burn: fast
+        annotations:
+          summary: "Worker {{ $labels.worker_id }} readiness budget burning fast"
+          description: |
+            More than 1.44% of /ready probes failing on this worker over the
+            past hour. The mesh will be routing around this worker
+            (RFC 0008); investigate the host before the slow burn paints
+            a fleet-wide pattern.
+            Runbook: docs/observability/slos.md#slo-3
+
+      - alert: ZakuroWorkerReadySlowBurn
+        expr: |
+          (
+            zakuro:ready_failure_ratio_6h > (6 * 0.001)
+            and
+            avg_over_time(zakuro:ready_failure_ratio_5m[30m]) > (6 * 0.001)
+          )
+        for: 30m
+        labels:
+          severity: ticket
+          slo: worker_availability
+          burn: slow
+        annotations:
+          summary: "Worker {{ $labels.worker_id }} readiness drifting (6× burn)"
+          description: |
+            Sustained readiness drift. Single-worker degradation; the mesh
+            absorbs but capacity headroom is shrinking.
+            Runbook: docs/observability/slos.md#slo-3
+
+  # ---------------------------------------------------------------------------
+  # SLO-4 — Wire-format integrity: zero HMAC failures (budget 0)
+  # ---------------------------------------------------------------------------
+  - name: zakuro_slo4_wire_integrity
+    rules:
+      - alert: ZakuroHmacFailureDetected
+        # Any non-zero rate of HMAC failures over 5 minutes pages immediately.
+        expr: |
+          sum(increase(zakuro_auth_failure_total{reason="hmac"}[5m])) > 0
+        for: 0m
+        labels:
+          severity: page
+          slo: wire_integrity
+        annotations:
+          summary: "Wire-format HMAC failure detected — investigate immediately"
+          description: |
+            One or more envelopes decoded successfully but failed HMAC
+            verification in the last 5 minutes. Candidates:
+              (a) misconfigured per-tenant key on the broker
+                  (HKDF derivation diverged from worker),
+              (b) clock-related JWT issuance bug leaking into HMAC key,
+              (c) envelope forgery attempt.
+            Page on, do not silence without a root cause.
+            Runbook: docs/observability/slos.md#slo-4

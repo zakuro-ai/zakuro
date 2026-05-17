@@ -88,6 +88,8 @@ nav:
       - Wire protocol: PROTOCOL.md
   - Guides:
       - Getting started: getting-started.md
+  - Operations:
+      - SLOs and burn-rate alerts: observability/slos.md
   - Security:
       - Verifying releases: security/verifying-releases.md
       - Threat model: security/threat-model.md
