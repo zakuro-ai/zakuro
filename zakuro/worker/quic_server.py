@@ -39,10 +39,19 @@ logger = logging.getLogger(__name__)
 OP_EXECUTE = 1
 OP_INFO = 2
 OP_HEALTH = 3
+# Streaming chunk for a multi-chunk dispatch (RFC 0001 amendment, #175).
+# Each frame carries one ChunkFrame; the worker reassembles in order via
+# zakuro.wire.streaming.ChunkReassembler and treats the concatenated bytes
+# as a v0.2 EnvelopeV2 once last=True arrives.
+OP_EXECUTE_CHUNK = 4
 
 STAT_OK = 0
 STAT_USER_ERROR = 1
 STAT_PROTOCOL_ERROR = 2
+# A chunk was accepted but more chunks are expected before the stream
+# can be assembled. The caller continues sending chunks; only when the
+# final chunk arrives does the worker emit OK + the execution body.
+STAT_CHUNK_ACK = 3
 
 ALPN = ["zk-worker"]
 DEFAULT_PORT = 4433
@@ -157,13 +166,25 @@ class _StreamBuffer:
 class WorkerQuicProtocol(QuicConnectionProtocol):
     """One instance per accepted QUIC connection.
 
-    Streams are independent; each carries exactly one request/response pair.
+    QUIC streams are independent; the *framing* layer (this protocol)
+    treats each stream as carrying exactly one request/response pair.
+
+    Multi-chunk dispatches (#175 Phase 3) span multiple QUIC streams
+    that share a single logical ``ChunkFrame.stream_id``. The per-
+    connection :class:`ChunkReassembler` accumulates them; the *final*
+    chunk's QUIC stream is the one that carries the execution result.
     """
 
     def __init__(self, *args: Any, executor: ThreadPoolExecutor, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._executor = executor
         self._streams: dict[int, _StreamBuffer] = {}
+        # Lazy import: zakuro.wire.streaming pulls in serde_bytes types that
+        # are not needed for v0.1 traffic. Importing here keeps the
+        # module-load cost honest for v0.1-only deployments.
+        from zakuro.wire.streaming import ChunkReassembler
+
+        self._reassembler = ChunkReassembler()
 
     def quic_event_received(self, event: Any) -> None:
         if isinstance(event, StreamDataReceived):
@@ -178,6 +199,8 @@ class WorkerQuicProtocol(QuicConnectionProtocol):
             if op == OP_EXECUTE:
                 loop = asyncio.get_event_loop()
                 status, body = await loop.run_in_executor(self._executor, _execute_payload, payload)
+            elif op == OP_EXECUTE_CHUNK:
+                status, body = await self._handle_chunk(payload)
             elif op == OP_INFO:
                 status, body = STAT_OK, _info_payload()
             elif op == OP_HEALTH:
@@ -193,6 +216,47 @@ class WorkerQuicProtocol(QuicConnectionProtocol):
 
         self._quic.send_stream_data(stream_id, _frame(status, body), end_stream=True)
         self.transmit()
+
+    async def _handle_chunk(self, payload: bytes) -> tuple[int, bytes]:
+        """Decode a ChunkFrame, feed the reassembler, dispatch on last=True.
+
+        Returns:
+            ``(STAT_CHUNK_ACK, b"")`` while more chunks are expected.
+            ``(STAT_OK, body)`` on the final chunk after execution finishes.
+            ``(STAT_PROTOCOL_ERROR, reason)`` on malformed / out-of-order
+            chunks or on rejected reassembled envelopes.
+        """
+        # Deferred imports for the same reason as the reassembler in __init__.
+        from zakuro.wire import (
+            WireError,
+            decode_chunk_frame,
+            decode_envelope_v2,
+        )
+        from zakuro.wire.streaming import StreamingError
+
+        try:
+            chunk = decode_chunk_frame(payload)
+        except WireError as exc:
+            return STAT_PROTOCOL_ERROR, f"malformed chunk: {exc!r}".encode()
+
+        try:
+            assembled = self._reassembler.feed(chunk)
+        except StreamingError as exc:
+            return STAT_PROTOCOL_ERROR, f"chunk rejected: {exc!r}".encode()
+
+        if assembled is None:
+            # Intermediate chunk — ack only, no execution yet.
+            return STAT_CHUNK_ACK, b""
+
+        # Final chunk: assembled bytes are a postcard EnvelopeV2. Decode +
+        # forward the callable to the executor exactly like v0.1.
+        try:
+            envelope_v2 = decode_envelope_v2(assembled)
+        except WireError as exc:
+            return STAT_PROTOCOL_ERROR, f"reassembled envelope malformed: {exc!r}".encode()
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(self._executor, _execute_payload, envelope_v2.callable)
 
 
 def _ensure_certificate() -> tuple[Path, Path]:
