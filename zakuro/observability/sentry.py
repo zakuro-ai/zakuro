@@ -41,8 +41,9 @@ _SENSITIVE_HEADER_KEYS = frozenset(
     {"authorization", "cookie", "set-cookie", "x-api-key", "x-auth-token"}
 )
 _REDACTED = "<redacted>"
+_EMPTY_CONTEXT: Mapping[str, str] = {}
 _REQUEST_CONTEXT: ContextVar[Mapping[str, str]] = ContextVar(
-    "_zakuro_sentry_request_context", default=None
+    "_zakuro_sentry_request_context", default=_EMPTY_CONTEXT
 )
 
 
@@ -64,7 +65,7 @@ def init_sentry(component: str, *, dsn: str | None = None) -> bool:
         sample_rate=0.1,  # 10% of errors; per #128
         traces_sample_rate=0.0,  # OTel handles tracing (#123)
         send_default_pii=False,  # belt-and-braces; the scrubber is the rope
-        before_send=_before_send,
+        before_send=_before_send,  # type: ignore[arg-type]  # SDK's Event TypedDict; we treat event as plain dict for portability
         environment=os.environ.get("ZAKURO_ENV", "production"),
         release=os.environ.get("ZAKURO_RELEASE"),
     )

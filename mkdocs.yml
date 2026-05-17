@@ -86,6 +86,7 @@ nav:
       - API stability: STABILITY.md
       - CLI: cli.md
       - Wire protocol: PROTOCOL.md
+      - CI workflows: ci.md
   - Guides:
       - Getting started: getting-started.md
   - Operations:

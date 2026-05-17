@@ -44,14 +44,15 @@ jobs:
         run: task ci:format-check
 
       - name: Run tests
-        run: task test:unit || true
+        run: task test:unit
 
   typecheck:
     runs-on: ubuntu-latest
-    # Report-only — mypy currently flags 100+ errors across many files
-    # (missing third-party stubs, untyped functions in internal modules).
-    # Ratchet back to strict after the cleanup sprint.
-    continue-on-error: true
+    # Strict-required as of #167. mypy passes against the configured baseline
+    # (zakuro/fs and zakuro/hub excluded as legacy; third-party stubs gated
+    # via [tool.mypy.overrides] in pyproject.toml). New errors must be fixed
+    # rather than ratcheted away — that policy is what stops the catalogue
+    # from drifting back to 90+ findings.
     steps:
       - uses: actions/checkout@v6
 
@@ -71,5 +72,5 @@ jobs:
         # dep modules to type-check the worker server's imports.
         run: uv pip install -e ".[dev,worker,observability]" --system
 
-      - name: Run type checking (report-only)
-        run: task ci:typecheck || true
+      - name: Run type checking
+        run: task ci:typecheck

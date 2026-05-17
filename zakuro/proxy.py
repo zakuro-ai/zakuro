@@ -92,6 +92,10 @@ class RemoteProxy(Generic[T]):
         kwargs: dict[str, Any],
     ) -> Any:
         """Call a method on the remote instance."""
+        assert self._instance_id is not None, (
+            "RemoteProxy method called before _create_remote_instance — "
+            "constructor must run to completion first."
+        )
         payload = cloudpickle.dumps(
             {
                 "action": "call_method",

@@ -630,8 +630,11 @@ class AdaptiveCompute:
         if probe_fn is None:
             probe_fn = _identity
 
-        # Wrap probe_fn as a zk.fn we can dispatch to a single worker.
-        probe = zk.fn(probe_fn) if not hasattr(probe_fn, "_func") else probe_fn
+        # Wrap probe_fn as a zk.fn we can dispatch to a single worker. The
+        # branch returns either a fresh `zk.fn` decorator output or the
+        # already-decorated probe — both expose `.to(compute)`. mypy can't see
+        # through the `hasattr` narrow, so type as `Any`.
+        probe: Any = zk.fn(probe_fn) if not hasattr(probe_fn, "_func") else probe_fn
 
         # Snapshot the list of (idx, compute) up-front so mutations during
         # the walk don't skip or double-count workers.
@@ -881,6 +884,9 @@ class AdaptiveCompute:
                 from zakuro.processors.base import ProcessorConfig
                 from zakuro.processors.quic import QuicProcessor
 
+                # Compute.host is Optional but only None before _resolve()
+                # runs; reaching this codepath means a successful resolve.
+                assert compute.host is not None, "Compute.host unresolved at probe time"
                 config = ProcessorConfig(scheme="quic", host=compute.host, port=compute.port)
                 processor = QuicProcessor(config, compute)
                 processor.connect()
@@ -947,7 +953,7 @@ class AdaptiveCompute:
         error: str | None = None
         try:
             fn.to(compute)
-            result = fn._execute_single_compute(*args, **kwargs)  # type: ignore[attr-defined]
+            result = fn._execute_single_compute(*args, **kwargs)
             ok = True
             return result
         except Exception as exc:
