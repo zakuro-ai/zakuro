@@ -38,11 +38,12 @@ Response frame (server → client):
 
 ### 2.1 Opcodes
 
-| op | name    | request payload                                | response payload (stat=0)                |
-|----|---------|------------------------------------------------|------------------------------------------|
-| 1  | EXECUTE | cloudpickle of `{"func", "args", "kwargs"}`   | cloudpickle of `result` (may be `Exception`) |
-| 2  | INFO    | empty (`length = 0`)                           | UTF-8 JSON — see §4                      |
-| 3  | HEALTH  | empty (`length = 0`)                           | UTF-8 JSON `{"status":"ok"}`             |
+| op | name          | request payload                                | response payload (stat=0)                |
+|----|---------------|------------------------------------------------|------------------------------------------|
+| 1  | EXECUTE       | cloudpickle of `{"func", "args", "kwargs"}`   | cloudpickle of `result` (may be `Exception`) |
+| 2  | INFO          | empty (`length = 0`)                           | UTF-8 JSON — see §4                      |
+| 3  | HEALTH        | empty (`length = 0`)                           | UTF-8 JSON `{"status":"ok"}`             |
+| 4  | EXECUTE_CHUNK | postcard `ChunkFrame` — one chunk of a v0.2 multi-chunk dispatch (RFC 0001 amendment). Multiple chunks share a `ChunkFrame.stream_id`; final chunk has `last=true`. Concatenated bytes are a v0.2 `EnvelopeV2`. | non-final chunk: empty (`stat = 3` ack). Final chunk: cloudpickle of `result` (per EXECUTE). |
 
 Unknown opcodes MUST produce `stat = 2` (see below) with a UTF-8 payload describing the error.
 
@@ -53,6 +54,7 @@ Unknown opcodes MUST produce `stat = 2` (see below) with a UTF-8 payload describ
 | 0    | OK. `payload` is the successful response per the opcode.               |
 | 1    | User error — the function ran and raised. `payload` is the cloudpickled `Exception` for EXECUTE; for other opcodes this status MUST NOT be used. |
 | 2    | Protocol / server error — malformed frame, unknown opcode, worker overload. `payload` is UTF-8 text. |
+| 3    | Chunk accepted, more chunks expected. Used only by `EXECUTE_CHUNK` (op=4) for non-final chunks. `payload` is empty. The caller continues sending chunks on new QUIC streams sharing the same `ChunkFrame.stream_id`. |
 
 Rationale: separating `stat=1` (a successful RPC that returned a user exception) from `stat=2` (transport/protocol failure) lets the caller distinguish "function on worker raised" from "worker itself is broken," without requiring the caller to cloudpickle-probe every response.
 
