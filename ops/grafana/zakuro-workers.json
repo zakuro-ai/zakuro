@@ -1,0 +1,149 @@
+{
+  "uid": "zakuro-workers",
+  "title": "Zakuro — per-worker",
+  "description": "Per-worker queue depth + dispatch latency + dispatch rate. Owners: oncall@zakuro.ai. Source-of-truth: ops/grafana/zakuro-workers.json on master — edit there, not in the Grafana UI.",
+  "tags": ["zakuro", "worker", "runtime"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "templating": {
+    "list": [
+      {
+        "name": "worker_id",
+        "label": "Worker",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "query": {"query": "label_values(zakuro_worker_queue_depth, worker_id)", "refId": "Prom"},
+        "includeAll": true,
+        "multi": true,
+        "current": {"selected": false, "text": "All", "value": "$__all"}
+      },
+      {
+        "name": "tenant_id",
+        "label": "Tenant (filter)",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "query": {"query": "label_values(zakuro_dispatch_latency_seconds_count, tenant_id)", "refId": "Prom"},
+        "includeAll": true,
+        "multi": true,
+        "current": {"selected": false, "text": "All", "value": "$__all"}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Queue depth by worker",
+      "description": "Pending jobs in each worker's thread pool. Steady non-zero queue depth means the worker is undersized for its incoming rate.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "zakuro_worker_queue_depth{worker_id=~\"$worker_id\"}",
+          "legendFormat": "{{worker_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 4},
+              {"color": "red", "value": 16}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Dispatch rate (calls/s) by worker",
+      "description": "Function-execution rate per worker, taken from the dispatch-latency histogram's _count series.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (worker_id) (rate(zakuro_dispatch_latency_seconds_count{worker_id=~\"$worker_id\",tenant_id=~\"$tenant_id\"}[5m]))",
+          "legendFormat": "{{worker_id}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Dispatch latency p95 by worker",
+      "description": "95th-percentile latency split by worker. One worker drifting up against the rest is the signal to drain + investigate that host.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, worker_id) (rate(zakuro_dispatch_latency_seconds_bucket{worker_id=~\"$worker_id\",tenant_id=~\"$tenant_id\"}[5m])))",
+          "legendFormat": "{{worker_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.15},
+              {"color": "red", "value": 0.25}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Dispatch latency p50 by worker",
+      "description": "Median latency by worker — the floor each worker is running at when uncontended.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le, worker_id) (rate(zakuro_dispatch_latency_seconds_bucket{worker_id=~\"$worker_id\",tenant_id=~\"$tenant_id\"}[5m])))",
+          "legendFormat": "{{worker_id}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 5,
+      "type": "heatmap",
+      "title": "Dispatch latency distribution (fleet)",
+      "description": "Histogram of dispatch latency across all selected workers. Wide bands = high variance; tight bands = predictable performance.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (le) (rate(zakuro_dispatch_latency_seconds_bucket{worker_id=~\"$worker_id\",tenant_id=~\"$tenant_id\"}[5m]))",
+          "format": "heatmap",
+          "legendFormat": "{{le}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "options": {"calculate": false}
+    }
+  ]
+}

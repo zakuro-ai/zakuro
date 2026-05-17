@@ -26,6 +26,9 @@ The dashboards expect a Prometheus datasource named `${DS_PROMETHEUS}`. Configur
 | File | Title | What it shows |
 |---|---|---|
 | `zakuro-overview.json` | Zakuro — runtime overview | All four SLO panels (dispatch latency p99, auth-success rate, HMAC failures, per-worker readiness) + supporting metrics (request rate, queue depth, error rate, auth-fail reasons). |
+| `zakuro-tenants.json` | Zakuro — per-tenant | Per-tenant request rate, dispatch rate, p50/p95 latency, 5xx error rate, auth refusals by reason. Use to spot noisy-neighbour or single-customer regressions. |
+| `zakuro-workers.json` | Zakuro — per-worker | Per-worker queue depth, dispatch rate, p50/p95 latency, plus a fleet-wide latency-distribution heatmap. Use to identify a single host drifting away from the fleet. |
+| `zakuro-auth.json` | Zakuro — auth + secrets | Refusals over time by reason and by tenant, HMAC + signature stat panels with thresholds, top-5 refusal-reason and noisy-tenant bargauges, 401-rate cross-check. Use to triage suspected brute-force or token-leak incidents. |
 
 The SLO targets visualised here are defined in [`docs/observability/slos.md`](../../docs/observability/slos.md). Burn-rate alert thresholds match the rules in [`ops/alerts/zakuro-slos.yml`](../alerts/zakuro-slos.yml).
 

@@ -1,0 +1,142 @@
+{
+  "uid": "zakuro-tenants",
+  "title": "Zakuro — per-tenant",
+  "description": "Per-tenant breakdown of request rate, dispatch latency, error rate, and auth refusals. Owners: oncall@zakuro.ai. Source-of-truth: ops/grafana/zakuro-tenants.json on master — edit there, not in the Grafana UI.",
+  "tags": ["zakuro", "tenant", "runtime"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "templating": {
+    "list": [
+      {
+        "name": "tenant_id",
+        "label": "Tenant",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "query": {"query": "label_values(zakuro_http_requests_total, tenant_id)", "refId": "Prom"},
+        "includeAll": true,
+        "multi": true,
+        "current": {"selected": false, "text": "All", "value": "$__all"}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Request rate (qps) by tenant",
+      "description": "HTTP requests per second, split by tenant. Sudden divergence between tenants often signals a noisy-neighbour issue.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tenant_id) (rate(zakuro_http_requests_total{tenant_id=~\"$tenant_id\"}[5m]))",
+          "legendFormat": "{{tenant_id}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Dispatch rate (calls/s) by tenant",
+      "description": "Function-execution rate per tenant, taken from the dispatch-latency histogram's _count series.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tenant_id) (rate(zakuro_dispatch_latency_seconds_count{tenant_id=~\"$tenant_id\"}[5m]))",
+          "legendFormat": "{{tenant_id}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Dispatch latency p95 by tenant",
+      "description": "95th-percentile dispatch latency split by tenant. A single tenant's p95 climbing while others stay flat usually means a hot workload, not infra.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, tenant_id) (rate(zakuro_dispatch_latency_seconds_bucket{tenant_id=~\"$tenant_id\"}[5m])))",
+          "legendFormat": "{{tenant_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.15},
+              {"color": "red", "value": 0.25}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Dispatch latency p50 by tenant",
+      "description": "Median dispatch latency. Big gap between p50 and p95 means the tail is doing the damage; small gap means everyone is slow.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le, tenant_id) (rate(zakuro_dispatch_latency_seconds_bucket{tenant_id=~\"$tenant_id\"}[5m])))",
+          "legendFormat": "{{tenant_id}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "5xx error rate by tenant",
+      "description": "Server-error rate, split by tenant. Per-tenant spikes usually mean the tenant hit a code path others don't (e.g. unusual payload).",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tenant_id) (rate(zakuro_http_requests_total{status=~\"5..\",tenant_id=~\"$tenant_id\"}[5m]))",
+          "legendFormat": "{{tenant_id}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Auth failures by tenant + reason",
+      "description": "Auth refusals attributed to each tenant, split by the reason recorded in zakuro_auth_failure_total. A burst in one (reason, tenant) pair is the brute-force signal.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tenant_id, reason) (rate(zakuro_auth_failure_total{tenant_id=~\"$tenant_id\"}[5m]))",
+          "legendFormat": "{{tenant_id}} / {{reason}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}}
+    }
+  ]
+}

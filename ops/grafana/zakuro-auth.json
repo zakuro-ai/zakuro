@@ -1,0 +1,199 @@
+{
+  "uid": "zakuro-auth",
+  "title": "Zakuro — auth + secrets",
+  "description": "Authentication-layer refusals and HTTP 401/403 trends. Use this to triage suspected brute-force or token-leak incidents. Owners: secops@zakuro.ai. Source-of-truth: ops/grafana/zakuro-auth.json on master — edit there, not in the Grafana UI.",
+  "tags": ["zakuro", "auth", "security"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "templating": {
+    "list": [
+      {
+        "name": "tenant_id",
+        "label": "Tenant",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "query": {"query": "label_values(zakuro_auth_failure_total, tenant_id)", "refId": "Prom"},
+        "includeAll": true,
+        "multi": true,
+        "current": {"selected": false, "text": "All", "value": "$__all"}
+      },
+      {
+        "name": "reason",
+        "label": "Reason",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "query": {"query": "label_values(zakuro_auth_failure_total, reason)", "refId": "Prom"},
+        "includeAll": true,
+        "multi": true,
+        "current": {"selected": false, "text": "All", "value": "$__all"}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total auth refusals (1h)",
+      "description": "Sum of all auth refusals across reasons + tenants in the last hour. Baseline is usually very low; anything above ~tens-per-minute warrants a look.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(zakuro_auth_failure_total{tenant_id=~\"$tenant_id\",reason=~\"$reason\"}[1h]))",
+          "legendFormat": "refusals/1h"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "options": {"colorMode": "value", "graphMode": "area", "textMode": "auto"}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "HTTP 401 rate (qps)",
+      "description": "Cross-check: 401-status HTTP requests per second. Should track auth_failure rate; persistent divergence means a code path is returning 401 outside the JWT middleware.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(zakuro_http_requests_total{status=\"401\",tenant_id=~\"$tenant_id\"}[5m]))",
+          "legendFormat": "401 rate"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "options": {"colorMode": "value", "graphMode": "area", "textMode": "auto"}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "HMAC failures (5m)",
+      "description": "Bytes that failed the per-tenant HMAC check (RFC 0001 §wire). A non-zero reading means a client is sending a payload with a key that doesn't match the worker's keychain — either a misconfigured tenant or an attacker.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 6, "w": 6, "x": 12, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(zakuro_auth_failure_total{reason=\"hmac\",tenant_id=~\"$tenant_id\"}[5m]))",
+          "legendFormat": "hmac/5m"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "red", "value": 10}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "textMode": "auto"}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Signature failures (5m)",
+      "description": "JWT signature verifications that failed. Non-zero means a token signed by a key we don't trust — either rotation hasn't propagated or somebody is forging.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 6, "w": 6, "x": 18, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(zakuro_auth_failure_total{reason=\"signature\",tenant_id=~\"$tenant_id\"}[5m]))",
+          "legendFormat": "signature/5m"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "red", "value": 10}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "textMode": "auto"}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Auth refusal rate by reason",
+      "description": "Refusals per second, split by the reason recorded in zakuro_auth_failure_total. Reasons emitted by the JWT middleware: missing_bearer, expired, signature, malformed, scope_denied.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (reason) (rate(zakuro_auth_failure_total{tenant_id=~\"$tenant_id\",reason=~\"$reason\"}[5m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Auth refusal rate by tenant",
+      "description": "Refusals per second, split by tenant. One tenant generating most of the noise usually means a misconfigured client, not a fleet-wide auth bug.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tenant_id) (rate(zakuro_auth_failure_total{tenant_id=~\"$tenant_id\",reason=~\"$reason\"}[5m]))",
+          "legendFormat": "{{tenant_id}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 7,
+      "type": "bargauge",
+      "title": "Top 5 refusal reasons (1h)",
+      "description": "Five most common refusal reasons in the last hour, used for triage at-a-glance.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(5, sum by (reason) (increase(zakuro_auth_failure_total{tenant_id=~\"$tenant_id\"}[1h])))",
+          "legendFormat": "{{reason}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "options": {"displayMode": "gradient", "orientation": "horizontal"}
+    },
+    {
+      "id": 8,
+      "type": "bargauge",
+      "title": "Top 5 noisy tenants (1h)",
+      "description": "Five tenants with the most refusals in the last hour. A new entry here is the trigger for a tenant-specific audit.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(5, sum by (tenant_id) (increase(zakuro_auth_failure_total{reason=~\"$reason\"}[1h])))",
+          "legendFormat": "{{tenant_id}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "options": {"displayMode": "gradient", "orientation": "horizontal"}
+    }
+  ]
+}
