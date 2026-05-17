@@ -20,6 +20,9 @@ includes:
   ci:
     taskfile: taskfiles/ci.yml
     optional: true
+  notice:
+    taskfile: taskfiles/notice.yml
+    optional: true
 
 dotenv: ['.env']
 
