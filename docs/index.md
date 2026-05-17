@@ -2,7 +2,7 @@
 
 A context-aware distributed-ML runtime. Decorate a Python function, declare a pool of workers, and the framework routes each call to the worker with the lowest expected time-to-serve — learning from every dispatch, reacting to node failures and performance drift, and never making training wait on things that can be decoupled.
 
-For the long-form pitch, phase status, and measured engineering numbers, see the [runtime tracking board](https://github.com/orgs/zakuro-ai/projects/4) (formerly the in-tree `PRD.md` + `PLAN.md`, migrated to the GitHub Project so the source of truth lives next to the issues).
+For the long-form pitch, phase status, and measured engineering numbers, see the [runtime tracking board](https://github.com/orgs/zakuro-ai/projects/6) (formerly the in-tree `PRD.md` + `PLAN.md`, migrated to the GitHub Project so the source of truth lives next to the issues).
 
 ## Get going
 
