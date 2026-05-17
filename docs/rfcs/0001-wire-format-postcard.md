@@ -126,9 +126,33 @@ v0.2 introduces three new types alongside (not replacing) the v0.1 `Envelope`. v
 
 Cache lives on the worker, bounded by an LRU of N entries × cap-per-entry, both configurable via `ZAKURO_CACHE_MAX_ENTRIES` / `ZAKURO_CACHE_MAX_BYTES`. Defaults: 32 entries / 4 GB. Eviction is silent — callers that suffer a cache-miss on a delta retry with the full payload, which is the same code path as never having cached.
 
-### Phase 2 follow-up
+Implementation: [`zakuro.wire.cache.PayloadCache`](https://github.com/zakuro-ai/zakuro/blob/master/zakuro/wire/cache.py) (an ordered-dict LRU; promotes on `get`; evicts oldest entry on either cap violation; refuses to admit a single value larger than the bytes budget).
 
-This PR ships the schema substrate only. The worker-side reassembly + delta-apply logic lands as a Phase 2 PR (mirroring the #115 / #116 / #117 substrate-vs-wiring split). Until that lands, v0.2 envelopes round-trip through the schema cleanly but the worker treats `cache_key` / `delta_against` as advisory metadata.
+### Delta-apply algorithm
+
+The wire crate carries `callable` bytes opaquely. When `delta_against = Some(prev_key)`, the worker reconstructs:
+
+```python
+full = bsdiff4.patch(cache[prev_key], envelope.callable)
+```
+
+**Format choice: bsdiff4.** Reasoning:
+
+- It's well-established (the format `bsdiff`+`bspatch` use, in production since 2003).
+- `bsdiff4` ships as a pure-Python lib with a tiny C accelerator; <50 KB wheel.
+- It produces meaningfully smaller deltas than `zstd --train` for binary state-dicts where most bytes carry small numeric changes (the common case in fine-tuning).
+- It's *not* tensor-aware — a future tensor-aware diff (e.g. quantised-residual or low-rank delta) could supplant it. When that happens we add a `delta_format: Option<DeltaFormat>` field to EnvelopeV2 and gate selection on it. For v0.2 we hard-code bsdiff4.
+
+The delta isn't authenticated by itself: the HMAC over `(callable, args, job_id)` in the envelope covers the *delta bytes* as they arrive. A reconstructed payload that doesn't match the broker's intent produces a different HMAC than the broker computed, so `safe_loads` rejects with `HmacMismatchError` before the bytes reach cloudpickle. The cache layer is not the security boundary.
+
+### Phase 2 substrate (current) vs Phase 2 wiring (next)
+
+The substrate ships in two slices:
+
+1. **Substrate (this PR / #174 Phase 2 substrate):** `zakuro/wire/cache.py` with `PayloadCache` LRU + `apply_delta` (bsdiff4). 15 unit tests. Module is standalone; no worker integration yet.
+2. **Wiring (next PR, after #200 lands):** the QUIC handler's `_handle_chunk` calls `cache.get(env.delta_against)` + `apply_delta` before forwarding to the executor; `cache.put(env.cache_key, callable_bytes)` after successful dispatch. Cache miss / DeltaApplyError surface as `WorkerUnavailable { reason: "cache_miss" }` so the broker retries with the full payload.
+
+This split mirrors the #115 / #116 / #117 substrate-vs-wiring pattern: the substrate has its own narrow tests; the wiring exercises the end-to-end flow.
 
 ### Cross-repo
 
