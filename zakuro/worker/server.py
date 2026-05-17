@@ -22,11 +22,14 @@ except ImportError as exc:
 
 import contextlib
 
-from zakuro.observability import init_sentry
+from zakuro.observability import init_logging, init_sentry
 from zakuro.worker.executor import execute_function
 
-# Init Sentry as early as possible so an exception during app/executor wiring
-# still surfaces. No-op when SENTRY_DSN is unset.
+# Init structured logging + Sentry as early as possible so any exception during
+# app/executor wiring is captured + emitted as JSON. Both are no-ops when their
+# optional dependency is missing (`zakuro-ai[observability]`) or the relevant
+# env var is unset.
+init_logging("worker")
 init_sentry("worker")
 
 app = FastAPI(

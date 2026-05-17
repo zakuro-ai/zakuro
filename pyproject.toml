@@ -49,6 +49,9 @@ observability = [
     # the package is not installed or SENTRY_DSN is unset. Install via
     # `pip install 'zakuro-ai[observability]'` or `uv sync --extra observability`.
     "sentry-sdk>=2.0.0",
+    # structlog produces JSON-rendered logs that share the request-context
+    # ContextVar with the Sentry scrubber. RFC 0003 Track A (#125).
+    "structlog>=24.1.0",
 ]
 dev = [
     "pytest>=7.0",
