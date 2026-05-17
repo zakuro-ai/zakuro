@@ -1,7 +1,5 @@
 """Tests for fn decorator."""
 
-import pytest
-
 from zakuro import Compute, fn
 from zakuro.fn import Cls, Fn, cls
 

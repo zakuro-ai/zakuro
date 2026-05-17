@@ -45,6 +45,6 @@ if __name__ == "__main__":
     print("All tests passed! ✅")
     print()
     print("Default configuration:")
-    print(f"  - API: my.zakuro-ai.com:9000 (used when zc installed + broker reachable)")
-    print(f"  - Fallback: standalone (in-process)")
+    print("  - API: my.zakuro-ai.com:9000 (used when zc installed + broker reachable)")
+    print("  - Fallback: standalone (in-process)")
     print(f"  - Version: {zk.__version__}")

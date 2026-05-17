@@ -1,10 +1,7 @@
 """Tests for Config class."""
 
 import os
-from pathlib import Path
 from unittest.mock import patch
-
-import pytest
 
 from zakuro.config import Config
 
@@ -14,10 +11,11 @@ class TestConfig:
 
     def test_default_values(self) -> None:
         """Test default configuration values."""
-        with patch.dict(os.environ, {}, clear=True):
-            # Mock file reads to return nothing
-            with patch("pathlib.Path.exists", return_value=False):
-                config = Config.load()
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            config = Config.load()
 
         assert config.default_host == "my.zakuro-ai.com"
         assert config.default_port == 9000
@@ -26,25 +24,31 @@ class TestConfig:
 
     def test_env_override_host(self) -> None:
         """Test environment variable overrides host."""
-        with patch.dict(os.environ, {"ZAKURO_HOST": "worker.example.com"}, clear=True):
-            with patch("pathlib.Path.exists", return_value=False):
-                config = Config.load()
+        with (
+            patch.dict(os.environ, {"ZAKURO_HOST": "worker.example.com"}, clear=True),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            config = Config.load()
 
         assert config.default_host == "worker.example.com"
 
     def test_env_override_port(self) -> None:
         """Test environment variable overrides port."""
-        with patch.dict(os.environ, {"ZAKURO_PORT": "9000"}, clear=True):
-            with patch("pathlib.Path.exists", return_value=False):
-                config = Config.load()
+        with (
+            patch.dict(os.environ, {"ZAKURO_PORT": "9000"}, clear=True),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            config = Config.load()
 
         assert config.default_port == 9000
 
     def test_env_override_auth(self) -> None:
         """Test environment variable overrides auth token."""
-        with patch.dict(os.environ, {"ZAKURO_AUTH": "secret-token"}, clear=True):
-            with patch("pathlib.Path.exists", return_value=False):
-                config = Config.load()
+        with (
+            patch.dict(os.environ, {"ZAKURO_AUTH": "secret-token"}, clear=True),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            config = Config.load()
 
         assert config.auth_token == "secret-token"
 
@@ -55,9 +59,11 @@ class TestConfig:
             "ZAKURO_STORAGE_ACCESS_KEY": "access",
             "ZAKURO_STORAGE_SECRET_KEY": "secret",
         }
-        with patch.dict(os.environ, env, clear=True):
-            with patch("pathlib.Path.exists", return_value=False):
-                config = Config.load()
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            config = Config.load()
 
         assert config.storage_host == "minio.local:9000"
         assert config.storage_access_key == "access"
@@ -65,9 +71,11 @@ class TestConfig:
 
     def test_env_tailscale_authkey(self) -> None:
         """Test TAILSCALE_AUTHKEY environment variable."""
-        with patch.dict(os.environ, {"TAILSCALE_AUTHKEY": "tskey-xxx"}, clear=True):
-            with patch("pathlib.Path.exists", return_value=False):
-                config = Config.load()
+        with (
+            patch.dict(os.environ, {"TAILSCALE_AUTHKEY": "tskey-xxx"}, clear=True),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            config = Config.load()
 
         assert config.tailscale_auth_key == "tskey-xxx"
 

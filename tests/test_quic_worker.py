@@ -6,7 +6,6 @@ import pytest
 
 import zakuro as zk
 
-
 pytestmark = pytest.mark.timeout(30)
 
 
@@ -77,10 +76,12 @@ def test_quic_execute_retries_on_transient_connection_error() -> None:
 
     # First call: raise ConnectionError. Second call: succeed with status=OK
     # and a cloudpickle-of-42 payload.
-    responses = iter([
-        ConnectionError("reset"),
-        (0, cloudpickle.dumps(42)),
-    ])
+    responses = iter(
+        [
+            ConnectionError("reset"),
+            (0, cloudpickle.dumps(42)),
+        ]
+    )
 
     def fake_run_sync(_coro, timeout=None):
         out = next(responses)

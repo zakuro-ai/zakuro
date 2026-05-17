@@ -23,7 +23,6 @@ import json
 import random
 import statistics
 import time
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +49,6 @@ def _dispatch_round(
 ) -> dict[str, Any]:
     """Send ``count`` tasks through the allocator and return a measured summary."""
     latencies: list[float] = []
-    picks: list[int] = []
 
     # We don't know in advance which worker gets picked — AdaptiveCompute
     # records stats via dispatch(), so we can read picks from stats() delta.
@@ -62,7 +60,7 @@ def _dispatch_round(
         latencies.append(time.perf_counter() - a0)
     total = time.perf_counter() - t0
     after_steps = [s["step"] for s in adaptive.stats()]
-    picks_delta = [a - b for a, b in zip(after_steps, before_steps)]
+    picks_delta = [a - b for a, b in zip(after_steps, before_steps, strict=False)]
 
     summary = {
         "label": label,

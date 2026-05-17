@@ -9,12 +9,13 @@ duplicating the subprocess bookkeeping each time.
 from __future__ import annotations
 
 import atexit
+import contextlib
 import shutil
 import socket
 import subprocess
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -28,7 +29,7 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def _locate_zakuro_worker() -> Optional[str]:
+def _locate_zakuro_worker() -> str | None:
     """Find the ``zakuro-worker`` binary that matches the current Python.
 
     Prefer the bin directory sibling of ``sys.executable`` — this avoids a
@@ -59,7 +60,7 @@ class Worker:
             ...  # stops automatically on exit
     """
 
-    _registry: list["Worker"] = []
+    _registry: list[Worker] = []
 
     def __init__(
         self,
@@ -78,12 +79,12 @@ class Worker:
     @classmethod
     def spawn(
         cls,
-        name: Optional[str] = None,
+        name: str | None = None,
         host: str = "127.0.0.1",
-        port: Optional[int] = None,
+        port: int | None = None,
         timeout: float = 15.0,
         transport: str = "http",
-    ) -> "Worker":
+    ) -> Worker:
         """Launch the ``zakuro-worker`` CLI and wait for it to become healthy.
 
         Args:
@@ -107,9 +108,12 @@ class Worker:
         chosen_port = port if port is not None else _free_port()
         args = [
             binary,
-            "--host", host,
-            "--port", str(chosen_port),
-            "--transport", transport,
+            "--host",
+            host,
+            "--port",
+            str(chosen_port),
+            "--transport",
+            transport,
         ]
         if name:
             args += ["--worker-name", name]
@@ -155,30 +159,24 @@ class Worker:
             except httpx.HTTPError:
                 pass
             time.sleep(0.2)
-        raise TimeoutError(
-            f"worker {self._name!r} did not become healthy within {timeout}s"
-        )
+        raise TimeoutError(f"worker {self._name!r} did not become healthy within {timeout}s")
 
     def _wait_ready_quic(self, timeout: float) -> None:
         # QUIC has no cheap out-of-band probe; attempt a HEALTH round-trip.
-        from zakuro.processors.quic import QuicProcessor
-        from zakuro.processors.base import ProcessorConfig
         from zakuro.compute import Compute
+        from zakuro.processors.base import ProcessorConfig
+        from zakuro.processors.quic import QuicProcessor
 
         deadline = time.time() + timeout
-        last_exc: Optional[Exception] = None
+        last_exc: Exception | None = None
         while time.time() < deadline:
             if self._proc.poll() is not None:
                 raise RuntimeError(
                     f"worker {self._name!r} exited early (rc={self._proc.returncode})"
                 )
             try:
-                config = ProcessorConfig(
-                    scheme="quic", host=self._host, port=self._port
-                )
-                compute = Compute(
-                    uri=f"quic://{self._host}:{self._port}", verify=False
-                )
+                config = ProcessorConfig(scheme="quic", host=self._host, port=self._port)
+                compute = Compute(uri=f"quic://{self._host}:{self._port}", verify=False)
                 processor = QuicProcessor(config, compute)
                 processor.connect()
                 try:
@@ -223,7 +221,7 @@ class Worker:
     def is_running(self) -> bool:
         return self._proc.poll() is None
 
-    def compute(self, **kwargs: Any) -> "Compute":
+    def compute(self, **kwargs: Any) -> Compute:
         """Build a ``Compute`` pointing at this worker."""
         from zakuro.compute import Compute
 
@@ -239,9 +237,7 @@ class Worker:
         from zakuro.processors.base import ProcessorConfig
         from zakuro.processors.quic import QuicProcessor
 
-        config = ProcessorConfig(
-            scheme="quic", host=self._host, port=self._port
-        )
+        config = ProcessorConfig(scheme="quic", host=self._host, port=self._port)
         compute = Compute(uri=self.uri, verify=False)
         processor = QuicProcessor(config, compute)
         processor.connect()
@@ -262,7 +258,7 @@ class Worker:
         if self in self._registry:
             self._registry.remove(self)
 
-    def __enter__(self) -> "Worker":
+    def __enter__(self) -> Worker:
         return self
 
     def __exit__(self, *args: object) -> None:
@@ -276,7 +272,5 @@ class Worker:
 @atexit.register
 def _cleanup_workers() -> None:
     for worker in list(Worker._registry):
-        try:
+        with contextlib.suppress(Exception):
             worker.stop()
-        except Exception:
-            pass

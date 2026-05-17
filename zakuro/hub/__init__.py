@@ -1,1 +1,1 @@
-from .functional import *
+from .functional import *  # noqa: F403

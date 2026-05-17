@@ -39,7 +39,7 @@ def test_drops_request_body_entirely():
     event = {"request": {"data": "secret=hunter2", "method": "POST"}}
     out = _before_send(event)
     assert "data" not in out["request"]
-    assert out["request"]["method"] == "POST"   # non-PII preserved
+    assert out["request"]["method"] == "POST"  # non-PII preserved
 
 
 def test_redacts_sensitive_headers_case_insensitive():

@@ -1,7 +1,6 @@
 """Tests for function serialization."""
 
 import cloudpickle
-import pytest
 
 from zakuro.fn import Fn
 
@@ -101,7 +100,7 @@ class TestSerialization:
                 return self.value
 
         serialized = cloudpickle.dumps(Calculator)
-        CalcClass = cloudpickle.loads(serialized)
+        calc_class = cloudpickle.loads(serialized)
 
-        calc = CalcClass(10)
+        calc = calc_class(10)
         assert calc.add(5) == 15

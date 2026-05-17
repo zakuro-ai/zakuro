@@ -171,10 +171,7 @@ class TestWarmup:
         assert report["applied_backpressure"] is True
         # Should now be ~1.5× observed p95, not the 999 we started with.
         assert ac.backpressure_threshold < 5.0
-        assert (
-            abs(ac.backpressure_threshold - 1.5 * report["workers"][0]["latency_p95"])
-            < 1e-6
-        )
+        assert abs(ac.backpressure_threshold - 1.5 * report["workers"][0]["latency_p95"]) < 1e-6
 
     def test_warmup_ejects_unreachable_worker(self) -> None:
         """A worker whose probe raises every round should be dropped."""
@@ -198,7 +195,8 @@ class TestDriftDetection:
         """Consistent latencies keep drift_factor at 1.0."""
         ac = AdaptiveCompute(
             workers=[_fast_worker()],
-            beta1=0.8, beta_slow=0.99,
+            beta1=0.8,
+            beta_slow=0.99,
             drift_threshold=2.0,
         )
         for _ in range(50):
@@ -210,8 +208,8 @@ class TestDriftDetection:
         should be soft-demoted."""
         ac = AdaptiveCompute(
             workers=[_fast_worker()],
-            beta1=0.7,          # responsive fast EMA
-            beta_slow=0.95,     # slower baseline
+            beta1=0.7,  # responsive fast EMA
+            beta_slow=0.95,  # slower baseline
             drift_threshold=1.5,
             drift_penalty=5.0,
         )
@@ -232,7 +230,8 @@ class TestDriftDetection:
         """Returning to baseline should clear the demotion."""
         ac = AdaptiveCompute(
             workers=[_fast_worker()],
-            beta1=0.7, beta_slow=0.95,
+            beta1=0.7,
+            beta_slow=0.95,
             drift_threshold=1.5,
             drift_recovery_threshold=1.1,
         )
@@ -251,7 +250,8 @@ class TestDriftDetection:
         """In a 2-worker pool, only the drifted side is skipped."""
         ac = AdaptiveCompute(
             workers=[_fast_worker(), _slow_worker()],
-            beta1=0.7, beta_slow=0.95,
+            beta1=0.7,
+            beta_slow=0.95,
             drift_threshold=1.5,
         )
         # Baseline both: worker 0 fast, worker 1 fast too.
@@ -309,7 +309,8 @@ class TestHealthProbe:
         ac._stats[0].suspended = True
         ac._stats[0].health_strikes = 5
         with patch.object(
-            AdaptiveCompute, "_probe",
+            AdaptiveCompute,
+            "_probe",
             return_value=(True, None, 0.012),
         ):
             ac.probe_once()
@@ -486,7 +487,7 @@ class TestDecisionLog:
             for i in range(5):
                 identity.to(ac)(i)
 
-        rows = [_json.loads(l) for l in log_path.read_text().splitlines() if l.strip()]
+        rows = [_json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
         assert len(rows) == 5
         for r in rows:
             assert r["fn"] == "identity"
@@ -548,7 +549,9 @@ class TestDispatch:
             workers=[Compute(cpus=1)],
             initial_latency=0.0001,
         )
-        with patch("zakuro.standalone.detect_backend", return_value=None):
-            with pytest.raises(ValueError, match="nope"):
-                boom.to(ac)()
+        with (
+            patch("zakuro.standalone.detect_backend", return_value=None),
+            pytest.raises(ValueError, match="nope"),
+        ):
+            boom.to(ac)()
         assert ac.stats()[0]["failures"] == 1

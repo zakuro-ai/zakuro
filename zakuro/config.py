@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import yaml
 
@@ -32,7 +32,7 @@ class Config:
     default_port: int = 9000
 
     # Authentication
-    auth_token: Optional[str] = None
+    auth_token: str | None = None
 
     # Storage (MinIO)
     storage_host: str = "localhost:9000"
@@ -42,7 +42,7 @@ class Config:
 
     # Tailscale
     tailscale_enabled: bool = True
-    tailscale_auth_key: Optional[str] = None
+    tailscale_auth_key: str | None = None
 
     # Hub settings
     hub_url: str = "http://hub.zakuro.ai"

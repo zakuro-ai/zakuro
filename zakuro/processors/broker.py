@@ -65,7 +65,11 @@ class BrokerProcessor(Processor):
         # 2. Extract from API key format (zk_{user_id}_{random})
         # 3. ZAKURO_USER env var
         # 4. $USER / "anonymous"
-        user_id = self._compute.processor_options.get("user_id") if self._compute.processor_options else None
+        user_id = (
+            self._compute.processor_options.get("user_id")
+            if self._compute.processor_options
+            else None
+        )
         if not user_id and self._api_key and self._api_key.startswith("zk_"):
             # Extract user_id from key format: zk_{user_id}_{random}
             parts = self._api_key[3:]  # strip "zk_"

@@ -1,1 +1,1 @@
-from .zakuro_config_loader import ZakuroConfigLoader
+from .zakuro_config_loader import ZakuroConfigLoader as ZakuroConfigLoader

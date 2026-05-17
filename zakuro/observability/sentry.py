@@ -23,8 +23,9 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from contextvars import ContextVar
-from typing import Any, Mapping
+from typing import Any
 
 try:  # sentry-sdk is an optional dependency
     import sentry_sdk
@@ -41,7 +42,7 @@ _SENSITIVE_HEADER_KEYS = frozenset(
 )
 _REDACTED = "<redacted>"
 _REQUEST_CONTEXT: ContextVar[Mapping[str, str]] = ContextVar(
-    "_zakuro_sentry_request_context", default={}
+    "_zakuro_sentry_request_context", default=None
 )
 
 
@@ -60,9 +61,9 @@ def init_sentry(component: str, *, dsn: str | None = None) -> bool:
 
     sentry_sdk.init(
         dsn=resolved_dsn,
-        sample_rate=0.1,           # 10% of errors; per #128
-        traces_sample_rate=0.0,    # OTel handles tracing (#123)
-        send_default_pii=False,    # belt-and-braces; the scrubber is the rope
+        sample_rate=0.1,  # 10% of errors; per #128
+        traces_sample_rate=0.0,  # OTel handles tracing (#123)
+        send_default_pii=False,  # belt-and-braces; the scrubber is the rope
         before_send=_before_send,
         environment=os.environ.get("ZAKURO_ENV", "production"),
         release=os.environ.get("ZAKURO_RELEASE"),

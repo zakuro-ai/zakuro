@@ -53,8 +53,10 @@ def main() -> None:
                 "QUIC transport requires the `[worker]` extra (aioquic): "
                 f"{exc}. Install with `pip install 'zakuro-ai[worker]'`."
             )
-        port = args.port if args.port is not None else int(
-            os.environ.get("ZAKURO_PORT", str(DEFAULT_PORT))
+        port = (
+            args.port
+            if args.port is not None
+            else int(os.environ.get("ZAKURO_PORT", str(DEFAULT_PORT)))
         )
         run_quic_worker(host=args.host, port=port)
         return
@@ -67,9 +69,7 @@ def main() -> None:
             "HTTP transport requires the `[worker]` extra (fastapi, uvicorn): "
             f"{exc}. Install with `pip install 'zakuro-ai[worker]'`."
         )
-    port = args.port if args.port is not None else int(
-        os.environ.get("ZAKURO_PORT", "3960")
-    )
+    port = args.port if args.port is not None else int(os.environ.get("ZAKURO_PORT", "3960"))
     uvicorn.run(
         "zakuro.worker.server:app",
         host=args.host,

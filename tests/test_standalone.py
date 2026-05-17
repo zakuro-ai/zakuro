@@ -35,9 +35,11 @@ class TestDetectBackend:
     """detect_backend() probes and returns URI or None."""
 
     def test_returns_none_when_nothing_reachable(self) -> None:
-        with patch("zakuro.standalone._tcp_reachable", return_value=False), patch(
-            "zakuro.standalone._has_zc_cli", return_value=False
-        ), patch("zakuro.standalone._discover_tailscale_worker", return_value=None):
+        with (
+            patch("zakuro.standalone._tcp_reachable", return_value=False),
+            patch("zakuro.standalone._has_zc_cli", return_value=False),
+            patch("zakuro.standalone._discover_tailscale_worker", return_value=None),
+        ):
             assert detect_backend() is None
 
     def test_returns_local_worker_uri_when_reachable(self) -> None:
@@ -54,15 +56,18 @@ class TestDetectBackend:
         from zakuro.config import Config
 
         config = Config(default_host="my.zakuro-ai.com", default_port=9000)
-        with patch("zakuro.standalone._tcp_reachable", side_effect=_only_remote_broker), patch(
-            "zakuro.standalone._has_zc_cli", return_value=True
+        with (
+            patch("zakuro.standalone._tcp_reachable", side_effect=_only_remote_broker),
+            patch("zakuro.standalone._has_zc_cli", return_value=True),
         ):
             assert detect_backend(config) == "zc://my.zakuro-ai.com:9000"
 
     def test_skips_remote_broker_without_zc_cli(self) -> None:
-        with patch("zakuro.standalone._tcp_reachable", return_value=False) as tcp, patch(
-            "zakuro.standalone._has_zc_cli", return_value=False
-        ), patch("zakuro.standalone._discover_tailscale_worker", return_value=None):
+        with (
+            patch("zakuro.standalone._tcp_reachable", return_value=False) as tcp,
+            patch("zakuro.standalone._has_zc_cli", return_value=False),
+            patch("zakuro.standalone._discover_tailscale_worker", return_value=None),
+        ):
             assert detect_backend() is None
             probed_hosts = {call.args[0] for call in tcp.call_args_list}
             assert "my.zakuro-ai.com" not in probed_hosts
@@ -101,24 +106,25 @@ class TestFnStandaloneFallback:
             calls["local"] = True
 
         class _FakeProcessor:
-            def __enter__(self) -> "_FakeProcessor":
+            def __enter__(self) -> _FakeProcessor:
                 return self
 
             def __exit__(self, *_: object) -> None:
                 return None
 
-            def execute(
-                self, func_bytes: bytes, args: tuple, kwargs: dict
-            ) -> str:
+            def execute(self, func_bytes: bytes, args: tuple, kwargs: dict) -> str:
                 calls["remote"] = True
                 return "remote-result"
 
-        with patch(
-            "zakuro.standalone.detect_backend",
-            return_value="zakuro://127.0.0.1:3960",
-        ), patch(
-            "zakuro.processors.registry.get_processor",
-            return_value=_FakeProcessor(),
+        with (
+            patch(
+                "zakuro.standalone.detect_backend",
+                return_value="zakuro://127.0.0.1:3960",
+            ),
+            patch(
+                "zakuro.processors.registry.get_processor",
+                return_value=_FakeProcessor(),
+            ),
         ):
             result = noop.to(Compute())()
 
@@ -249,9 +255,11 @@ class TestMemoryEnforcementRaises:
         def noop() -> int:
             return 1
 
-        with patch("zakuro.standalone.detect_backend", return_value=None):
-            with pytest.raises(RuntimeError, match="Memory limit"):
-                noop.to(Compute(memory="2Gi"))()
+        with (
+            patch("zakuro.standalone.detect_backend", return_value=None),
+            pytest.raises(RuntimeError, match="Memory limit"),
+        ):
+            noop.to(Compute(memory="2Gi"))()
 
     def test_fn_runs_when_memory_unset_and_no_backend(self) -> None:
         @fn
@@ -267,6 +275,8 @@ class TestMemoryEnforcementRaises:
             def __init__(self, x: int) -> None:
                 self.x = x
 
-        with patch("zakuro.standalone.detect_backend", return_value=None):
-            with pytest.raises(RuntimeError, match="Memory limit"):
-                Box.to(Compute(memory="1Gi"))(5)
+        with (
+            patch("zakuro.standalone.detect_backend", return_value=None),
+            pytest.raises(RuntimeError, match="Memory limit"),
+        ):
+            Box.to(Compute(memory="1Gi"))(5)

@@ -1,17 +1,19 @@
 # from gnutools.fs import load_config as _load_config, parent
-from gnutools.fs import parent
 import os
-from tqdm import tqdm
 import re
+
 # from gnutools.utils import id_generator
 from gnutools import fs
+from gnutools.fs import parent
+from tqdm import tqdm
 
-from zakuro.var import __FILESTORE__
-from zakuro.var import __ZFS_URI__
-def PathURI(src):
+from zakuro.var import __FILESTORE__, __ZFS_URI__
+
+
+def PathURI(src):  # noqa: N802
     if not src.startswith(f"{__ZFS_URI__}://"):
         if src.startswith(f"/{__ZFS_URI__}/"):
-            src = f"{__ZFS_URI__}://{src[len('/zfs/'):]}"
+            src = f"{__ZFS_URI__}://{src[len('/zfs/') :]}"
         elif src.startswith(f"{__ZFS_URI__}/"):
             splits = src.split(f"{__ZFS_URI__}/")[1].split("/")
             partition, group = splits[0].split("-")
@@ -24,7 +26,7 @@ def PathURI(src):
     return src
 
 
-def Path(src):
+def Path(src):  # noqa: N802
     src = PathURI(src)
     return f"/{__ZFS_URI__}/{src.split('zfs://')[1]}"
 
@@ -77,26 +79,20 @@ class Object:
     #     return self._cdata
 
 
-
-
-
 def allow_spark(spark):
     from zakuro.functional import load_config
+
     cfg = load_config()
     spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.access.key", cfg.username)
     spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.secret.key", cfg.password)
-    spark.sparkContext._jsc.hadoopConfiguration().set(
-        "fs.s3a.endpoint", f"http://{cfg.host}"
-    )
+    spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.endpoint", f"http://{cfg.host}")
     spark.sparkContext._jsc.hadoopConfiguration().set(
         "spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem"
     )
     spark.sparkContext._jsc.hadoopConfiguration().set(
         "spark.hadoop.fs.s3a.path.style.access", "true"
     )
-    spark.sparkContext._jsc.hadoopConfiguration().set(
-        "fs.s3a.multipart.size", "104857600"
-    )
+    spark.sparkContext._jsc.hadoopConfiguration().set("fs.s3a.multipart.size", "104857600")
     return spark
 
 
@@ -133,7 +129,7 @@ def get_dir(src):
         assert not file_name.__contains__(".")
         src = src[:-1] if src.endswith("/") else src
         bucket, prefix = bucket_prefix(src)
-        objs = [f for f in client.list_objects(bucket, recursive=False, prefix=prefix)]
+        objs = list(client.list_objects(bucket, recursive=False, prefix=prefix))
         _dir = [f for f in objs if f.object_name.endswith(f"{fs.name(src)}/")]
         assert len(_dir) == 1
         return _dir[0]
@@ -142,7 +138,7 @@ def get_dir(src):
 
 
 def listparents(*args, **kwargs):
-    return list(set([fs.parent(f) for f in listfiles(*args, **kwargs)]))
+    return list({fs.parent(f) for f in listfiles(*args, **kwargs)})
 
 
 def listdirs(src):
@@ -164,7 +160,7 @@ def list_objects(src):
 
     try:
         assert get_dir(src) is not None
-    except:
+    except Exception:
         return []
     src = PathURI(src)
     bucket, prefix = bucket_prefix(src)
@@ -196,7 +192,9 @@ def heal(src):
 #     retyrb fukes
 
 
-def listfiles(src, patterns=[], uri=True, absolute=False):
+def listfiles(src, patterns=None, uri=True, absolute=False):
+    if patterns is None:
+        patterns = []
     src = f"{src}/" if not src.endswith("/") else src
     group, partition = split_zfs(src)[1:3]
     files = [
@@ -253,6 +251,7 @@ def listfiles(src, patterns=[], uri=True, absolute=False):
 #         files = [Path(f) for f in files]
 #     return files
 
+
 def download_file(file, filestore=f"/{__FILESTORE__}"):
     from miniofs import client
 
@@ -267,13 +266,13 @@ def download_file(file, filestore=f"/{__FILESTORE__}"):
     return output_file
 
 
-def download_files(root, patterns=[], filestore=f"/{__FILESTORE__}"):
+def download_files(root, patterns=None, filestore=f"/{__FILESTORE__}"):
+    if patterns is None:
+        patterns = []
     files = listfiles(root, patterns)
     return [
         download_file(file, filestore=filestore)
-        for file in tqdm(
-            files, total=len(files), desc=f"Downloading objects to {filestore}"
-        )
+        for file in tqdm(files, total=len(files), desc=f"Downloading objects to {filestore}")
     ]
 
 

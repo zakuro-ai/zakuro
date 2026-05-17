@@ -10,12 +10,11 @@ Examples:
     python mesh-demo.py http://node2-broker:9000 node2-user
 """
 
-import cloudpickle
 import json
 import sys
-import time
-import requests
 
+import cloudpickle
+import requests
 
 BROKER_URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:9001"
 USER_ID = sys.argv[2] if len(sys.argv) > 2 else "node1-user"
@@ -42,7 +41,7 @@ def execute(func, *args, strategy="best_price", **kwargs):
 
     result = cloudpickle.loads(resp.content)
     cost = resp.headers.get("X-Zakuro-Cost", "?")
-    worker = resp.headers.get("X-Zakuro-Worker", "?")
+    resp.headers.get("X-Zakuro-Worker", "?")
     duration = resp.headers.get("X-Zakuro-Duration-Ms", "?")
     return result, cost, duration
 
@@ -75,7 +74,7 @@ def hello_mesh():
 
 def main():
     print(f"\n{'='*60}")
-    print(f"  Zakuro P2P Mesh Demo")
+    print("  Zakuro P2P Mesh Demo")
     print(f"  Broker:  {BROKER_URL}")
     print(f"  User:    {USER_ID}")
     print(f"{'='*60}\n")

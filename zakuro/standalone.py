@@ -12,7 +12,8 @@ import math
 import os
 import shutil
 import socket
-from typing import TYPE_CHECKING, Iterator, Optional
+from collections.abc import Iterator
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from zakuro.compute import Compute
@@ -24,7 +25,7 @@ _LOCAL_WORKER_PORT = 3960
 _LOCAL_BROKER_PORT = 9000
 
 
-def detect_backend(config: Optional[Config] = None) -> Optional[str]:
+def detect_backend(config: Config | None = None) -> str | None:
     """Detect a reachable Zakuro backend.
 
     Probe order:
@@ -83,7 +84,7 @@ def _tcp_reachable(host: str, port: int) -> bool:
         return False
 
 
-def _discover_tailscale_worker() -> Optional[str]:
+def _discover_tailscale_worker() -> str | None:
     """Re-use the existing Tailscale discovery and verify reachability."""
     from zakuro.discovery import _discover_tailscale
 
@@ -136,9 +137,7 @@ def applied_resource_limits(compute: Compute) -> Iterator[None]:
     if compute.gpus == 0:
         overrides["CUDA_VISIBLE_DEVICES"] = ""
 
-    previous: dict[str, Optional[str]] = {
-        key: os.environ.get(key) for key in overrides
-    }
+    previous: dict[str, str | None] = {key: os.environ.get(key) for key in overrides}
     try:
         os.environ.update(overrides)
         yield

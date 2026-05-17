@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -38,7 +38,7 @@ class ZakuroClient:
     def __init__(
         self,
         compute: Compute,
-        config: Optional[Config] = None,
+        config: Config | None = None,
     ) -> None:
         global _SENTRY_INITIALISED
         if not _SENTRY_INITIALISED:
@@ -46,7 +46,7 @@ class ZakuroClient:
             _SENTRY_INITIALISED = True
         self._compute = compute
         self._config = config
-        self._client: Optional[httpx.Client] = None
+        self._client: httpx.Client | None = None
 
     @property
     def config(self) -> Config:

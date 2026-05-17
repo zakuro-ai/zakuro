@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import socket
 import subprocess
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from zakuro.config import Config
 
 
-def discover_worker(config: Optional[Config] = None) -> str:
+def discover_worker(config: Config | None = None) -> str:
     """
     Discover available worker.
 
@@ -46,7 +46,7 @@ def discover_worker(config: Optional[Config] = None) -> str:
     return config.default_host
 
 
-def _discover_tailscale() -> Optional[str]:
+def _discover_tailscale() -> str | None:
     """Discover worker via Tailscale status."""
     try:
         result = subprocess.run(
@@ -74,7 +74,7 @@ def _discover_tailscale() -> Optional[str]:
         return None
 
 
-def _discover_dns() -> Optional[str]:
+def _discover_dns() -> str | None:
     """Discover worker via DNS."""
     hostnames = [
         "zakuro-worker",
@@ -92,7 +92,7 @@ def _discover_dns() -> Optional[str]:
     return None
 
 
-def list_workers(config: Optional[Config] = None) -> list[str]:
+def list_workers(config: Config | None = None) -> list[str]:
     """
     List all available workers.
 

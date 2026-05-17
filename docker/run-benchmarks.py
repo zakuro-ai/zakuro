@@ -6,15 +6,15 @@ Runs performance benchmarks on 1, 2, 5, and 10 broker nodes.
 Measures throughput, latency, and scalability factor.
 """
 
-import subprocess
-import time
-import json
+import contextlib
 import csv
+import json
 import os
+import subprocess
 import sys
-from pathlib import Path
+import time
 from datetime import datetime
-from typing import List, Dict, Tuple
+from pathlib import Path
 
 # Configuration
 BENCH_REQUESTS = int(os.environ.get("BENCH_REQUESTS", "10000"))
@@ -38,7 +38,7 @@ def print_header(text: str):
     print(f"{Colors.BOLD}  {text}{Colors.NC}")
     print(f"{Colors.CYAN}{'═' * 70}{Colors.NC}\n")
 
-def run_command(cmd: List[str], capture=False) -> Tuple[int, str]:
+def run_command(cmd: list[str], capture=False) -> tuple[int, str]:
     """Run a shell command"""
     try:
         if capture:
@@ -61,7 +61,7 @@ def wait_for_postgres():
     """Wait for PostgreSQL to be ready"""
     print(f"{Colors.YELLOW}Waiting for PostgreSQL...{Colors.NC}")
     max_wait = 30
-    for i in range(max_wait):
+    for _i in range(max_wait):
         code, output = run_command([
             "docker", "compose", "-f", "docker/docker-compose.bench.yml",
             "exec", "-T", "postgres", "pg_isready", "-U", "zakuro"
@@ -109,11 +109,11 @@ def get_worker_count() -> int:
         if code == 0:
             data = json.loads(output)
             return data.get('total', 0)
-    except:
+    except Exception:
         pass
     return 0
 
-def run_benchmark(nodes: int) -> Dict:
+def run_benchmark(nodes: int) -> dict:
     """Run benchmark for N nodes"""
     print_header(f"Testing with {nodes} broker node(s)")
 
@@ -151,7 +151,7 @@ def run_benchmark(nodes: int) -> Dict:
     # Wait for brokers to be healthy
     print(f"{Colors.YELLOW}Waiting for brokers to be healthy...{Colors.NC}")
     max_wait = 60
-    for i in range(max_wait):
+    for _i in range(max_wait):
         code, output = run_command([
             "docker", "compose", "-f", "docker/docker-compose.bench.yml",
             "ps", "broker"
@@ -185,7 +185,7 @@ def run_benchmark(nodes: int) -> Dict:
     output_file = RESULTS_DIR / f"bench_{nodes}nodes_{TIMESTAMP}.txt"
 
     with open(output_file, "w") as f:
-        result = subprocess.run([
+        subprocess.run([
             "docker", "run", "--rm", "--network", "docker_bench-net",
             "-e", "DATABASE_URL=postgresql://zakuro_broker:***REMOVED***@postgres:5432/zakuro",
             "$(docker build -q -f ../../zak-zc/docker/Dockerfile ../../zak-zc)",
@@ -209,25 +209,17 @@ def run_benchmark(nodes: int) -> Dict:
 
     for line in content.split('\n'):
         if 'Throughput:' in line:
-            try:
+            with contextlib.suppress(BaseException):
                 rps = float(line.split()[1])
-            except:
-                pass
         elif 'Avg:' in line:
-            try:
+            with contextlib.suppress(BaseException):
                 avg_latency = float(line.split()[1])
-            except:
-                pass
         elif 'p95:' in line:
-            try:
+            with contextlib.suppress(BaseException):
                 p95 = float(line.split()[1])
-            except:
-                pass
         elif 'p99:' in line:
-            try:
+            with contextlib.suppress(BaseException):
                 p99 = float(line.split()[1])
-            except:
-                pass
 
     print(f"{Colors.GREEN}✓ {nodes}-node test completed{Colors.NC}")
     print(f"  RPS:         {Colors.BOLD}{rps:.1f}{Colors.NC}")
@@ -244,7 +236,7 @@ def run_benchmark(nodes: int) -> Dict:
         "workers": workers
     }
 
-def generate_report(results: List[Dict]):
+def generate_report(results: list[dict]):
     """Generate summary report"""
     print_header("Benchmark Summary")
 

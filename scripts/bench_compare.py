@@ -103,7 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     improvements = [r for r in rows if r[4] == "improvement"]
 
     lines: list[str] = []
-    lines.append(f"# Continuous benchmark report")
+    lines.append("# Continuous benchmark report")
     lines.append("")
     lines.append(f"Threshold: ±{args.threshold * 100:.0f}%   ")
     lines.append(f"Baseline: `{baseline_path}`   Fresh: `{result_path}`")

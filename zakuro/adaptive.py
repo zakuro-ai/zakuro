@@ -44,14 +44,16 @@ the queue before its latency estimate has time to degrade.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import os
 import random
 import threading
 import time
+from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterable, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from zakuro.compute import Compute
@@ -100,10 +102,17 @@ class _WorkerStats:
     """
 
     __slots__ = (
-        "m", "v", "step", "queue", "failures", "last_latency",
-        "health_strikes", "suspended",
+        "m",
+        "v",
+        "step",
+        "queue",
+        "failures",
+        "last_latency",
+        "health_strikes",
+        "suspended",
         # Drift-detection state (Phase 1.2).
-        "m_slow", "drift_factor",
+        "m_slow",
+        "drift_factor",
         # Bandwidth state (Phase 4.1). Seeded by warmup's large-payload probe.
         "bandwidth_bps",
     )
@@ -114,7 +123,7 @@ class _WorkerStats:
         self.step: int = 0
         self.queue: int = 0
         self.failures: int = 0
-        self.last_latency: Optional[float] = None
+        self.last_latency: float | None = None
         self.health_strikes: int = 0
         self.suspended: bool = False
         # Longer-horizon EMA used as the "baseline" that drift is measured
@@ -123,7 +132,7 @@ class _WorkerStats:
         self.drift_factor: float = 1.0
         # Bytes-per-second throughput estimate. ``None`` means "unknown,
         # treat as infinite" so bandwidth-unaware callers don't regress.
-        self.bandwidth_bps: Optional[float] = None
+        self.bandwidth_bps: float | None = None
 
     def m_hat(self, beta1: float) -> float:
         """Bias-corrected first moment. Zero until the first completed call."""
@@ -187,7 +196,7 @@ class AdaptiveCompute:
 
     def __init__(
         self,
-        workers: Iterable["Compute"],
+        workers: Iterable[Compute],
         *,
         beta1: float = 0.9,
         beta2: float = 0.999,
@@ -199,12 +208,12 @@ class AdaptiveCompute:
         initial_latency: float = 1.0,
         backpressure_threshold: float = 30.0,
         cost_coefficient: float = 0.0,
-        local_region: Optional[str] = None,
-        local_rack: Optional[str] = None,
+        local_region: str | None = None,
+        local_rack: str | None = None,
         region_penalty: float = 1.10,
         rack_penalty: float = 1.03,
     ) -> None:
-        self._workers: list["Compute"] = list(workers)
+        self._workers: list[Compute] = list(workers)
         if not self._workers:
             raise ValueError("AdaptiveCompute requires at least one worker.")
         if not (0.0 <= beta1 < 1.0) or not (0.0 <= beta2 < 1.0):
@@ -250,7 +259,7 @@ class AdaptiveCompute:
         self._lock = threading.Lock()
 
         # Health probing lifecycle (Phase 1.1).
-        self._probe_thread: Optional[threading.Thread] = None
+        self._probe_thread: threading.Thread | None = None
         self._probe_stop: threading.Event = threading.Event()
         self._probe_interval: float = 5.0
         self._probe_timeout: float = 2.0
@@ -259,13 +268,13 @@ class AdaptiveCompute:
         # Decision log (Phase 6.1). Append one JSON object per dispatch with
         # the allocator's prediction and the observed outcome. Users can
         # replay this offline to audit decisions / debug weird routing.
-        self._log_path: Optional[Path] = None
+        self._log_path: Path | None = None
         self._log_lock: threading.Lock = threading.Lock()
 
     # .................................................................. API
 
     @property
-    def workers(self) -> list["Compute"]:
+    def workers(self) -> list[Compute]:
         """Read-only view of the worker pool."""
         with self._lock:
             return list(self._workers)
@@ -284,10 +293,7 @@ class AdaptiveCompute:
     def stats(self) -> list[dict[str, Any]]:
         """Snapshot of per-worker stats, bias-corrected."""
         with self._lock:
-            return [
-                s.to_dict(self._beta1, self._beta2, self._beta_slow)
-                for s in self._stats
-            ]
+            return [s.to_dict(self._beta1, self._beta2, self._beta_slow) for s in self._stats]
 
     def is_backpressured(self) -> bool:
         """True when the best worker's expected time-to-serve exceeds the cap."""
@@ -311,7 +317,7 @@ class AdaptiveCompute:
 
     # ........................................................ decision log
 
-    def enable_decision_log(self, path: Optional[str] = None) -> Path:
+    def enable_decision_log(self, path: str | None = None) -> Path:
         """Turn on per-dispatch logging to a JSONL file.
 
         Each dispatch appends one line:
@@ -348,16 +354,15 @@ class AdaptiveCompute:
             return
         try:
             line = json.dumps(row, default=str) + "\n"
-            with self._log_lock:
-                with open(self._log_path, "a", encoding="utf-8") as fp:
-                    fp.write(line)
+            with self._log_lock, open(self._log_path, "a", encoding="utf-8") as fp:
+                fp.write(line)
         except Exception:
             # Observability must never break the hot path.
             pass
 
     # ........................................................ node lifecycle
 
-    def add_worker(self, compute: "Compute") -> int:
+    def add_worker(self, compute: Compute) -> int:
         """Admit a new worker into the pool. Returns its index.
 
         The fresh worker is seeded with a bootstrap latency prior equal to
@@ -380,15 +385,13 @@ class AdaptiveCompute:
             self._stats.append(new_stats)
             return len(self._workers) - 1
 
-    def remove_worker(self, idx: int) -> "Compute":
+    def remove_worker(self, idx: int) -> Compute:
         """Evict a worker from the pool. Returns the evicted Compute."""
         with self._lock:
             if not (0 <= idx < len(self._workers)):
                 raise IndexError(f"worker index {idx} out of range")
             if len(self._workers) == 1:
-                raise ValueError(
-                    "cannot remove the last worker; add a replacement first"
-                )
+                raise ValueError("cannot remove the last worker; add a replacement first")
             compute = self._workers.pop(idx)
             self._stats.pop(idx)
             return compute
@@ -398,7 +401,7 @@ class AdaptiveCompute:
     def warmup(
         self,
         *,
-        probe_fn: Optional[Any] = None,
+        probe_fn: Any | None = None,
         rounds: int = 3,
         timeout: float = 10.0,
         eject_on_failure: bool = True,
@@ -450,7 +453,7 @@ class AdaptiveCompute:
         # Snapshot the list of (idx, compute) up-front so mutations during
         # the walk don't skip or double-count workers.
         with self._lock:
-            snapshot: list[tuple[int, "Compute"]] = list(enumerate(self._workers))
+            snapshot: list[tuple[int, Compute]] = list(enumerate(self._workers))
 
         worker_reports: list[dict[str, Any]] = []
         # Track ORIGINAL indices; we translate to current positions right
@@ -459,7 +462,7 @@ class AdaptiveCompute:
 
         for orig_idx, compute in snapshot:
             observed: list[float] = []
-            err: Optional[str] = None
+            err: str | None = None
             started = time.perf_counter()
             for _ in range(rounds):
                 remaining = timeout - (time.perf_counter() - started)
@@ -484,7 +487,7 @@ class AdaptiveCompute:
                 # worker's effective throughput. Bandwidth dominates over
                 # raw latency once payloads cross a few MiB (see Phase 4.1
                 # in PLAN.md) — the allocator mixes it into expected time.
-                bandwidth_bps: Optional[float] = None
+                bandwidth_bps: float | None = None
                 if bandwidth_probe_bytes > 0:
                     big_payload = b"\x00" * bandwidth_probe_bytes
                     bw_samples: list[float] = []
@@ -643,7 +646,7 @@ class AdaptiveCompute:
         heartbeat loop from their own scheduler.
         """
         with self._lock:
-            snapshot: list[tuple[int, "Compute"]] = list(enumerate(self._workers))
+            snapshot: list[tuple[int, Compute]] = list(enumerate(self._workers))
         results: list[dict[str, Any]] = []
         for idx, compute in snapshot:
             ok, err, latency = self._probe(compute)
@@ -679,14 +682,12 @@ class AdaptiveCompute:
 
     def _probe_loop(self) -> None:
         while not self._probe_stop.is_set():
-            try:
+            with contextlib.suppress(Exception):  # defensive — loop must never die on a user error
                 self.probe_once()
-            except Exception:  # defensive — loop must never die on a user error
-                pass
             # Use Event.wait so stop is immediate.
             self._probe_stop.wait(self._probe_interval)
 
-    def _probe(self, compute: "Compute") -> tuple[bool, Optional[str], Optional[float]]:
+    def _probe(self, compute: Compute) -> tuple[bool, str | None, float | None]:
         """Probe a single worker's health. Returns (ok, error_reason, latency_sec)."""
         # Pick the right probe per scheme; fall through to the generic
         # worker-runner info endpoint if we don't know the processor.
@@ -697,9 +698,7 @@ class AdaptiveCompute:
                 from zakuro.processors.base import ProcessorConfig
                 from zakuro.processors.quic import QuicProcessor
 
-                config = ProcessorConfig(
-                    scheme="quic", host=compute.host, port=compute.port
-                )
+                config = ProcessorConfig(scheme="quic", host=compute.host, port=compute.port)
                 processor = QuicProcessor(config, compute)
                 processor.connect()
                 try:
@@ -720,7 +719,7 @@ class AdaptiveCompute:
         except Exception as exc:
             return False, repr(exc), None
 
-    def _find_locked(self, compute: "Compute") -> Optional[int]:
+    def _find_locked(self, compute: Compute) -> int | None:
         for i, w in enumerate(self._workers):
             if w is compute:
                 return i
@@ -762,7 +761,7 @@ class AdaptiveCompute:
         fn_name = getattr(getattr(fn, "_func", fn), "__name__", "<fn>")
         t0 = time.perf_counter()
         ok = False
-        error: Optional[str] = None
+        error: str | None = None
         try:
             fn.to(compute)
             result = fn._execute_single_compute(*args, **kwargs)  # type: ignore[attr-defined]
@@ -781,17 +780,19 @@ class AdaptiveCompute:
                 self._update_ema(s, latency)
             # Cheap, optional, never-raises observability hook.
             if self._log_path is not None:
-                self._log_decision({
-                    "t": time.time(),
-                    "fn": fn_name,
-                    "picked": idx,
-                    "expected_secs": expected,
-                    "actual_secs": latency,
-                    "ok": ok,
-                    "queue_before": queue_before,
-                    "drift_factor": drift_factor,
-                    "error": error,
-                })
+                self._log_decision(
+                    {
+                        "t": time.time(),
+                        "fn": fn_name,
+                        "picked": idx,
+                        "expected_secs": expected,
+                        "actual_secs": latency,
+                        "ok": ok,
+                        "queue_before": queue_before,
+                        "drift_factor": drift_factor,
+                        "error": error,
+                    }
+                )
 
     # ........................................................... internals
 
@@ -803,7 +804,7 @@ class AdaptiveCompute:
         # Soft (probabilistic) allocation: logits = -time/τ.
         logits = [-t / self._tau for t in expected]
         m = max(logits)
-        weights = [math.exp(l - m) for l in logits]
+        weights = [math.exp(v - m) for v in logits]
         total = sum(weights)
         r = random.random() * total
         acc = 0.0
@@ -814,7 +815,8 @@ class AdaptiveCompute:
         return len(weights) - 1  # numerical safety
 
     def _expected_times_locked(
-        self, payload_bytes: int = 0,
+        self,
+        payload_bytes: int = 0,
     ) -> list[float]:
         out = []
         for i, s in enumerate(self._stats):
@@ -866,9 +868,7 @@ class AdaptiveCompute:
         Falls back to ``initial_latency`` if no worker has any observations
         yet — matches the bootstrap assumption from the first call.
         """
-        observed = [
-            s.m_hat(self._beta1) for s in self._stats if s.step > 0
-        ]
+        observed = [s.m_hat(self._beta1) for s in self._stats if s.step > 0]
         if not observed:
             return self._initial_latency
         observed.sort()
@@ -916,10 +916,8 @@ class AdaptiveCompute:
         # Best-effort cleanup of the probe thread when the allocator is
         # garbage-collected. Users should call stop_health_probes() explicitly
         # in long-running processes.
-        try:
+        with contextlib.suppress(Exception):
             self.stop_health_probes(timeout=0.5)
-        except Exception:
-            pass
 
 
 __all__ = ["AdaptiveCompute"]

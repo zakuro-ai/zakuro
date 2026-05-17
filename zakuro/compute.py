@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     pass
@@ -44,16 +44,16 @@ class Compute:
     """
 
     cpus: float = 1.0
-    memory: Optional[str] = None
+    memory: str | None = None
     gpus: int = 0
-    image: Optional[str] = None
+    image: str | None = None
     env: dict[str, str] = field(default_factory=dict)
 
     # URI-based processor selection
-    uri: Optional[str] = None
+    uri: str | None = None
 
     # Legacy connection settings (used if uri not provided)
-    host: Optional[str] = None
+    host: str | None = None
     port: int = 9000  # Default broker port
 
     # Backend-specific options
@@ -67,15 +67,15 @@ class Compute:
     # allocator only ever uses ratios). When ``AdaptiveCompute`` is built
     # with ``cost_coefficient > 0``, workers with higher price are
     # deprioritised proportionally to (price * predicted_time).
-    price_per_hour: Optional[float] = None
+    price_per_hour: float | None = None
 
     # Optional topology tags. When the allocator knows its own region/rack
     # (see ``AdaptiveCompute(local_region=…, local_rack=…)``), it softly
     # prefers same-region / same-rack workers on otherwise-tied decisions.
     # Never a hard constraint — a sufficiently faster remote worker still
     # wins.
-    region: Optional[str] = None
-    rack: Optional[str] = None
+    region: str | None = None
+    rack: str | None = None
 
     def __post_init__(self) -> None:
         """Validate, resolve, and verify the backend is reachable when explicit."""
@@ -92,8 +92,7 @@ class Compute:
         pattern = r"^\d+(\.\d+)?(Gi|Mi|Ki|G|M|K)?$"
         if not re.match(pattern, self.memory):
             raise ValueError(
-                f"Invalid memory format: {self.memory}. "
-                "Expected format like '1Gi', '512Mi', '2G'"
+                f"Invalid memory format: {self.memory}. Expected format like '1Gi', '512Mi', '2G'"
             )
 
     def _resolve_uri(self) -> None:
@@ -129,9 +128,7 @@ class Compute:
             return
         if self.scheme == "quic":
             try:
-                socket.getaddrinfo(
-                    self.host, self.port, type=socket.SOCK_DGRAM
-                )
+                socket.getaddrinfo(self.host, self.port, type=socket.SOCK_DGRAM)
                 return
             except socket.gaierror as exc:
                 raise ConnectionError(
@@ -223,16 +220,12 @@ class Compute:
         client = ZakuroClient(self)
         try:
             if not client.ping():
-                raise ConnectionError(
-                    f"Worker unreachable at {self.endpoint}"
-                )
+                raise ConnectionError(f"Worker unreachable at {self.endpoint}")
             info = client.info()
         except ConnectionError:
             raise
         except Exception as exc:
-            raise ConnectionError(
-                f"Worker unreachable at {self.endpoint}: {exc}"
-            ) from exc
+            raise ConnectionError(f"Worker unreachable at {self.endpoint}: {exc}") from exc
         finally:
             client.close()
 
@@ -240,24 +233,21 @@ class Compute:
         available_cpus = info.get("cpus_available")
         if available_cpus is not None and self.cpus > available_cpus:
             raise RuntimeError(
-                f"Insufficient CPUs: requested {self.cpus}, "
-                f"available {available_cpus}"
+                f"Insufficient CPUs: requested {self.cpus}, available {available_cpus}"
             )
 
         available_memory = info.get("memory_available")
-        if available_memory is not None:
-            if self.memory_bytes() > available_memory:
-                raise RuntimeError(
-                    f"Insufficient memory: requested {self.memory} "
-                    f"({self.memory_bytes()} bytes), "
-                    f"available {available_memory} bytes"
-                )
+        if available_memory is not None and self.memory_bytes() > available_memory:
+            raise RuntimeError(
+                f"Insufficient memory: requested {self.memory} "
+                f"({self.memory_bytes()} bytes), "
+                f"available {available_memory} bytes"
+            )
 
         available_gpus = info.get("gpus_available")
         if available_gpus is not None and self.gpus > available_gpus:
             raise RuntimeError(
-                f"Insufficient GPUs: requested {self.gpus}, "
-                f"available {available_gpus}"
+                f"Insufficient GPUs: requested {self.gpus}, available {available_gpus}"
             )
 
         return info

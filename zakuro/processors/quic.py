@@ -9,9 +9,10 @@ module owns a background event-loop thread that drives aioquic.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ssl
 import threading
-from typing import TYPE_CHECKING, Any, ClassVar, Optional
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import cloudpickle
 
@@ -38,8 +39,8 @@ DEFAULT_PORT = 4433
 # ``run_coroutine_threadsafe``.
 # --------------------------------------------------------------------------- #
 
-_loop: Optional[asyncio.AbstractEventLoop] = None
-_loop_thread: Optional[threading.Thread] = None
+_loop: asyncio.AbstractEventLoop | None = None
+_loop_thread: threading.Thread | None = None
 _loop_lock = threading.Lock()
 
 
@@ -54,14 +55,12 @@ def _ensure_loop() -> asyncio.AbstractEventLoop:
                 asyncio.set_event_loop(_loop)
                 _loop.run_forever()
 
-            _loop_thread = threading.Thread(
-                target=_run, daemon=True, name="zakuro-quic-loop"
-            )
+            _loop_thread = threading.Thread(target=_run, daemon=True, name="zakuro-quic-loop")
             _loop_thread.start()
     return _loop
 
 
-def _run_sync(coro: Any, timeout: Optional[float] = None) -> Any:
+def _run_sync(coro: Any, timeout: float | None = None) -> Any:
     loop = _ensure_loop()
     fut = asyncio.run_coroutine_threadsafe(coro, loop)
     return fut.result(timeout=timeout)
@@ -122,9 +121,7 @@ def _build_client_protocol_class() -> type:
                 self._pending.clear()
 
         async def request(self, op: int, payload: bytes) -> tuple[int, bytes]:
-            stream_id = self._quic.get_next_available_stream_id(
-                is_unidirectional=False
-            )
+            stream_id = self._quic.get_next_available_stream_id(is_unidirectional=False)
             fut: asyncio.Future = asyncio.get_event_loop().create_future()
             self._pending[stream_id] = fut
             frame = bytes([op]) + len(payload).to_bytes(4, "big") + payload
@@ -135,7 +132,7 @@ def _build_client_protocol_class() -> type:
     return _Client
 
 
-_ClientProtocolClass: Optional[type] = None
+_ClientProtocolClass: type | None = None
 
 
 def _client_protocol_class() -> type:
@@ -162,7 +159,7 @@ class QuicProcessor(Processor):
     priority: ClassVar[int] = 20
     schemes: ClassVar[tuple[str, ...]] = ("quic",)
 
-    def __init__(self, config: ProcessorConfig, compute: "Compute") -> None:
+    def __init__(self, config: ProcessorConfig, compute: Compute) -> None:
         super().__init__(config, compute)
         self._cm: Any = None
         self._protocol: Any = None
@@ -227,9 +224,7 @@ class QuicProcessor(Processor):
         if not self._connected or self._protocol is None:
             raise RuntimeError("QuicProcessor not connected; use as a context manager.")
         func = cloudpickle.loads(func_bytes)
-        payload = cloudpickle.dumps(
-            {"func": func, "args": args, "kwargs": kwargs}
-        )
+        payload = cloudpickle.dumps({"func": func, "args": args, "kwargs": kwargs})
 
         # One retry on connection-level failure: if the underlying QUIC
         # connection dropped (worker bounced, network blip, stale pool
@@ -249,17 +244,13 @@ class QuicProcessor(Processor):
             return cloudpickle.loads(body)
         if status == STAT_USER_ERROR:
             raise cloudpickle.loads(body)
-        raise RuntimeError(
-            f"QUIC protocol error from worker: {body.decode(errors='replace')}"
-        )
+        raise RuntimeError(f"QUIC protocol error from worker: {body.decode(errors='replace')}")
 
     def _reconnect(self) -> bool:
         """Tear down the current connection and dial again. Returns ``True``
         on success."""
-        try:
+        with contextlib.suppress(Exception):
             _run_sync(self._async_disconnect(), timeout=3.0)
-        except Exception:
-            pass
         self._connected = False
         try:
             _run_sync(self._async_connect())

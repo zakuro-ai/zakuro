@@ -11,6 +11,7 @@ serialisation.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import datetime
 import json
 import logging
@@ -20,7 +21,7 @@ import platform
 import signal
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 import cloudpickle
 
@@ -86,9 +87,7 @@ def _info_payload() -> bytes:
         memory_available = memory_total
     return json.dumps(
         {
-            "name": os.environ.get(
-                "ZAKURO_WORKER_NAME", f"worker-{platform.node()}"
-            ),
+            "name": os.environ.get("ZAKURO_WORKER_NAME", f"worker-{platform.node()}"),
             "worker_type": os.environ.get("ZAKURO_WORKER_TYPE", "zakuro"),
             "version": "0.2.0",
             "transport": "quic",
@@ -116,10 +115,10 @@ class _StreamBuffer:
 
     def __init__(self) -> None:
         self.buf = bytearray()
-        self.op: Optional[int] = None
-        self.expected: Optional[int] = None
+        self.op: int | None = None
+        self.expected: int | None = None
 
-    def feed(self, data: bytes) -> Optional[tuple[int, bytes]]:
+    def feed(self, data: bytes) -> tuple[int, bytes] | None:
         """Append bytes; return ``(op, payload)`` once a full frame is ready."""
         self.buf.extend(data)
         if self.op is None:
@@ -153,17 +152,13 @@ class WorkerQuicProtocol(QuicConnectionProtocol):
             frame = sb.feed(event.data)
             if frame is not None:
                 self._streams.pop(event.stream_id, None)
-                asyncio.ensure_future(
-                    self._handle_request(event.stream_id, frame[0], frame[1])
-                )
+                asyncio.ensure_future(self._handle_request(event.stream_id, frame[0], frame[1]))
 
     async def _handle_request(self, stream_id: int, op: int, payload: bytes) -> None:
         try:
             if op == OP_EXECUTE:
                 loop = asyncio.get_event_loop()
-                status, body = await loop.run_in_executor(
-                    self._executor, _execute_payload, payload
-                )
+                status, body = await loop.run_in_executor(self._executor, _execute_payload, payload)
             elif op == OP_INFO:
                 status, body = STAT_OK, _info_payload()
             elif op == OP_HEALTH:
@@ -194,9 +189,7 @@ def _ensure_certificate() -> tuple[Path, Path]:
     _CERT_DIR.mkdir(parents=True, exist_ok=True)
 
     key = ec.generate_private_key(ec.SECP256R1())
-    subject = issuer = x509.Name(
-        [x509.NameAttribute(NameOID.COMMON_NAME, "localhost")]
-    )
+    subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
     now = datetime.datetime.now(datetime.timezone.utc)
     cert = (
         x509.CertificateBuilder()
@@ -227,7 +220,7 @@ async def _run_server(
     host: str,
     port: int,
     executor: ThreadPoolExecutor,
-    ready: Optional[asyncio.Event],
+    ready: asyncio.Event | None,
 ) -> None:
     cert_path, key_path = _ensure_certificate()
     config = QuicConfiguration(
@@ -254,11 +247,9 @@ async def _run_server(
     try:
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
-            try:
+            # Windows or sub-thread: callers drive the stop via ready/cancel.
+            with contextlib.suppress(NotImplementedError):
                 loop.add_signal_handler(sig, stop_event.set)
-            except NotImplementedError:
-                # Windows or sub-thread: callers drive the stop via ready/cancel.
-                pass
         await stop_event.wait()
     finally:
         server.close()
@@ -267,7 +258,7 @@ async def _run_server(
 def run_quic_worker(
     host: str = "0.0.0.0",
     port: int = DEFAULT_PORT,
-    max_workers: Optional[int] = None,
+    max_workers: int | None = None,
 ) -> None:
     """Blocking entry point. Runs the QUIC worker until SIGINT/SIGTERM."""
     executor = ThreadPoolExecutor(

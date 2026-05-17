@@ -20,6 +20,8 @@ except ImportError as exc:
         "from a source checkout)."
     ) from exc
 
+import contextlib
+
 from zakuro.observability import init_sentry
 from zakuro.worker.executor import execute_function
 
@@ -77,11 +79,13 @@ async def _check_broker_reachable() -> tuple[bool, str | None]:
     (True, None) on a 2xx response, (False, reason) otherwise.
     """
     import os
+
     broker_url = os.environ.get("ZAKURO_BROKER_URL", "").strip()
     if not broker_url:
         return True, None
     try:
         import httpx
+
         async with httpx.AsyncClient(timeout=2.0) as client:
             resp = await client.get(f"{broker_url.rstrip('/')}/health")
         if 200 <= resp.status_code < 300:
@@ -99,6 +103,7 @@ async def _check_storage_reachable() -> tuple[bool, str | None]:
     timeout and reports the outcome.
     """
     import os
+
     endpoint = os.environ.get("ZAKURO_S3_ENDPOINT", "").strip()
     access_key = os.environ.get("ZAKURO_S3_ACCESS_KEY", "").strip()
     secret_key = os.environ.get("ZAKURO_S3_SECRET_KEY", "").strip()
@@ -106,6 +111,7 @@ async def _check_storage_reachable() -> tuple[bool, str | None]:
         return True, None
     try:
         from minio import Minio  # type: ignore[import-not-found]
+
         client = Minio(
             endpoint,
             access_key=access_key,
@@ -113,9 +119,7 @@ async def _check_storage_reachable() -> tuple[bool, str | None]:
             secure=os.environ.get("ZAKURO_S3_SECURE", "true").lower() == "true",
         )
         # list_buckets is a cheap auth + reachability probe.
-        await asyncio.wait_for(
-            asyncio.to_thread(client.list_buckets), timeout=2.0
-        )
+        await asyncio.wait_for(asyncio.to_thread(client.list_buckets), timeout=2.0)
         return True, None
     except asyncio.TimeoutError:
         return False, f"storage {endpoint} timed out (2s)"
@@ -200,6 +204,7 @@ async def info() -> dict[str, Any]:
     # Memory info
     try:
         import psutil
+
         vm = psutil.virtual_memory()
         memory_total = vm.total
         memory_available = vm.available
@@ -214,19 +219,19 @@ async def info() -> dict[str, Any]:
     try:
         result = subprocess.run(
             ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if result.returncode == 0:
-            lines = [l.strip() for l in result.stdout.strip().split("\n") if l.strip()]
+            lines = [x.strip() for x in result.stdout.strip().split("\n") if x.strip()]
             gpus = len(lines)
             if lines:
                 parts = lines[0].split(", ", 1)
                 gpu_model = parts[0].strip()
                 if len(parts) > 1:
-                    try:
+                    with contextlib.suppress(ValueError):
                         gpu_vram_gb = int(parts[1].strip()) // 1024
-                    except ValueError:
-                        pass
     except Exception:
         pass
 
@@ -235,10 +240,8 @@ async def info() -> dict[str, Any]:
 
     # Available storage on root filesystem
     storage_gb_available = None
-    try:
-        storage_gb_available = shutil.disk_usage("/").free // (1024 ** 3)
-    except Exception:
-        pass
+    with contextlib.suppress(Exception):
+        storage_gb_available = shutil.disk_usage("/").free // (1024**3)
 
     # Worker name from environment or hostname
     worker_name = os.environ.get("ZAKURO_WORKER_NAME", f"worker-{platform.node()}")
@@ -265,7 +268,9 @@ async def info() -> dict[str, Any]:
             "price_per_hour": float(os.environ.get("ZAKURO_PRICE_PER_HOUR", "3.6")),
             "min_charge": float(os.environ.get("ZAKURO_MIN_CHARGE", "0.001")),
         },
-        "tags": os.environ.get("ZAKURO_WORKER_TAGS", "").split(",") if os.environ.get("ZAKURO_WORKER_TAGS") else [],
+        "tags": os.environ.get("ZAKURO_WORKER_TAGS", "").split(",")
+        if os.environ.get("ZAKURO_WORKER_TAGS")
+        else [],
     }
 
 
@@ -323,6 +328,7 @@ def main() -> None:
     """Run the worker server."""
     import argparse
     import os
+
     import uvicorn
 
     parser = argparse.ArgumentParser(description="Zakuro Worker Server")

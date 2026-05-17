@@ -19,7 +19,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-
 SCRIPTS = Path(__file__).resolve().parent
 
 

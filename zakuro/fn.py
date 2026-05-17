@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import functools
-from typing import Any, Callable, Generic, Optional, TypeVar, overload
+from collections.abc import Callable
+from typing import Any, Generic, TypeVar, overload
 
 import cloudpickle
 
@@ -28,8 +29,8 @@ class Fn(Generic[R]):
 
     def __init__(self, func: Callable[..., R]) -> None:
         self._func = func
-        self._compute: Optional[Any] = None  # Compute or AdaptiveCompute
-        self._serialized: Optional[bytes] = None
+        self._compute: Any | None = None  # Compute or AdaptiveCompute
+        self._serialized: bytes | None = None
         functools.update_wrapper(self, func)
 
     def to(self, compute: Any) -> Fn[R]:
@@ -120,7 +121,7 @@ def fn(func: None = None) -> Callable[[Callable[..., R]], Fn[R]]: ...
 
 
 def fn(
-    func: Optional[Callable[..., R]] = None,
+    func: Callable[..., R] | None = None,
 ) -> Fn[R] | Callable[[Callable[..., R]], Fn[R]]:
     """
     Decorator to make a function remotely executable.
@@ -171,7 +172,7 @@ class Cls(Generic[T]):
 
     def __init__(self, klass: type[T]) -> None:
         self._klass = klass
-        self._compute: Optional[Compute] = None
+        self._compute: Compute | None = None
         functools.update_wrapper(self, klass)
 
     def to(self, compute: Compute) -> Cls[T]:
@@ -224,7 +225,7 @@ def cls(klass: None = None) -> Callable[[type[T]], Cls[T]]: ...
 
 
 def cls(
-    klass: Optional[type[T]] = None,
+    klass: type[T] | None = None,
 ) -> Cls[T] | Callable[[type[T]], Cls[T]]:
     """
     Decorator to make a class remotely instantiable.

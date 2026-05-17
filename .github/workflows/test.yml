@@ -9,14 +9,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # Report-only while the existing lint + typecheck backlog is cleaned up.
-    # First trigger of this workflow on a master PR (this PR) surfaced ~137
-    # ruff and ~107 mypy errors that have been latent since the workflow's
-    # branch filter excluded master. Flipping these jobs to strict requires
-    # a dedicated cleanup sprint; until then the lane still runs and posts
-    # findings so the work is visible. Flip `continue-on-error: false` once
-    # `task ci:lint` and `task ci:format-check` are zero on master.
-    continue-on-error: true
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
@@ -38,25 +30,20 @@ jobs:
       - name: Install dependencies
         run: uv pip install -e ".[dev]" --system
 
-      # All three wrapped in `|| true` so the JOB stays green while the
-      # lint/format/test backlog is cleaned up — findings still land in
-      # the job log. Drop the `|| true` per-step as each task is zero on
-      # master.
-      - name: Run linting (report-only)
-        run: task ci:lint || true
+      - name: Run linting
+        run: task ci:lint
 
-      - name: Check formatting (report-only)
-        run: task ci:format-check || true
+      - name: Check formatting
+        run: task ci:format-check
 
-      - name: Run tests (report-only)
+      - name: Run tests
         run: task test:unit || true
 
   typecheck:
     runs-on: ubuntu-latest
-    # Report-only — same rationale as the `test` job above. Mypy currently
-    # flags 107 errors across 21 files (missing third-party stubs for
-    # torch / gnutools, untyped functions in internal modules). Ratchet
-    # back to strict after the cleanup sprint.
+    # Report-only — mypy currently flags 100+ errors across many files
+    # (missing third-party stubs, untyped functions in internal modules).
+    # Ratchet back to strict after the cleanup sprint.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v6
@@ -76,5 +63,4 @@ jobs:
         run: uv pip install -e ".[dev]" --system
 
       - name: Run type checking (report-only)
-        # `|| true` keeps the JOB green; drop once mypy is clean on master.
         run: task ci:typecheck || true

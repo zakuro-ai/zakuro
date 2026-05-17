@@ -10,6 +10,7 @@ Every number is observed.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import signal
 import time
@@ -72,10 +73,8 @@ def main() -> None:
 
             # Dispatch at the target rate.
             if time.perf_counter() >= next_dispatch:
-                try:
+                with contextlib.suppress(Exception):
                     tiny.to(adaptive)()
-                except Exception:
-                    pass
                 next_dispatch += interval
 
             # Detect the suspension.

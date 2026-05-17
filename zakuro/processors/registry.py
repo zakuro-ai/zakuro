@@ -116,8 +116,7 @@ class ProcessorRegistry:
         if config.scheme not in self.processors:
             available = ", ".join(sorted(self.available()))
             raise ValueError(
-                f"Unsupported processor scheme: '{config.scheme}'. "
-                f"Available: {available}"
+                f"Unsupported processor scheme: '{config.scheme}'. Available: {available}"
             )
 
         processor_cls = self.processors[config.scheme]

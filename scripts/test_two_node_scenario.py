@@ -70,15 +70,15 @@ def execute_job(
     strategy: str = "best_price",
 ) -> dict:
     """Submit a cloudpickle job to the broker and return billing metadata."""
-    import cloudpickle
     import json
+
+    import cloudpickle
 
     def _workload():
         import time
         time.sleep(0.1)
         return {"status": "done", "node": os.uname().nodename if hasattr(os, "uname") else "unknown"}
 
-    import os as _os
     payload = cloudpickle.dumps({"func": _workload, "args": (), "kwargs": {}})
 
     requirements: dict = {
@@ -139,7 +139,7 @@ def print_balance_sheet(label: str, n1: dict, n2: dict) -> None:
 def main() -> None:
     print_separator("SETUP: Verify brokers are reachable")
 
-    for label, url, key in [("Node 1", NODE1_URL, NODE1_KEY), ("Node 2", NODE2_URL, NODE2_KEY)]:
+    for label, url, _key in [("Node 1", NODE1_URL, NODE1_KEY), ("Node 2", NODE2_URL, NODE2_KEY)]:
         try:
             r = httpx.get(f"{url}/health", timeout=5)
             r.raise_for_status()

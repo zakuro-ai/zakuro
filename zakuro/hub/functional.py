@@ -1,10 +1,12 @@
 import os
+import sys
+
+import requests
+import torch
+from gnutools.fs import parent
+
 import zakuro
 from zakuro import config
-from gnutools.fs import parent
-import requests
-import sys
-import torch
 
 
 def restart_from(model, model_path):
@@ -14,7 +16,6 @@ def restart_from(model, model_path):
         restart_from_hub(model, model_path)
     else:
         restart_from_hub(model, f"{config.ZAKURO_URI}{model_path}")
-
 
 
 def restart_from_hub(model, key):
@@ -36,7 +37,7 @@ def load_ckpt(model, model_path):
     try:
         ckpt = zakuro.load(model_path)
         model.load_state_dict(ckpt.state_dict)
-    except:
+    except Exception:
         state_dict = torch.load(model_path)
         model.load_state_dict(state_dict)
 
@@ -45,7 +46,7 @@ def download_model(model_name, version, output_file):
     tmp_file = f"/tmp/{version}.pth"
     print(f"ZakuroHub >> Downloading the model from {config.ZAKURO_URI}{model_name}/{version}...")
     res = requests.get(f"{config.ZAKURO_HUB}/{model_name}/{version}")
-    assert res.status_code==200
+    assert res.status_code == 200
     with open(tmp_file, "wb") as f:
         f.write(res.content)
     output_dir = parent(output_file)
