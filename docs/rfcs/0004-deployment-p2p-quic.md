@@ -83,7 +83,7 @@ slsa-verifier verify-artifact \
 
 | Option | Why rejected |
 |---|---|
-| Keep Kubernetes as the recommended path | Imposes operator burden (cluster, kubelet, control plane) on every Zakuro consumer. Goes against the "decorate a function, ship it" pitch in the [runtime tracking board's product pitch](https://github.com/orgs/zakuro-ai/projects/4). |
+| Keep Kubernetes as the recommended path | Imposes operator burden (cluster, kubelet, control plane) on every Zakuro consumer. Goes against the "decorate a function, ship it" pitch in the [runtime tracking board's product pitch](https://github.com/orgs/zakuro-ai/projects/6). |
 | Standalone binary + manual peer config (no gossip) | Works for ≤3 nodes; collapses at 10+. The mesh value-prop assumes auto-discovery. |
 | Nomad / HashiCorp stack | Lighter than k8s, but still external orchestrator. The P2P story is more compelling commercially (operates anywhere, no cluster required). |
 | libp2p as the transport | Mature P2P stack but pulls in DHT, NAT-traversal, content-routing layers we don't need yet. QUIC + custom gossip stays leaner. Re-evaluate if NAT-traversal becomes a customer ask. |

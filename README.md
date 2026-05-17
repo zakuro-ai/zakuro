@@ -19,7 +19,7 @@
 
 **Zakuro is a context-aware distributed-ML runtime.** You decorate a Python function, declare a pool of workers, and the framework routes each call to the worker with the lowest expected time-to-serve — learning from every dispatch, reacting to node failures and performance drift, and never making training wait on things that can be decoupled.
 
-Product vision, engineering plan, and measured benchmark numbers live in the runtime tracking board at **[github.com/orgs/zakuro-ai/projects/4](https://github.com/orgs/zakuro-ai/projects/4)**. Each phase from the legacy `PLAN.md` is now an issue in this repo (#168–#177); the legacy `PRD.md` content is the project README. Cross-cutting enterprise hardening lives separately in [project #3](https://github.com/orgs/zakuro-ai/projects/3).
+Product vision, engineering plan, and measured benchmark numbers live in the runtime tracking board at **[github.com/orgs/zakuro-ai/projects/6](https://github.com/orgs/zakuro-ai/projects/6)**. Each phase from the legacy `PLAN.md` is now an issue in this repo (#168–#177); the legacy `PRD.md` content is the project README. Cross-cutting enterprise hardening lives separately in [project #3](https://github.com/orgs/zakuro-ai/projects/3).
 
 ## Quick start
 
@@ -159,7 +159,7 @@ All numbers come from real subprocess workers running on the Mac (see `scripts/b
 | **Drift detection** | Injected 250 ms/call slowdown ⇒ 95 % traffic diversion at **t + 0.48 s**. Recovery via softmax + health-probe latencies. |
 | **QUIC retry** | In-flight request during worker SIGKILL surfaces `ConnectionError` in **5 s** (vs aioquic's 30–60 s default). |
 
-Full numbers in the [runtime tracking board's "Measured results" section](https://github.com/orgs/zakuro-ai/projects/4) (formerly `PLAN.md`).
+Full numbers in the [runtime tracking board's "Measured results" section](https://github.com/orgs/zakuro-ai/projects/6) (formerly `PLAN.md`).
 
 ## Notebooks
 
@@ -192,7 +192,7 @@ uv run python scripts/bench_all.py --log /tmp/zakuro-bench.json
 
 ## Docs
 
-- **[Runtime tracking board](https://github.com/orgs/zakuro-ai/projects/4)** — product vision, phase status, measured benchmark numbers (formerly `PRD.md` + `PLAN.md`)
+- **[Runtime tracking board](https://github.com/orgs/zakuro-ai/projects/6)** — product vision, phase status, measured benchmark numbers (formerly `PRD.md` + `PLAN.md`)
 - **[Enterprise hardening board](https://github.com/orgs/zakuro-ai/projects/3)** — security, reliability, supply-chain, deployment
 - [`docs/STABILITY.md`](docs/STABILITY.md) — public-API contract: stable surface, semver, deprecation policy, 1.0 LTS window
 - [`docs/getting-started.md`](docs/getting-started.md) — end-to-end guide, "laptop-only" and "networked" paths

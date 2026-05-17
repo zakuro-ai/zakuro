@@ -327,7 +327,7 @@ You're on an old zakuro (< 0.2.3). Upgrade — the current version sets `idle_ti
 
 ## Next steps
 
-- **[Runtime tracking board](https://github.com/orgs/zakuro-ai/projects/4)** — product vision, phase status, every shipped feature with the measured number next to it (formerly `PRD.md` + `PLAN.md`).
+- **[Runtime tracking board](https://github.com/orgs/zakuro-ai/projects/6)** — product vision, phase status, every shipped feature with the measured number next to it (formerly `PRD.md` + `PLAN.md`).
 - [`docs/cli.md`](cli.md) — full `zakuro-worker` CLI reference.
 - [`docs/PROTOCOL.md`](PROTOCOL.md) — QUIC wire protocol, in case you want to write a binding in another language.
 - Notebooks in the repo — `notebooks/mesh_adaptation_tour.ipynb`, `notebooks/quic_resilience.ipynb`, and `notebooks/standalone_mode.ipynb` are all executable end-to-end.

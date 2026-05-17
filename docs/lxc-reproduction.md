@@ -1,6 +1,6 @@
 # Reproducing Zakuro's benchmarks on an LXC GPU rig
 
-Step-by-step walk-through for spinning up two LXC containers on a host that has `lxd` + `nvidia-container-toolkit` installed (Ubuntu 22.04+), installing Zakuro + Sakura, and reproducing every benchmark headline from the [runtime tracking board](https://github.com/orgs/zakuro-ai/projects/4) (formerly `PLAN.md`) **from a vanilla image**.
+Step-by-step walk-through for spinning up two LXC containers on a host that has `lxd` + `nvidia-container-toolkit` installed (Ubuntu 22.04+), installing Zakuro + Sakura, and reproducing every benchmark headline from the [runtime tracking board](https://github.com/orgs/zakuro-ai/projects/6) (formerly `PLAN.md`) **from a vanilla image**.
 
 All numbers shown in the "Measured result" column below are the actual values observed when I ran this guide against a Threadripper x399 host with two GPUs. Your numbers will vary with CPU / GPU / network, but the ordering between configurations and the detection latencies should match within a factor of ~2.
 
