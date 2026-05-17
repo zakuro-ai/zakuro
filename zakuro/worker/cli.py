@@ -70,11 +70,33 @@ def main() -> None:
             f"{exc}. Install with `pip install 'zakuro-ai[worker]'`."
         )
     port = args.port if args.port is not None else int(os.environ.get("ZAKURO_PORT", "3960"))
+
+    # mTLS rollout (#115 Phase 2): when ZAKURO_CERT_DIR is set, load
+    # server cert + private key + CA bundle and pass to uvicorn so the
+    # listener terminates TLS itself. When the env var is unset, the
+    # server stays on plaintext HTTP (dev / CI / behind-a-TLS-ingress).
+    ssl_kwargs: dict[str, object] = {}
+    if os.environ.get("ZAKURO_CERT_DIR", "").strip():
+        # Defer the import: zakuro.transport pulls in cryptography which
+        # we don't want on the `--help` path.
+        from zakuro.transport import load_server_tls
+
+        material = load_server_tls()
+        ssl_kwargs = {
+            "ssl_certfile": str(material.cert_path),
+            "ssl_keyfile": str(material.key_path),
+            "ssl_ca_certs": str(material.ca_bundle_path),
+            # uvicorn 0.23+ accepts ssl.CERT_REQUIRED as int (2); avoid
+            # importing ssl at module top to keep --help cheap.
+            "ssl_cert_reqs": 2,
+        }
+
     uvicorn.run(
         "zakuro.worker.server:app",
         host=args.host,
         port=port,
         reload=False,
+        **ssl_kwargs,
     )
 
 
