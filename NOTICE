@@ -59,7 +59,8 @@ Python runtime dependencies
 --- Apache-2.0 OR BSD-3-Clause (1 package(s)) ---
   * cryptography 46.0.7  <https://github.com/pyca/cryptography>
 
---- BSD (1 package(s)) ---
+--- BSD (2 package(s)) ---
+  * bsdiff4 1.2.6  <https://github.com/ilanschnell/bsdiff4>
   * partd 1.4.2  <http://github.com/dask/partd/>
 
 --- BSD License (10 package(s)) ---

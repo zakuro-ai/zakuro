@@ -42,6 +42,11 @@ worker = [
     # PyJWT for Ed25519 JWT verification (RFC 0002, #116). The cryptography
     # extra pulls in pyca/cryptography needed for asymmetric algorithms.
     "PyJWT[crypto]>=2.8.0",
+    # bsdiff4 for state-dict delta encoding (RFC 0001 amendment, #174).
+    # The worker uses bsdiff4.patch(cached, delta) -> full_payload when an
+    # incoming envelope's delta_against is set. Pure-Python fallback ships
+    # with the package; the C extension speeds it up when available.
+    "bsdiff4>=1.2.4",
 ]
 ray = ["ray>=2.0.0"]
 dask = ["dask>=2023.0.0", "distributed>=2023.0.0"]
