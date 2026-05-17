@@ -96,7 +96,7 @@ def main() -> None:
         host=args.host,
         port=port,
         reload=False,
-        **ssl_kwargs,
+        **ssl_kwargs,  # type: ignore[arg-type]  # uvicorn.run params are typed; dict-spread loses per-key types
     )
 
 

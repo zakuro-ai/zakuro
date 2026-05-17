@@ -34,11 +34,19 @@ jobs:
       - name: Check formatting
         run: task ci:format-check
       - name: Run tests
-        run: task test:unit || true
+        # Strict-required as of #167. Test suite is green against the
+        # current baseline (the `|| true` shielding was spurious — the
+        # tests already passed; the gate was an artifact of an earlier
+        # sprint that hadn't cleaned up).
+        run: task test:unit
 
   typecheck:
     runs-on: [self-hosted, cpu]
-    continue-on-error: true
+    # Strict-required as of #167. mypy passes against the configured
+    # baseline (zakuro/fs and zakuro/hub excluded as legacy modules;
+    # third-party stubs gated via [tool.mypy.overrides] in pyproject.toml).
+    # New errors must be fixed rather than ratcheted away — that policy
+    # is what stops the catalogue from drifting back to 90+ findings.
     steps:
       - uses: actions/checkout@v6
       - name: Set up Python
@@ -47,8 +55,8 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: uv pip install -e ".[dev,worker,observability]" --system
-      - name: Run type checking (report-only)
-        run: task ci:typecheck || true
+      - name: Run type checking
+        run: task ci:typecheck
 
   rust:
     runs-on: [self-hosted, cpu]
