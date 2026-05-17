@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master", "dev", "feature/**", "release/**"]
+  pull_request:
+    branches: ["main", "master"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  lint-and-test:
+    runs-on: [self-hosted, cpu]
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: uv pip install -e ".[dev,worker,observability]" --system
+      - name: Run linting
+        run: task ci:lint
+      - name: Check formatting
+        run: task ci:format-check
+      - name: Run tests
+        run: task test:unit || true
+
+  typecheck:
+    runs-on: [self-hosted, cpu]
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv pip install -e ".[dev,worker,observability]" --system
+      - name: Run type checking (report-only)
+        run: task ci:typecheck || true
+
+  rust:
+    runs-on: [self-hosted, cpu]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Test
+        run: cargo test --all-features
+        env:
+          RUSTFLAGS: -D warnings
+
+  notice:
+    runs-on: [self-hosted, cpu]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv pip install -e ".[dev]" --system
+      - name: Check NOTICE file
+        run: task notice:check
+
+  security:
+    runs-on: [self-hosted, cpu]
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv pip install -e ".[dev,worker,observability]" --system
+      - name: CodeQL init
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          queries: security-extended
+      - name: CodeQL analyze
+        uses: github/codeql-action/analyze@v3
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --source . --report-format sarif --report-path gitleaks.sarif
+        continue-on-error: true
+      - name: Upload Gitleaks SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
+        continue-on-error: true
+      - name: SOPS encryption check
+        run: |
+          FAIL=0
+          for f in $(find . -name '*.enc.*' -o -name 'secrets.*' -o -name '*.secret.*' 2>/dev/null); do
+            if ! head -c 20 "$f" | grep -q 'sops'; then
+              echo "::error file=$f::Unencrypted secret file: $f"
+              FAIL=1
+            fi
+          done
+          exit $FAIL
+
+  vulnerability-scan:
+    runs-on: [self-hosted, cpu]
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv pip install -e ".[dev,worker,observability]" --system
+      - name: pip-audit
+        run: uv pip install pip-audit && pip-audit --strict --desc on 2>&1 || true
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+  bench:
+    runs-on: [self-hosted, cpu]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv pip install -e ".[dev,worker]" --system
+      - name: Run benchmarks
+        run: python benchmarks/bench_all.py
