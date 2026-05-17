@@ -47,3 +47,7 @@ wal.jsonl
 .env.production
 tmp/
 docker/.env
+
+# Rust build output
+target/
+
