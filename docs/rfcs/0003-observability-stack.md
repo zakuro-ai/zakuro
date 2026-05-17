@@ -134,7 +134,7 @@ One source of truth → no drift between log tags, metric labels, span attribute
 |---|---|
 | OTel-only (logs + metrics + traces over OTLP) | Single pipeline is elegant but the OTel logs SDK is the least mature of the three; structlog is much more battle-tested for JSON log emission. Re-evaluate in 12 months. |
 | Sentry for tracing too | Sentry's trace coverage is excellent for errors-with-context but its metric story is thin (no histograms with native buckets). And we'd pay Sentry SaaS rates for every span. |
-| Defer to first customer | Was an option on the questionnaire. Rejected — the SLOs in [#127](https://github.com/zakuro-ai/zakuro/issues/127) require *some* metric backend to exist before they can be defined, and the [PLAN.md](https://github.com/zakuro-ai/zakuro/blob/master/PLAN.md) headline numbers are currently in-memory + ephemeral. |
+| Defer to first customer | Was an option on the questionnaire. Rejected — the SLOs in [#127](https://github.com/zakuro-ai/zakuro/issues/127) require *some* metric backend to exist before they can be defined, and the headline numbers in the [runtime tracking board](https://github.com/orgs/zakuro-ai/projects/4) are currently in-memory + ephemeral. |
 | ELK stack | Heavyweight on the indexing tier. We'd need to maintain Elasticsearch. Out of scope while a single team is shipping. |
 
 ## Migration / rollout
