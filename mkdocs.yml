@@ -88,6 +88,9 @@ nav:
       - Wire protocol: PROTOCOL.md
   - Guides:
       - Getting started: getting-started.md
+  - Security:
+      - Verifying releases: security/verifying-releases.md
+      - Threat model: security/threat-model.md
   # PRD.md and PLAN.md live at the repo root (outside docs/) so they
   # remain the canonical product / engineering source of truth for the
   # README. The Home page links to them via absolute GitHub URLs.
