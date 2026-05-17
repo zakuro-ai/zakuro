@@ -1,0 +1,119 @@
+name: integration
+
+# Cross-repo coherence test. Pulls the pinned `zakuroai/zc` broker image,
+# spins up the docker-compose stack, and exercises the broker's HTTP
+# surface end-to-end. Catches the kind of drift between zakuro and zc
+# that a submodule would only paper over — if a zc release changes the
+# `/health` shape or the broker startup contract, this lane goes red
+# before the digest bump in `docker/docker-compose.yml` can merge.
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "docker/docker-compose.yml"
+      - "docker/postgres-init.sql"
+      - "docker/Dockerfile"
+      - ".github/workflows/integration.yml"
+      - "zakuro/worker/**"
+      - "zakuro/client.py"
+      - "pyproject.toml"
+  pull_request:
+    paths:
+      - "docker/docker-compose.yml"
+      - "docker/postgres-init.sql"
+      - "docker/Dockerfile"
+      - ".github/workflows/integration.yml"
+      - "zakuro/worker/**"
+      - "zakuro/client.py"
+      - "pyproject.toml"
+  workflow_dispatch:
+  schedule:
+    # Daily run picks up any drift from a zc image rebuild even when
+    # no zakuro change touched the trigger paths.
+    - cron: "47 5 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compose-smoke:
+    name: docker compose + broker health
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve broker digest
+        # Surface the pinned zc digest in the log so a failing run is
+        # easy to diff against the previous green run.
+        run: |
+          grep -oE 'zakuroai/zc(:[^ }]+|@sha256:[a-f0-9]+)' docker/docker-compose.yml | sort -u
+
+      - name: Create external network expected by docker-compose.yml
+        run: docker network create zakuro-net
+
+      - name: Boot postgres + broker
+        env:
+          # ZAKURO_AUTH / MASTER_KEY use the compose defaults; that's fine
+          # for a smoke test, never for production. The compose file
+          # documents the override pattern.
+          ZAKURO_AUTH: demo
+        run: |
+          docker compose -f docker/docker-compose.yml up -d postgres broker
+          # Give docker-compose's healthchecks ~60s to converge.
+          for i in $(seq 1 30); do
+            if docker compose -f docker/docker-compose.yml ps broker | grep -q 'healthy'; then
+              echo "broker is healthy after ${i}*2s"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Probe broker /health
+        run: |
+          set -eu
+          # Curl from inside docker because the compose network is internal.
+          docker run --rm --network zakuro-net curlimages/curl:latest \
+            curl --max-time 5 --fail-with-body -sS http://broker:9000/health
+          echo
+
+      - name: Smoke — Python client reaches the broker
+        # Lighter than a full @zk.fn dispatch but real: we install
+        # zakuro from the worker extras and let it construct a Compute()
+        # against the broker. If the worker's HTTP shape drifts from
+        # what the broker speaks, the probe call (which httpx makes at
+        # Compute() construction) raises ConnectionError.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[worker]"
+          python - <<'PY'
+          import os, sys, urllib.request, urllib.error
+          # The broker container is reachable from the host via the
+          # compose-mapped port 9000.
+          try:
+              with urllib.request.urlopen("http://localhost:9000/health", timeout=5) as r:
+                  body = r.read().decode("utf-8", "replace")
+              assert r.status == 200, f"expected 200, got {r.status}: {body}"
+              print(f"broker /health: {body}")
+          except urllib.error.URLError as e:
+              print(f"broker unreachable: {e}", file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: |
+          echo "=== broker logs ==="
+          docker compose -f docker/docker-compose.yml logs --no-color broker || true
+          echo "=== postgres logs ==="
+          docker compose -f docker/docker-compose.yml logs --no-color postgres || true
+
+      - name: Teardown
+        if: always()
+        run: |
+          docker compose -f docker/docker-compose.yml down -v --remove-orphans || true
+          docker network rm zakuro-net || true

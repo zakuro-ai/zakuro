@@ -1,0 +1,42 @@
+[package]
+name = "zakuro-wire"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "Shared wire format (postcard) for the Zakuro distributed-ML runtime: dispatch envelopes carried between the zakuro worker (Python) and the zc broker (Rust)."
+readme = "README.md"
+keywords = ["zakuro", "postcard", "wire", "serde", "distributed"]
+categories = ["encoding", "network-programming"]
+include = [
+    "src/**/*.rs",
+    "tests/**/*.rs",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE",
+]
+
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+# `unwrap_used` / `expect_used` are appropriate for production code paths
+# but noisy in tests. We keep them out of the lint set so test bodies can
+# stay readable; production code paths in src/ contain none today and
+# regressions will be caught by review.
+collapsible_if = "allow"
+needless_raw_string_hashes = "allow"
+
+[dependencies]
+postcard.workspace = true
+serde.workspace = true
+serde_bytes.workspace = true
+
+[dev-dependencies]
+hex = "0.4"
