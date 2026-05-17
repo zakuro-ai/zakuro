@@ -1,214 +1,52 @@
-name: Publish
+name: Publish Packages
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
-      ref:
-        description: "Tag or commit to publish"
+      version:
+        description: "Version to publish (e.g., 1.2.3)"
         required: true
-
-# Hardened release pipeline. Each artifact (the PyPI wheel + the worker
-# container image — broker = zc, see https://github.com/zakuro-ai/zc, has
-# its own release pipeline) is published with:
-#   * Trusted Publishing via OIDC (no long-lived PyPI token)        (#114)
-#   * a CycloneDX SBOM                                              (#120)
-#   * SLSA L3 provenance attached to the GitHub Release             (#120)
-#   * a Cosign keyless signature recorded in Rekor                  (#121)
-#
-# Verification snippet for consumers lives in
-# docs/security/verifying-releases.md, summarised in README.md.
+      confirm_prod_deployed:
+        description: "Confirm production deployment succeeded"
+        type: boolean
+        required: true
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
-  # -------------------------------------------------------------------
-  # 1. Build the wheel + its SBOM
-  # -------------------------------------------------------------------
-  build-wheel:
-    name: Build wheel
-    runs-on: ubuntu-latest
-    outputs:
-      hashes: ${{ steps.hash.outputs.hashes }}
+  publish-pypi:
+    if: inputs.confirm_prod_deployed
+    runs-on: [self-hosted, cpu]
+    environment: release
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+        with:
+          ref: release/v${{ inputs.version }}
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Install build + SBOM tooling
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install build cyclonedx-bom
       - name: Build wheel
         run: |
-          rm -rf dist/*.whl
+          uv pip install build --system
           python -m build --wheel
-      - name: Generate CycloneDX SBOM for the wheel
-        run: |
-          cyclonedx-py environment --output-file dist/sbom.cyclonedx.json --output-format JSON
-      - name: Compute wheel hashes (for SLSA)
-        id: hash
-        working-directory: dist
-        run: |
-          echo "hashes=$(sha256sum *.whl | base64 -w0)" >> "$GITHUB_OUTPUT"
-      - name: Upload wheel + SBOM artefact
-        uses: actions/upload-artifact@v7
-        with:
-          name: wheel
-          path: |
-            dist/*.whl
-            dist/sbom.cyclonedx.json
-          retention-days: 14
-
-  # -------------------------------------------------------------------
-  # 2. SLSA L3 provenance for the wheel
-  # -------------------------------------------------------------------
-  provenance-wheel:
-    name: SLSA provenance (wheel)
-    needs: [build-wheel]
-    permissions:
-      actions: read
-      id-token: write
-      contents: write
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
-    with:
-      base64-subjects: "${{ needs.build-wheel.outputs.hashes }}"
-      upload-assets: true   # attach attestation to the GitHub Release
-
-  # -------------------------------------------------------------------
-  # 3. Publish wheel to PyPI via Trusted Publishing (OIDC, no token)
-  # -------------------------------------------------------------------
-  publish-pypi:
-    name: Publish to PyPI (Trusted Publishing)
-    needs: [build-wheel]
-    runs-on: ubuntu-latest
-    environment:
-      name: release
-      url: https://pypi.org/project/zakuro-ai/
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-      - name: Download wheel
-        uses: actions/download-artifact@v8
-        with:
-          name: wheel
-          path: dist
-      - name: Remove non-wheel artefacts before upload
-        run: rm -f dist/sbom.cyclonedx.json
       - name: Publish via Trusted Publishing
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist
-          # No `password`: OIDC token is fetched from the runner.
 
-  # -------------------------------------------------------------------
-  # 4. Build, push, sign, SBOM each container image
-  # -------------------------------------------------------------------
-  publish-image:
-    name: Publish image
-    needs: [build-wheel]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write     # cosign keyless OIDC
-      packages: write     # push to GHCR
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - dockerfile: docker/Dockerfile
-            ghcr_name: ghcr.io/zakuro-ai/zakuro-worker
-            dockerhub_name: zakuroai/zakuro-worker
-            sbom_slug: worker
-          # NOTE: the broker is `zc`, lives at https://github.com/zakuro-ai/zc
-          # and publishes its own `zakuroai/zc` image on its own release
-          # pipeline. zakuro publishes the worker only.
+  publish-crate:
+    if: inputs.confirm_prod_deployed
+    runs-on: [self-hosted, cpu]
+    environment: release
     steps:
       - uses: actions/checkout@v6
-
-      - name: Download wheel into build context
-        uses: actions/download-artifact@v8
         with:
-          name: wheel
-          path: dist
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v4
-        with:
-          username: zakuroai
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Login to GHCR
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Resolve release tag
-        id: tag
-        run: |
-          tag="${{ github.event.release.tag_name }}"
-          if [ -z "$tag" ]; then tag="${{ github.event.inputs.ref }}"; fi
-          # PyPI's wheel filename uses PEP 440; container tags can't have +.
-          tag="${tag#v}"
-          tag="${tag//+/-}"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-
-      - name: Build and push
-        id: build
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: true
-          tags: |
-            ${{ matrix.dockerhub_name }}:latest
-            ${{ matrix.dockerhub_name }}:${{ steps.tag.outputs.tag }}
-            ${{ matrix.ghcr_name }}:latest
-            ${{ matrix.ghcr_name }}:${{ steps.tag.outputs.tag }}
-          provenance: mode=max
-          sbom: true
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v4.1.2
-
-      - name: Sign image (cosign keyless) and record in Rekor
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: |
-          for ref in \
-            "${{ matrix.dockerhub_name }}@${DIGEST}" \
-            "${{ matrix.ghcr_name }}@${DIGEST}"; do
-            cosign sign --yes "$ref"
-          done
-
-      - name: Build CycloneDX SBOM for the image
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: image
-          image-ref: ${{ matrix.ghcr_name }}:${{ steps.tag.outputs.tag }}
-          format: cyclonedx
-          output: sbom-${{ matrix.sbom_slug }}.cyclonedx.json
-          severity: HIGH,CRITICAL
-          exit-code: "0"   # SBOM step, not a scan gate
-
-      - name: Attach SBOM to the image (cosign attest)
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: |
-          for ref in \
-            "${{ matrix.dockerhub_name }}@${DIGEST}" \
-            "${{ matrix.ghcr_name }}@${DIGEST}"; do
-            cosign attest --yes --predicate "sbom-${{ matrix.sbom_slug }}.cyclonedx.json" \
-              --type cyclonedx "$ref"
-          done
-
-      - name: Upload SBOM as release asset
-        if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v3
-        with:
-          files: sbom-${{ matrix.sbom_slug }}.cyclonedx.json
+          ref: release/v${{ inputs.version }}
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Publish crate
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        working-directory: crates/zakuro-wire
