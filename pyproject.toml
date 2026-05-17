@@ -58,6 +58,14 @@ observability = [
     # Prometheus client for /metrics. RFC 0003 Track B (#124). No-op when
     # the dep is missing.
     "prometheus_client>=0.20.0",
+    # OpenTelemetry tracing (RFC 0003 Track C, #123). The SDK + OTLP HTTP
+    # exporter ship traces to any OTLP-compatible collector. FastAPI +
+    # httpx auto-instrumentation cover the HTTP transport surface for free;
+    # QUIC requires hand-rolled spans (zakuro.observability.tracing).
+    "opentelemetry-sdk>=1.27.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.27.0",
+    "opentelemetry-instrumentation-fastapi>=0.48b0",
+    "opentelemetry-instrumentation-httpx>=0.48b0",
 ]
 dev = [
     "pytest>=7.0",

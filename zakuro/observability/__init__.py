@@ -10,10 +10,8 @@ Currently wired:
 - ``init_sentry`` / ``set_request_context`` — error reporting (#128).
 - ``init_logging`` / ``get_logger`` — structured JSON logs (#125, RFC 0003 Track A).
 - ``init_metrics`` + ``mount_metrics_endpoint`` — Prometheus (#124, RFC 0003 Track B).
-
-Forthcoming:
-
-- ``init_tracing`` — OpenTelemetry tracing (#123).
+- ``init_tracing`` / ``get_tracer`` / ``instrument_fastapi_app`` /
+  ``instrument_httpx`` — OpenTelemetry tracing (#123, RFC 0003 Track C).
 """
 
 from zakuro.observability.logging import get_logger, init_logging
@@ -33,6 +31,15 @@ from zakuro.observability.metrics import (
     is_enabled as metrics_enabled,
 )
 from zakuro.observability.sentry import init_sentry, set_request_context
+from zakuro.observability.tracing import (
+    get_tracer,
+    init_tracing,
+    instrument_fastapi_app,
+    instrument_httpx,
+)
+from zakuro.observability.tracing import (
+    is_enabled as tracing_enabled,
+)
 
 __all__ = [
     "AUTH_FAILURE_TOTAL",
@@ -40,9 +47,13 @@ __all__ = [
     "HTTP_REQUESTS_TOTAL",
     "WORKER_QUEUE_DEPTH",
     "get_logger",
+    "get_tracer",
     "init_logging",
     "init_metrics",
     "init_sentry",
+    "init_tracing",
+    "instrument_fastapi_app",
+    "instrument_httpx",
     "metrics_enabled",
     "mount_metrics_endpoint",
     "observe_dispatch_latency",
@@ -50,4 +61,5 @@ __all__ = [
     "record_http_request",
     "set_request_context",
     "set_worker_queue_depth",
+    "tracing_enabled",
 ]

@@ -26,19 +26,23 @@ from zakuro.observability import (
     init_logging,
     init_metrics,
     init_sentry,
+    init_tracing,
+    instrument_fastapi_app,
+    instrument_httpx,
     mount_metrics_endpoint,
 )
 from zakuro.wire import WireError
 from zakuro.worker.envelope import unwrap_payload
 from zakuro.worker.executor import execute_function
 
-# Init structured logging + Sentry + Prometheus as early as possible so any
-# exception during app/executor wiring is captured + emitted as JSON and
-# metrics are immediately scrapeable. All three are no-ops when their
-# optional dep is missing or the relevant env var is unset.
+# Init structured logging + Sentry + Prometheus + OpenTelemetry as early as
+# possible. All four are no-ops when their optional dep is missing or the
+# relevant env var (SENTRY_DSN / OTEL_EXPORTER_OTLP_ENDPOINT) is unset.
 init_logging("worker")
 init_sentry("worker")
 init_metrics()
+init_tracing("worker")
+instrument_httpx()  # outbound calls carry W3C traceparent for cross-hop stitching
 
 app = FastAPI(
     title="Zakuro Worker",
@@ -49,6 +53,10 @@ app = FastAPI(
 # /metrics endpoint, no-op when prometheus_client is not installed. Once
 # RFC 0002 lands, gate this on the metrics:read JWT scope.
 mount_metrics_endpoint(app)
+
+# FastAPI auto-instrumentation; no-op when the extra is missing. Must run AFTER
+# the FastAPI app object exists.
+instrument_fastapi_app(app)
 
 # Thread pool for function execution (threads share memory, so instance
 # state in executor._instances is visible to all workers)
