@@ -44,6 +44,20 @@ jobs:
   compose-smoke:
     name: docker compose + broker health
     runs-on: ubuntu-latest
+    # Report-only on introduction. The first run of this lane caught a real
+    # cross-repo issue — `zakuroai/zc@sha256:ec0871a8…` was built against
+    # glibc 2.39, which doesn't exist in its runtime base, so the broker
+    # exits immediately on boot:
+    #
+    #   zakuro-broker  | /usr/local/bin/zc: /lib/x86_64-linux-gnu/libc.so.6:
+    #                    version `GLIBC_2.39' not found
+    #
+    # That's a zc-side packaging bug; track in the zc repo. Until zc
+    # ships a glibc-consistent image, this lane fails for that reason
+    # — but it's correctly catching the problem. Flip to strict (drop
+    # `continue-on-error`) once the next zc digest is healthy + the
+    # `image:` line in docker-compose.yml has been bumped.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
