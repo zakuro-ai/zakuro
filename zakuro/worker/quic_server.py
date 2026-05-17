@@ -222,13 +222,24 @@ async def _run_server(
     executor: ThreadPoolExecutor,
     ready: asyncio.Event | None,
 ) -> None:
-    cert_path, key_path = _ensure_certificate()
-    config = QuicConfiguration(
-        alpn_protocols=ALPN,
-        is_client=False,
-        max_datagram_frame_size=65536,
-    )
-    config.load_cert_chain(str(cert_path), str(key_path))
+    # mTLS rollout (#115 Phase 2): when ZAKURO_CERT_DIR is set, build the
+    # QuicConfiguration via the shared zakuro.transport.tls helper so
+    # client certs are required + the ALPN bumps to zk-worker-v2 (matching
+    # the wire-format bump in RFC 0001). When unset, fall through to the
+    # self-signed dev cert that previous releases used.
+    if os.environ.get("ZAKURO_CERT_DIR", "").strip():
+        from zakuro.transport import build_aioquic_server_configuration, load_server_tls
+
+        config = build_aioquic_server_configuration(load_server_tls())
+        config.max_datagram_frame_size = 65536
+    else:
+        cert_path, key_path = _ensure_certificate()
+        config = QuicConfiguration(
+            alpn_protocols=ALPN,
+            is_client=False,
+            max_datagram_frame_size=65536,
+        )
+        config.load_cert_chain(str(cert_path), str(key_path))
 
     def _factory(*args: Any, **kwargs: Any) -> WorkerQuicProtocol:
         return WorkerQuicProtocol(*args, executor=executor, **kwargs)
