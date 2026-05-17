@@ -63,14 +63,13 @@ def _record_failure(reason: str, tenant_id: str = "") -> None:
     """Increment the auth-failure metric — no-op when Prometheus is missing.
 
     The import is deferred + caught because :mod:`zakuro.observability.metrics`
-    ships in PR #185 (RFC 0003 Track B). When this PR lands before that one,
-    auth still works; metrics just stay at zero until the metrics module
-    is importable.
+    is part of the optional ``[observability]`` extra. When the extra is not
+    installed, auth still works; metrics just stay at zero. The
+    record_auth_failure helper itself is a no-op when prometheus_client is
+    not installed (see metrics module).
     """
     try:
-        from zakuro.observability.metrics import (  # type: ignore[import-not-found]
-            record_auth_failure,
-        )
+        from zakuro.observability.metrics import record_auth_failure
     except ImportError:  # pragma: no cover
         return
     record_auth_failure(reason, tenant_id)
