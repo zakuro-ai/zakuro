@@ -487,6 +487,10 @@ class TestDecisionLog:
             for i in range(5):
                 identity.to(ac)(i)
 
+        # Block until the background writer has drained — the JSONL file
+        # is only guaranteed populated after this. Hot dispatch path never
+        # calls this; only tests + replay-tool wrappers do.
+        ac.flush_decision_log()
         rows = [_json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
         assert len(rows) == 5
         for r in rows:
