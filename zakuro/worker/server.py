@@ -22,6 +22,9 @@ except ImportError as exc:
 
 import contextlib
 
+from fastapi import Depends
+
+from zakuro.auth import Claims, require_jwt_scope
 from zakuro.observability import (
     init_logging,
     init_metrics,
@@ -34,6 +37,13 @@ from zakuro.observability import (
 from zakuro.wire import WireError
 from zakuro.worker.envelope import unwrap_payload
 from zakuro.worker.executor import execute_function
+
+# Build the scoped dependencies once at module import so FastAPI captures
+# them in its dependant tree (creating them inside route signatures works
+# but pytest's assertion-rewrite breaks the Annotated-form alternative —
+# see docs in tests/auth/conftest.py).
+_REQUIRE_EXEC = require_jwt_scope("exec:fn")
+_REQUIRE_INFO = require_jwt_scope("worker:info")
 
 # Init structured logging + Sentry + Prometheus + OpenTelemetry as early as
 # possible. All four are no-ops when their optional dep is missing or the
@@ -215,8 +225,17 @@ async def health() -> Response:
 
 
 @app.get("/info")
-async def info() -> dict[str, Any]:
-    """Worker info endpoint for broker discovery."""
+async def info(
+    claims: Claims = Depends(_REQUIRE_INFO),  # noqa: B008
+) -> dict[str, Any]:
+    """Worker info endpoint for broker discovery.
+
+    Authorisation: requires a JWT with the ``worker:info`` scope when
+    ``ZAKURO_AUTH_REQUIRED=1``. The broker holds this scope; an
+    unauthenticated client can still get *minimum-disclosure* worker
+    info via :func:`live` / :func:`ready`.
+    """
+    del claims  # reserved for future per-tenant view filtering
     import os
     import platform
     import shutil
@@ -298,7 +317,10 @@ async def info() -> dict[str, Any]:
 
 
 @app.post("/execute")
-async def execute(request: Request) -> Response:
+async def execute(
+    request: Request,
+    claims: Claims = Depends(_REQUIRE_EXEC),  # noqa: B008  -- FastAPI Depends idiom
+) -> Response:
     """
     Execute a serialized function.
 
@@ -313,7 +335,15 @@ async def execute(request: Request) -> Response:
     * unset — body is the raw cloudpickle dict (legacy path). Behaviour
       is identical to pre-#117 builds. This branch will be removed once
       the v0.4 rollout completes.
+
+    Authorisation: requires a JWT with the ``exec:fn`` scope when
+    ``ZAKURO_AUTH_REQUIRED=1``. Unset → anonymous claims, request passes
+    through (RFC 0002 §"Step 5" rollout). The ``claims`` object is
+    available for future per-tenant attribution; today it is unused at
+    the handler level but reaching this point means the request was
+    authorised.
     """
+    del claims  # reserved for per-tenant metrics + auditing
     global executor
     if executor is None:
         raise HTTPException(status_code=503, detail="Worker not ready")
