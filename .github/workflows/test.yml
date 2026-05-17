@@ -28,7 +28,14 @@ jobs:
         uses: arduino/setup-task@v2
 
       - name: Install dependencies
-        run: uv pip install -e ".[dev]" --system
+        # Install [dev] + the optional dep families that the test suite
+        # imports. Without [worker] / [observability] the worker server's
+        # module-level imports (fastapi, sentry-sdk, structlog,
+        # prometheus_client, opentelemetry-sdk, PyJWT, aioquic) trip the
+        # import chain at collection time even though individual tests
+        # use pytest.importorskip — the importskip only protects the
+        # test file, not the production module the test imports.
+        run: uv pip install -e ".[dev,worker,observability]" --system
 
       - name: Run linting
         run: task ci:lint
@@ -60,7 +67,9 @@ jobs:
         uses: arduino/setup-task@v2
 
       - name: Install dependencies
-        run: uv pip install -e ".[dev]" --system
+        # Same extras as the test job — mypy needs to see the optional
+        # dep modules to type-check the worker server's imports.
+        run: uv pip install -e ".[dev,worker,observability]" --system
 
       - name: Run type checking (report-only)
         run: task ci:typecheck || true
