@@ -35,7 +35,7 @@ services:
     environment:
       POSTGRES_DB: zakuro
       POSTGRES_USER: zakuro
-      POSTGRES_PASSWORD: ***REMOVED***
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zakuro_dev_password}
     volumes:
       - pgdata:/var/lib/postgresql/data
       # In-tree bootstrap; the broker runs its own migrations on first start.
@@ -56,19 +56,26 @@ services:
   # Broker - Routes requests to workers
   # ============================================================
   broker:
-    # The broker (zc) is its own crate in https://github.com/zakuro-ai/zc
-    # and publishes `zakuroai/zc` to Docker Hub on every tagged release.
-    # We pull the published image — zakuro does not own broker source.
-    # Pin a tag (e.g. `:0.0.16`) for reproducible builds; default tracks
-    # the latest published. Override with ZAKURO_BROKER_IMAGE if you are
-    # testing a local zc build.
-    image: ${ZAKURO_BROKER_IMAGE:-zakuroai/zc:latest}
+    # The broker (zc) is its own crate at https://github.com/zakuro-ai/zc
+    # and publishes `zakuroai/zc` to Docker Hub. zakuro does not own
+    # broker source.
+    #
+    # Pinned to a digest — `:latest` mutates whenever zc cuts a new
+    # build, which would silently drift this stack. The digest below is
+    # what was tested when this line was written; bumping requires an
+    # explicit PR that updates both the digest AND
+    # `.github/workflows/integration.yml` re-runs end-to-end against
+    # the new image.
+    #
+    # To test a local zc build instead:
+    #   ZAKURO_BROKER_IMAGE=zakuroai/zc:dev docker compose up
+    image: ${ZAKURO_BROKER_IMAGE:-zakuroai/zc@sha256:ec0871a8bf08875a7c7a67478d6da3804a0d88f4b65bcede4e0c8957d9f8cbd4}
     container_name: zakuro-broker
     ports:
       - "9000:9000"
     environment:
       ZAKURO_AUTH: ${ZAKURO_AUTH:-demo}
-      DATABASE_URL: postgresql://zakuro:***REMOVED***@postgres:5432/zakuro
+      DATABASE_URL: postgresql://zakuro:${POSTGRES_PASSWORD:-zakuro_dev_password}@postgres:5432/zakuro
       ZAKURO_MASTER_KEY: ${ZAKURO_MASTER_KEY:-master-key-change-me}
     volumes:
       - broker-data:/app/data
