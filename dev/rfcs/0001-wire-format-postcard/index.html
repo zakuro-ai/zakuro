@@ -1023,6 +1023,89 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#amendment-v02-wire-174-175" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment — v0.2 wire (#174, #175)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Amendment — v0.2 wire (#174, #175)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wire-format-invariants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wire-format invariants
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backwards-forwards-compat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backwards / forwards compat
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cache-eviction-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache eviction policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-follow-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2 follow-up
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cross-repo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-repo
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1155,6 +1238,39 @@
 <li><code>serde-pyobject</code> vs a hand-rolled <code>From&lt;PyAny&gt;</code> impl: defer to first implementation PR; benchmark both.</li>
 <li>Compression (zstd?) on the envelope's <code>args</code> field for ML payloads: defer to a separate "wire payload size" investigation once v2 is live.</li>
 </ul>
+<h2 id="amendment-v02-wire-174-175">Amendment — v0.2 wire (#174, #175)<a class="headerlink" href="#amendment-v02-wire-174-175" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Accepted (2026-05). Crate version bumped to <code>zakuro-wire = 0.2.0</code>.</p>
+<p>v0.2 introduces three new types alongside (not replacing) the v0.1 <code>Envelope</code>. v0.1 callers stay byte-compatible; v0.2-capable workers accept both.</p>
+<h3 id="added-types">Added types<a class="headerlink" href="#added-types" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>EnvelopeV2</code> — same shape as <code>Envelope</code> plus:</li>
+<li><code>cache_key: Option&lt;String&gt;</code> — when present, the worker stores the (reconstructed) callable bytes in its bounded LRU under this key.</li>
+<li><code>delta_against: Option&lt;String&gt;</code> — when present, <code>callable</code> is a delta against the value cached under this key. The worker reconstructs the full payload before invoking the deserialiser. Cache-miss is signalled as <code>ErrorKind::WorkerUnavailable { reason: "cache_miss" }</code>; the caller retries with the full payload.</li>
+<li><code>ChunkFrame</code> — one frame in a multi-chunk streaming dispatch:</li>
+<li><code>stream_id: u64</code> — distinguishes concurrent chunked dispatches.</li>
+<li><code>seq: u32</code> — 0-indexed monotonic sequence within the stream.</li>
+<li><code>last: bool</code> — true on the final chunk; triggers reassembly.</li>
+<li><code>bytes: Vec&lt;u8&gt;</code> — chunk payload. Concatenation in <code>seq</code> order yields a postcard-encoded <code>EnvelopeV2</code>.</li>
+<li><code>V2Message</code> — top-level enum: <code>Envelope(EnvelopeV2)</code> or <code>Chunk(ChunkFrame)</code>. Callers serialise this so the worker dispatches on the variant tag.</li>
+</ul>
+<h3 id="wire-format-invariants">Wire-format invariants<a class="headerlink" href="#wire-format-invariants" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>Envelope</code> v0.1 byte layout is <strong>unchanged</strong>. A regression test (<code>v1_envelope_first_byte_unchanged</code>) asserts the first byte is still <code>0x00</code>.</li>
+<li><code>EnvelopeV2</code> starts with <code>0x01</code> (<code>WireVersion::V2</code>). v0.1 workers reject this as <code>UnknownWireVersion</code>.</li>
+<li><code>Option&lt;String&gt;</code> follows postcard convention: <code>0x00</code> = None; <code>0x01</code> + length-prefixed UTF-8 when Some. A None-valued v0.2 envelope is byte-shorter than a Some-valued one (regression test asserts this so an absent-deltas dispatch isn't unfairly penalised).</li>
+</ul>
+<h3 id="backwards-forwards-compat">Backwards / forwards compat<a class="headerlink" href="#backwards-forwards-compat" title="Permanent link">&para;</a></h3>
+<ul>
+<li>A v0.1 broker dispatching v0.1 <code>Envelope</code>s to a v0.2 worker → works unchanged.</li>
+<li>A v0.2 broker dispatching <code>EnvelopeV2</code> to a v0.1 worker → worker rejects with <code>UnknownWireVersion</code> (the first-byte tag is <code>0x01</code>, which doesn't exist in v0.1's <code>WireVersion</code> enum). Broker falls back to v0.1 <code>Envelope</code> per the worker's <code>/info</code>-advertised wire-version (forthcoming claim on <code>/info</code>).</li>
+<li>A v0.2 broker dispatching <code>EnvelopeV2</code> with <code>delta_against: Some(...)</code> to a v0.2 worker whose cache is cold → worker replies <code>WorkerUnavailable { reason: "cache_miss" }</code>; broker retries with full payload (no delta).</li>
+</ul>
+<h3 id="cache-eviction-policy">Cache eviction policy<a class="headerlink" href="#cache-eviction-policy" title="Permanent link">&para;</a></h3>
+<p>Cache lives on the worker, bounded by an LRU of N entries × cap-per-entry, both configurable via <code>ZAKURO_CACHE_MAX_ENTRIES</code> / <code>ZAKURO_CACHE_MAX_BYTES</code>. Defaults: 32 entries / 4 GB. Eviction is silent — callers that suffer a cache-miss on a delta retry with the full payload, which is the same code path as never having cached.</p>
+<h3 id="phase-2-follow-up">Phase 2 follow-up<a class="headerlink" href="#phase-2-follow-up" title="Permanent link">&para;</a></h3>
+<p>This PR ships the schema substrate only. The worker-side reassembly + delta-apply logic lands as a Phase 2 PR (mirroring the #115 / #116 / #117 substrate-vs-wiring split). Until that lands, v0.2 envelopes round-trip through the schema cleanly but the worker treats <code>cache_key</code> / <code>delta_against</code> as advisory metadata.</p>
+<h3 id="cross-repo">Cross-repo<a class="headerlink" href="#cross-repo" title="Permanent link">&para;</a></h3>
+<p><code>zc</code> adopts <code>zakuro-wire = 0.2.0</code> simultaneously per the multi-repo coherence rule. The integration test in <code>.github/workflows/integration.yml</code> covers the matrix: v0.1 broker × v0.1 worker (today), v0.1 broker × v0.2 worker (back-compat), and v0.2 broker × v0.2 worker (new path) once the matrix expands.</p>
 
 
 
