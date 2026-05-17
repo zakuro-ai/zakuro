@@ -1,0 +1,25 @@
+version: '3'
+
+tasks:
+  generate:
+    desc: Regenerate NOTICE from the resolved Python + Rust dependency tree
+    cmds:
+      - uv sync --all-extras
+      - uv pip install --quiet pip-licenses
+      - uv run python scripts/generate_notice.py
+
+  check:
+    desc: Verify NOTICE is up-to-date with the lock files
+    cmds:
+      - task: generate
+      - |
+        if ! git diff --quiet -- NOTICE; then
+          echo ""
+          echo "NOTICE is stale. Regenerate with:"
+          echo ""
+          echo "    task notice:generate"
+          echo ""
+          echo "Diff:"
+          git --no-pager diff -- NOTICE
+          exit 1
+        fi

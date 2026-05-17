@@ -76,7 +76,12 @@ path = "zakuro/__init__.py"
 packages = ["zakuro"]
 # Ensure the PEP 561 marker ships in the wheel so mypy / pyright pick up
 # inline annotations on the public surface. See docs/STABILITY.md.
+# NOTICE is force-included at the package root so it is discoverable via
+# `importlib.resources.files("zakuro") / "NOTICE"` from any consumer.
 include = ["zakuro/py.typed"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"NOTICE" = "zakuro/NOTICE"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

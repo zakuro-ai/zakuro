@@ -1,0 +1,168 @@
+Zakuro
+Copyright (c) Zakuro AI contributors.
+
+Distributed under the BSD-3-Clause licence (see LICENSE). This NOTICE lists
+third-party components bundled into, or required at runtime by, the published
+Zakuro wheels and container images.
+
+Last regenerated: 2026-05-17 (UTC). To refresh:
+
+    task notice:generate
+
+CI ensures this file matches the resolved dependency tree on every PR.
+
+==============================================================================
+Python runtime dependencies
+==============================================================================
+
+--- 3-Clause BSD License (1 package(s)) ---
+  * protobuf 6.33.5  <https://developers.google.com/protocol-buffers/>
+
+--- Apache 2.0 (1 package(s)) ---
+  * ray 2.53.0  <https://github.com/ray-project/ray>
+
+--- Apache Software License (5 package(s)) ---
+  * minio 7.2.20  <https://github.com/minio/minio-py>
+  * pyOpenSSL 26.0.0  <https://pyopenssl.org/>
+  * requests 2.32.5  <https://requests.readthedocs.io>
+  * sortedcontainers 2.4.0  <http://www.grantjenks.com/docs/sortedcontainers/>
+  * tornado 6.5.4  <http://www.tornadoweb.org/>
+
+--- Apache Software License; MIT License (1 package(s)) ---
+  * uvloop 0.22.1  <UNKNOWN>
+
+--- Apache-2.0 (4 package(s)) ---
+  * coverage 7.13.3  <https://github.com/coveragepy/coveragepy>
+  * msgpack 1.1.2  <https://msgpack.org/>
+  * pyspark 4.1.1  <https://github.com/apache/spark/tree/master/python>
+  * pytest-asyncio 1.3.0  <https://github.com/pytest-dev/pytest-asyncio>
+
+--- Apache-2.0 OR BSD-2-Clause (1 package(s)) ---
+  * packaging 26.0  <https://github.com/pypa/packaging>
+
+--- Apache-2.0 OR BSD-3-Clause (1 package(s)) ---
+  * cryptography 46.0.7  <https://github.com/pyca/cryptography>
+
+--- BSD (1 package(s)) ---
+  * partd 1.4.2  <http://github.com/dask/partd/>
+
+--- BSD License (9 package(s)) ---
+  * cloudpickle 3.1.2  <https://github.com/cloudpipe/cloudpickle>
+  * httpx 0.28.1  <https://github.com/encode/httpx>
+  * Jinja2 3.1.6  <https://github.com/pallets/jinja/>
+  * locket 1.0.0  <http://github.com/mwilliamson/locket.py>
+  * nodeenv 1.10.0  <https://github.com/ekalinin/nodeenv>
+  * py4j 0.10.9.9  <https://www.py4j.org/>
+  * pyasn1_modules 0.4.2  <https://github.com/pyasn1/pyasn1-modules>
+  * Pygments 2.19.2  <https://pygments.org>
+  * zict 3.0.0  <http://zict.readthedocs.io/en/latest/>
+
+--- BSD License; Public Domain (1 package(s)) ---
+  * pycryptodome 3.23.0  <https://www.pycryptodome.org>
+
+--- BSD-2-Clause (2 package(s)) ---
+  * pyasn1 0.6.3  <https://github.com/pyasn1/pyasn1>
+  * tblib 3.2.2  <https://python-tblib.readthedocs.io/en/latest/changelog.html>
+
+--- BSD-3-Clause (16 package(s)) ---
+  * aioquic 1.3.0  <https://github.com/aiortc/aioquic>
+  * click 8.3.1  <https://github.com/pallets/click/>
+  * dask 2026.1.2  <https://github.com/dask/dask/>
+  * distributed 2026.1.2  <https://distributed.dask.org>
+  * fsspec 2026.2.0  <https://github.com/fsspec/filesystem_spec>
+  * httpcore 1.0.9  <https://www.encode.io/httpcore/>
+  * idna 3.11  <https://github.com/kjd/idna>
+  * MarkupSafe 3.0.3  <https://github.com/pallets/markupsafe/>
+  * psutil 7.2.2  <https://github.com/giampaolo/psutil>
+  * pycparser 3.0  <https://github.com/eliben/pycparser>
+  * pylsqpack 0.3.24  <https://github.com/aiortc/pylsqpack>
+  * python-dotenv 1.2.1  <https://github.com/theskumar/python-dotenv>
+  * starlette 0.52.1  <https://github.com/Kludex/starlette>
+  * toolz 1.1.0  <https://github.com/pytoolz/toolz>
+  * uvicorn 0.40.0  <https://uvicorn.dev/>
+  * websockets 16.0  <https://github.com/python-websockets/websockets>
+
+--- MIT (28 package(s)) ---
+  * annotated-doc 0.0.4  <https://github.com/fastapi/annotated-doc>
+  * anyio 4.12.1  <https://anyio.readthedocs.io/en/stable/versionhistory.html>
+  * argon2-cffi 25.1.0  <https://github.com/hynek/argon2-cffi/blob/main/CHANGELOG.md>
+  * argon2-cffi-bindings 25.1.0  <https://github.com/hynek/argon2-cffi-bindings/blob/main/CHANGELOG.md>
+  * attrs 25.4.0  <https://www.attrs.org/en/stable/changelog.html>
+  * cffi 2.0.0  <https://cffi.readthedocs.io/en/latest/whatsnew.html>
+  * cfgv 3.5.0  <https://github.com/asottile/cfgv>
+  * charset-normalizer 3.4.4  <https://github.com/jawah/charset_normalizer/blob/master/CHANGELOG.md>
+  * fastapi 0.128.4  <https://github.com/fastapi/fastapi>
+  * httptools 0.7.1  <https://github.com/MagicStack/httptools>
+  * identify 2.6.16  <https://github.com/pre-commit/identify>
+  * iniconfig 2.3.0  <https://github.com/pytest-dev/iniconfig>
+  * jsonschema 4.26.0  <https://github.com/python-jsonschema/jsonschema>
+  * jsonschema-specifications 2025.9.1  <https://github.com/python-jsonschema/jsonschema-specifications>
+  * mypy_extensions 1.1.0  <https://github.com/python/mypy_extensions>
+  * platformdirs 4.5.1  <https://github.com/tox-dev/platformdirs>
+  * pre_commit 4.5.1  <https://github.com/pre-commit/pre-commit>
+  * pydantic 2.12.5  <https://github.com/pydantic/pydantic>
+  * pydantic_core 2.41.5  <https://github.com/pydantic/pydantic-core>
+  * pytest 9.0.2  <https://docs.pytest.org/en/latest/>
+  * pytest-cov 7.0.0  <https://pytest-cov.readthedocs.io/en/latest/changelog.html>
+  * referencing 0.37.0  <https://github.com/python-jsonschema/referencing>
+  * rpds-py 0.30.0  <https://github.com/crate-py/rpds>
+  * sentry-sdk 2.60.0  <https://github.com/getsentry/sentry-python>
+  * service-identity 24.2.0  <https://service-identity.readthedocs.io/en/stable/changelog.html>
+  * typing-inspection 0.4.2  <https://github.com/pydantic/typing-inspection>
+  * urllib3 2.6.3  <https://github.com/urllib3/urllib3/blob/main/CHANGES.rst>
+  * virtualenv 20.36.1  <https://github.com/pypa/virtualenv>
+
+--- MIT License (8 package(s)) ---
+  * annotated-types 0.7.0  <https://github.com/annotated-types/annotated-types>
+  * h11 0.16.0  <https://github.com/python-hyper/h11>
+  * librt 0.7.8  <https://github.com/mypyc/librt>
+  * mypy 1.19.1  <https://www.mypy-lang.org/>
+  * pluggy 1.6.0  <UNKNOWN>
+  * PyYAML 6.0.3  <https://pyyaml.org/>
+  * ruff 0.15.0  <https://docs.astral.sh/ruff>
+  * watchfiles 1.1.1  <https://github.com/samuelcolvin/watchfiles>
+
+--- Mozilla Public License 2.0 (MPL 2.0) (2 package(s)) ---
+  * certifi 2026.1.4  <https://github.com/certifi/python-certifi>
+  * pathspec 1.0.4  <https://python-path-specification.readthedocs.io/en/latest/index.html>
+
+--- PSF-2.0 (1 package(s)) ---
+  * typing_extensions 4.15.0  <https://github.com/python/typing_extensions>
+
+--- Python Software Foundation License (1 package(s)) ---
+  * distlib 0.4.0  <https://github.com/pypa/distlib>
+
+--- Unlicense (1 package(s)) ---
+  * filelock 3.20.3  <https://github.com/tox-dev/py-filelock>
+
+==============================================================================
+Rust workspace dependencies
+==============================================================================
+
+--- (MIT OR Apache-2.0) AND Unicode-3.0 (1 crate(s)) ---
+  * unicode-ident 1.0.24  <https://github.com/dtolnay/unicode-ident>
+
+--- MIT OR Apache-2.0 (14 crate(s)) ---
+  * cobs 0.3.0  <https://github.com/jamesmunns/cobs.rs>
+  * embedded-io 0.4.0  <https://github.com/embassy-rs/embedded-io>
+  * embedded-io 0.6.1  <https://github.com/rust-embedded/embedded-hal>
+  * hex 0.4.3  <https://github.com/KokaKiwi/rust-hex>
+  * postcard 1.1.3  <https://github.com/jamesmunns/postcard>
+  * proc-macro2 1.0.106  <https://github.com/dtolnay/proc-macro2>
+  * quote 1.0.45  <https://github.com/dtolnay/quote>
+  * serde 1.0.228  <https://github.com/serde-rs/serde>
+  * serde_bytes 0.11.19  <https://github.com/serde-rs/bytes>
+  * serde_core 1.0.228  <https://github.com/serde-rs/serde>
+  * serde_derive 1.0.228  <https://github.com/serde-rs/serde>
+  * syn 2.0.117  <https://github.com/dtolnay/syn>
+  * thiserror 2.0.18  <https://github.com/dtolnay/thiserror>
+  * thiserror-impl 2.0.18  <https://github.com/dtolnay/thiserror>
+
+==============================================================================
+Notes
+==============================================================================
+
+Where a third-party licence requires preservation of its own NOTICE file, that
+NOTICE is shipped alongside the package's wheel and is reproduced in the OCI
+image at /usr/share/doc/<package>/NOTICE.
+
