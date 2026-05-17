@@ -283,6 +283,67 @@ class AdaptiveCompute:
     backpressure_threshold:
         ``is_backpressured`` returns ``True`` when *every* worker's
         expected time-to-serve exceeds this many seconds.
+
+    cost_coefficient:
+        Price-aware routing knob (Phase 4.3, #173). At ``0`` (default) the
+        allocator ignores ``Compute.price_per_hour`` entirely. Positive
+        values scale each worker's expected time by
+        ``1 + cost_coefficient × price``, so more-expensive workers fall
+        further down the picker's queue. Higher values trade speed for
+        spend; ``0.5`` is a reasonable starting point. See
+        ``tests/test_adaptive.py::TestPriceAware`` for measured behaviour.
+
+    local_region, local_rack:
+        Topology preference (Phase 4.2, #172). When set, the allocator
+        softly demotes workers in a *different* region (and, within a
+        matching region, a different rack). The bandwidth map (#171) is
+        the source of truth for actual transfer cost; topology hints are
+        a tie-breaker — they never overrule a faster remote worker on
+        latency. Defaults are read from ``ZAKURO_REGION`` / ``ZAKURO_RACK``
+        env vars when ``None``.
+    region_penalty, rack_penalty:
+        Multipliers (≥ 1.0) applied to cross-region and cross-rack
+        workers respectively. Both default to small (1.10 / 1.03) so a
+        materially faster remote worker still wins — see
+        ``tests/test_adaptive.py::TestTopologyHints::test_faster_remote_still_wins``.
+
+    Bandwidth awareness (Phase 4.1, #171) is enabled per call via the
+    ``payload_bytes`` argument to :meth:`pick`: if non-zero and the
+    worker has a bandwidth estimate (seeded during warmup or set by the
+    caller), the picker adds ``payload_bytes / bandwidth_bps`` to each
+    worker's expected time. Critical for large state-dict dispatches.
+
+    Examples
+    --------
+
+    Price-aware (Phase 4.3)::
+
+        ac = zk.AdaptiveCompute(
+            workers=[
+                zk.Compute(uri="quic://onprem:4433", price_per_hour=0.10),
+                zk.Compute(uri="quic://cloud:4433", price_per_hour=1.40),
+            ],
+            cost_coefficient=0.5,  # 0 = speed-only; 1.0 ≈ cost-only
+        )
+
+    Topology hints (Phase 4.2)::
+
+        ac = zk.AdaptiveCompute(
+            workers=[
+                zk.Compute(uri="quic://a.us-west:4433", region="us-west"),
+                zk.Compute(uri="quic://b.eu-west:4433", region="eu-west"),
+            ],
+            local_region="us-west",
+        )
+
+    Bandwidth-aware dispatch (Phase 4.1)::
+
+        # During warmup, AdaptiveCompute probes each worker with a
+        # large payload and seeds bandwidth_bps. After that, pass the
+        # payload size on each dispatch so the picker weights transfer
+        # time alongside latency:
+        ac.warmup(bandwidth_probe_bytes=8_000_000)
+        ac.pick(payload_bytes=len(state_dict_bytes))
     """
 
     def __init__(
