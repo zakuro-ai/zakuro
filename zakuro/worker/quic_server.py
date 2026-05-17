@@ -54,11 +54,30 @@ _KEY_PATH = _CERT_DIR / "quic_worker_key.pem"
 def _execute_payload(payload: bytes) -> tuple[int, bytes]:
     """Run an EXECUTE payload and return ``(status, response_bytes)``.
 
-    Differentiates protocol errors (``stat=2``: malformed cloudpickle) from
-    user errors (``stat=1``: function raised). Must run on a worker thread.
+    Wire format depends on ``ZAKURO_WIRE``:
+
+    * ``v1`` — the payload is a postcard envelope. Decoded + HMAC-verified
+      via :func:`zakuro.worker.envelope.unwrap_payload`; the inner blob
+      is the cloudpickle dict to execute.
+    * unset — legacy path: the payload is the cloudpickle dict directly.
+
+    Differentiates protocol errors (``stat=2``: malformed envelope OR
+    malformed cloudpickle) from user errors (``stat=1``: function raised).
+    Must run on a worker thread.
     """
+    # zakuro.worker.envelope.unwrap_payload is the single chokepoint that
+    # decides whether to gate this request through postcard+HMAC or pass
+    # the raw bytes through unchanged (legacy mode).
+    from zakuro.wire import WireError as _WireError
+    from zakuro.worker.envelope import unwrap_payload
+
     try:
-        data = cloudpickle.loads(payload)
+        inner_payload, _envelope = unwrap_payload(payload)
+    except _WireError as exc:
+        return STAT_PROTOCOL_ERROR, f"envelope rejected: {exc!r}".encode()
+
+    try:
+        data = cloudpickle.loads(inner_payload)
     except Exception as exc:
         return STAT_PROTOCOL_ERROR, f"malformed cloudpickle: {exc!r}".encode()
     try:
