@@ -384,7 +384,7 @@ mod tests {
 
     // ----- v0.2 additions -------------------------------------------------
 
-    fn _canonical_envelope_v2_full() -> EnvelopeV2 {
+    fn canonical_envelope_v2_full() -> EnvelopeV2 {
         EnvelopeV2 {
             version: WireVersion::V2,
             job_id: "canonical-job".into(),
@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn envelope_v2_roundtrip_with_delta_fields() {
-        let env = _canonical_envelope_v2_full();
+        let env = canonical_envelope_v2_full();
         let bytes = postcard::to_allocvec(&env).expect("encode");
         let back: EnvelopeV2 = postcard::from_bytes(&bytes).expect("decode");
         assert_eq!(env, back);
@@ -415,7 +415,7 @@ mod tests {
     fn envelope_v2_roundtrip_without_delta_fields() {
         // The Some/None encoding distinguishes "no caching wanted" from
         // "cache under empty string". A None should round-trip cleanly.
-        let mut env = _canonical_envelope_v2_full();
+        let mut env = canonical_envelope_v2_full();
         env.cache_key = None;
         env.delta_against = None;
         let bytes = postcard::to_allocvec(&env).expect("encode");
@@ -424,7 +424,7 @@ mod tests {
         // Empty-Option encoding is byte-shorter than the Some encoding —
         // confirms the v0.2 envelope is *additive*, not a hard size hit
         // for callers that don't opt into deltas.
-        let env_with = _canonical_envelope_v2_full();
+        let env_with = canonical_envelope_v2_full();
         let bytes_with = postcard::to_allocvec(&env_with).expect("encode");
         assert!(bytes.len() < bytes_with.len());
     }
@@ -463,13 +463,13 @@ mod tests {
 
     #[test]
     fn v2_message_dispatch_envelope() {
-        let msg = V2Message::Envelope(_canonical_envelope_v2_full());
+        let msg = V2Message::Envelope(canonical_envelope_v2_full());
         let bytes = postcard::to_allocvec(&msg).expect("encode");
         let back: V2Message = postcard::from_bytes(&bytes).expect("decode");
         assert_eq!(msg, back);
         match back {
             V2Message::Envelope(env) => assert_eq!(env.tenant_id, "canonical-tenant"),
-            _ => panic!("wrong variant"),
+            V2Message::Chunk(_) => panic!("expected Envelope variant"),
         }
     }
 
@@ -487,7 +487,7 @@ mod tests {
         assert_eq!(msg, back);
         match back {
             V2Message::Chunk(c) => assert!(c.last),
-            _ => panic!("wrong variant"),
+            V2Message::Envelope(_) => panic!("expected Chunk variant"),
         }
     }
 
@@ -511,6 +511,9 @@ mod tests {
             },
         };
         let bytes = postcard::to_allocvec(&env).expect("encode");
-        assert_eq!(bytes[0], 0x00, "v0.1 envelope must still start with byte 0x00");
+        assert_eq!(
+            bytes[0], 0x00,
+            "v0.1 envelope must still start with byte 0x00"
+        );
     }
 }
