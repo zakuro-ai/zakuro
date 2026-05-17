@@ -14,7 +14,7 @@ Example:
     >>> result = remote_fn()  # Runs on Zakuro cluster
 """
 
-__version__ = "0.2.17"
+__version__ = "0.2.18"
 __build__ = "2026-02-15T15:47:22+0000"
 
 # Stable subset — see `docs/stability.md`. `zakuro.public` is the preferred
