@@ -1,0 +1,249 @@
+{
+  "uid": "zakuro-overview",
+  "title": "Zakuro — runtime overview",
+  "description": "Runtime SLO + supporting-metric overview for the Zakuro worker fleet. Owners: oncall@zakuro.ai. Source-of-truth: ops/grafana/zakuro-overview.json on master — edit there, not in the Grafana UI.",
+  "tags": ["zakuro", "slo", "runtime"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "worker_id",
+        "label": "Worker",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "query": {"query": "label_values(zakuro_worker_queue_depth, worker_id)", "refId": "Prom"},
+        "includeAll": true,
+        "multi": true,
+        "current": {"selected": false, "text": "All", "value": "$__all"}
+      },
+      {
+        "name": "tenant_id",
+        "label": "Tenant",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "query": {"query": "label_values(zakuro_http_requests_total, tenant_id)", "refId": "Prom"},
+        "includeAll": true,
+        "multi": true,
+        "current": {"selected": false, "text": "All", "value": "$__all"}
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Deploys",
+        "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+        "enable": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "expr": "changes(zakuro_http_requests_total{path=\"/info\"}[5m]) > 0"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "SLOs",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "SLO-1 dispatch latency p99 (target: < 250 ms)",
+      "description": "Server-side dispatch latency 99th percentile, 5-minute rolling. Crossing 250 ms means SLO-1's error budget is burning.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 1},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(zakuro_dispatch_latency_seconds_bucket{tenant_id=~\"$tenant_id\",worker_id=~\"$worker_id\"}[5m])))",
+          "legendFormat": "p99 latency"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.15},
+              {"color": "red", "value": 0.25}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"showLegend": true}}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "SLO-2 auth success rate (last 1h)",
+      "description": "Fraction of HTTP requests that did NOT fail auth. Target ≥ 99.5%.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 1},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 - (sum(rate(zakuro_auth_failure_total[1h])) / clamp_min(sum(rate(zakuro_http_requests_total[1h])), 1))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "min": 0.99,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.99},
+              {"color": "green", "value": 0.995}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "area"}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "SLO-4 HMAC failure count (5m)",
+      "description": "Wire-format integrity. ANY non-zero count is an incident.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 1},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(zakuro_auth_failure_total{reason=\"hmac\"}[5m]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 1}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background"}
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "SLO-3 worker readiness fail-rate (per worker)",
+      "description": "1 - success rate of /ready probes per worker. Target ≤ 0.1%.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 9},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (worker_id) (rate(zakuro_http_requests_total{path=\"/ready\",status!~\"2..\",worker_id=~\"$worker_id\"}[5m])) / clamp_min(sum by (worker_id) (rate(zakuro_http_requests_total{path=\"/ready\",worker_id=~\"$worker_id\"}[5m])), 1)",
+          "legendFormat": "{{worker_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "max": 0.05,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.001},
+              {"color": "red", "value": 0.0144}
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {"legend": {"showLegend": true, "placement": "right"}}
+    },
+    {
+      "id": 6,
+      "type": "row",
+      "title": "Supporting metrics",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 17},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Request rate (qps) by path",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 18},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (path) (rate(zakuro_http_requests_total{tenant_id=~\"$tenant_id\",worker_id=~\"$worker_id\"}[1m]))",
+          "legendFormat": "{{path}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []}
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Worker queue depth",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 18},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "zakuro_worker_queue_depth{worker_id=~\"$worker_id\"}",
+          "legendFormat": "{{worker_id}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []}
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "HTTP errors by status",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 26},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (rate(zakuro_http_requests_total{status!~\"2..\",worker_id=~\"$worker_id\"}[5m]))",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []}
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Auth failures by reason",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 26},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (reason) (rate(zakuro_auth_failure_total{tenant_id=~\"$tenant_id\"}[5m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []}
+    }
+  ]
+}
