@@ -22,23 +22,33 @@ except ImportError as exc:
 
 import contextlib
 
-from zakuro.observability import init_logging, init_sentry
+from zakuro.observability import (
+    init_logging,
+    init_metrics,
+    init_sentry,
+    mount_metrics_endpoint,
+)
 from zakuro.wire import WireError
 from zakuro.worker.envelope import unwrap_payload
 from zakuro.worker.executor import execute_function
 
-# Init structured logging + Sentry as early as possible so any exception during
-# app/executor wiring is captured + emitted as JSON. Both are no-ops when their
-# optional dependency is missing (`zakuro-ai[observability]`) or the relevant
-# env var is unset.
+# Init structured logging + Sentry + Prometheus as early as possible so any
+# exception during app/executor wiring is captured + emitted as JSON and
+# metrics are immediately scrapeable. All three are no-ops when their
+# optional dep is missing or the relevant env var is unset.
 init_logging("worker")
 init_sentry("worker")
+init_metrics()
 
 app = FastAPI(
     title="Zakuro Worker",
     description="Worker node for Zakuro distributed computing",
     version="0.2.0",
 )
+
+# /metrics endpoint, no-op when prometheus_client is not installed. Once
+# RFC 0002 lands, gate this on the metrics:read JWT scope.
+mount_metrics_endpoint(app)
 
 # Thread pool for function execution (threads share memory, so instance
 # state in executor._instances is visible to all workers)

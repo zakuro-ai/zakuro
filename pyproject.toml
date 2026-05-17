@@ -55,6 +55,9 @@ observability = [
     # structlog produces JSON-rendered logs that share the request-context
     # ContextVar with the Sentry scrubber. RFC 0003 Track A (#125).
     "structlog>=24.1.0",
+    # Prometheus client for /metrics. RFC 0003 Track B (#124). No-op when
+    # the dep is missing.
+    "prometheus_client>=0.20.0",
 ]
 dev = [
     "pytest>=7.0",

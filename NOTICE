@@ -37,6 +37,9 @@ Python runtime dependencies
   * pyspark 4.1.1  <https://github.com/apache/spark/tree/master/python>
   * pytest-asyncio 1.3.0  <https://github.com/pytest-dev/pytest-asyncio>
 
+--- Apache-2.0 AND BSD-2-Clause (1 package(s)) ---
+  * prometheus_client 0.25.0  <https://github.com/prometheus/client_python>
+
 --- Apache-2.0 OR BSD-2-Clause (1 package(s)) ---
   * packaging 26.0  <https://github.com/pypa/packaging>
 
@@ -82,7 +85,7 @@ Python runtime dependencies
   * uvicorn 0.40.0  <https://uvicorn.dev/>
   * websockets 16.0  <https://github.com/python-websockets/websockets>
 
---- MIT (28 package(s)) ---
+--- MIT (29 package(s)) ---
   * annotated-doc 0.0.4  <https://github.com/fastapi/annotated-doc>
   * anyio 4.12.1  <https://anyio.readthedocs.io/en/stable/versionhistory.html>
   * argon2-cffi 25.1.0  <https://github.com/hynek/argon2-cffi/blob/main/CHANGELOG.md>
@@ -102,6 +105,7 @@ Python runtime dependencies
   * pre_commit 4.5.1  <https://github.com/pre-commit/pre-commit>
   * pydantic 2.12.5  <https://github.com/pydantic/pydantic>
   * pydantic_core 2.41.5  <https://github.com/pydantic/pydantic-core>
+  * PyJWT 2.12.1  <https://github.com/jpadilla/pyjwt>
   * pytest 9.0.2  <https://docs.pytest.org/en/latest/>
   * pytest-cov 7.0.0  <https://pytest-cov.readthedocs.io/en/latest/changelog.html>
   * referencing 0.37.0  <https://github.com/python-jsonschema/referencing>
@@ -121,6 +125,9 @@ Python runtime dependencies
   * PyYAML 6.0.3  <https://pyyaml.org/>
   * ruff 0.15.0  <https://docs.astral.sh/ruff>
   * watchfiles 1.1.1  <https://github.com/samuelcolvin/watchfiles>
+
+--- MIT OR Apache-2.0 (1 package(s)) ---
+  * structlog 25.5.0  <https://github.com/hynek/structlog/blob/main/CHANGELOG.md>
 
 --- Mozilla Public License 2.0 (MPL 2.0) (2 package(s)) ---
   * certifi 2026.1.4  <https://github.com/certifi/python-certifi>
