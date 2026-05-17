@@ -23,6 +23,8 @@ except ImportError as exc:
 import contextlib
 
 from zakuro.observability import init_logging, init_sentry
+from zakuro.wire import WireError
+from zakuro.worker.envelope import unwrap_payload
 from zakuro.worker.executor import execute_function
 
 # Init structured logging + Sentry as early as possible so any exception during
@@ -282,18 +284,32 @@ async def execute(request: Request) -> Response:
     """
     Execute a serialized function.
 
-    Expects cloudpickle-serialized payload with:
-    - func: The function to execute
-    - args: Positional arguments
-    - kwargs: Keyword arguments
+    Wire format depends on ``ZAKURO_WIRE``:
 
-    Returns cloudpickle-serialized result.
+    * ``v1`` — body is a postcard-encoded ``zakuro_wire::Envelope``.
+      The worker decodes + HMAC-verifies it via
+      :func:`zakuro.worker.envelope.unwrap_payload`; the envelope's
+      ``callable`` blob (cloudpickle bytes) is then passed to
+      ``execute_function``. HMAC / decode failures return 401 with
+      empty body.
+    * unset — body is the raw cloudpickle dict (legacy path). Behaviour
+      is identical to pre-#117 builds. This branch will be removed once
+      the v0.4 rollout completes.
     """
     global executor
     if executor is None:
         raise HTTPException(status_code=503, detail="Worker not ready")
 
-    payload = await request.body()
+    raw = await request.body()
+
+    try:
+        inner_payload, _envelope = unwrap_payload(raw)
+    except WireError:
+        # Empty body — leaking the reason would aid enumeration. The
+        # specific reason class is recorded in metrics by `unwrap_payload`
+        # for operator triage (forthcoming when #185 metrics + #189 auth
+        # land; the metric increments degrade gracefully today).
+        return Response(content=b"", status_code=401)
 
     try:
         # Run in thread pool (shared memory for instance state)
@@ -301,7 +317,7 @@ async def execute(request: Request) -> Response:
         result_bytes = await loop.run_in_executor(
             executor,
             execute_function,
-            payload,
+            inner_payload,
         )
 
         return Response(
