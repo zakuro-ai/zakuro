@@ -18,7 +18,7 @@ concurrency:
 jobs:
   build-and-push:
     if: github.event.workflow_run.conclusion == 'success'
-    runs-on: [self-hosted, cpu]
+    runs-on: [self-hosted, i9-cpu]
     outputs:
       version: ${{ steps.version.outputs.version }}
       image_digest: ${{ steps.build.outputs.digest }}
