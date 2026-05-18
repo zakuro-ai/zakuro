@@ -2,7 +2,7 @@
 # wheel's resolved closure). Update with care — these versions need to
 # stay coherent with each other.
 mkdocs-material>=9.5
-mike>=2.1
+mike>=2.2.0
 mkdocstrings[python]>=0.27
 pymdown-extensions>=10.14
 pygments>=2.18
