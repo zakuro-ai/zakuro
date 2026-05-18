@@ -42,7 +42,7 @@ concurrency:
 
 jobs:
   build-and-deploy:
-    runs-on: [self-hosted, i9-cpu]
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
         with:
