@@ -1411,6 +1411,12 @@
 <td>empty (<code>length = 0</code>)</td>
 <td>UTF-8 JSON <code>{"status":"ok"}</code></td>
 </tr>
+<tr>
+<td>4</td>
+<td>EXECUTE_CHUNK</td>
+<td>postcard <code>ChunkFrame</code> — one chunk of a v0.2 multi-chunk dispatch (RFC 0001 amendment). Multiple chunks share a <code>ChunkFrame.stream_id</code>; final chunk has <code>last=true</code>. Concatenated bytes are a v0.2 <code>EnvelopeV2</code>.</td>
+<td>non-final chunk: empty (<code>stat = 3</code> ack). Final chunk: cloudpickle of <code>result</code> (per EXECUTE).</td>
+</tr>
 </tbody>
 </table>
 <p>Unknown opcodes MUST produce <code>stat = 2</code> (see below) with a UTF-8 payload describing the error.</p>
@@ -1434,6 +1440,10 @@
 <tr>
 <td>2</td>
 <td>Protocol / server error — malformed frame, unknown opcode, worker overload. <code>payload</code> is UTF-8 text.</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Chunk accepted, more chunks expected. Used only by <code>EXECUTE_CHUNK</code> (op=4) for non-final chunks. <code>payload</code> is empty. The caller continues sending chunks on new QUIC streams sharing the same <code>ChunkFrame.stream_id</code>.</td>
 </tr>
 </tbody>
 </table>

@@ -1080,10 +1080,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#phase-2-follow-up" class="md-nav__link">
+  <a href="#delta-apply-algorithm" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Phase 2 follow-up
+        Delta-apply algorithm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-substrate-current-vs-phase-2-wiring-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2 substrate (current) vs Phase 2 wiring (next)
       
     </span>
   </a>
@@ -1267,8 +1278,26 @@
 </ul>
 <h3 id="cache-eviction-policy">Cache eviction policy<a class="headerlink" href="#cache-eviction-policy" title="Permanent link">&para;</a></h3>
 <p>Cache lives on the worker, bounded by an LRU of N entries × cap-per-entry, both configurable via <code>ZAKURO_CACHE_MAX_ENTRIES</code> / <code>ZAKURO_CACHE_MAX_BYTES</code>. Defaults: 32 entries / 4 GB. Eviction is silent — callers that suffer a cache-miss on a delta retry with the full payload, which is the same code path as never having cached.</p>
-<h3 id="phase-2-follow-up">Phase 2 follow-up<a class="headerlink" href="#phase-2-follow-up" title="Permanent link">&para;</a></h3>
-<p>This PR ships the schema substrate only. The worker-side reassembly + delta-apply logic lands as a Phase 2 PR (mirroring the #115 / #116 / #117 substrate-vs-wiring split). Until that lands, v0.2 envelopes round-trip through the schema cleanly but the worker treats <code>cache_key</code> / <code>delta_against</code> as advisory metadata.</p>
+<p>Implementation: <a href="https://github.com/zakuro-ai/zakuro/blob/master/zakuro/wire/cache.py"><code>zakuro.wire.cache.PayloadCache</code></a> (an ordered-dict LRU; promotes on <code>get</code>; evicts oldest entry on either cap violation; refuses to admit a single value larger than the bytes budget).</p>
+<h3 id="delta-apply-algorithm">Delta-apply algorithm<a class="headerlink" href="#delta-apply-algorithm" title="Permanent link">&para;</a></h3>
+<p>The wire crate carries <code>callable</code> bytes opaquely. When <code>delta_against = Some(prev_key)</code>, the worker reconstructs:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">full</span> <span class="o">=</span> <span class="n">bsdiff4</span><span class="o">.</span><span class="n">patch</span><span class="p">(</span><span class="n">cache</span><span class="p">[</span><span class="n">prev_key</span><span class="p">],</span> <span class="n">envelope</span><span class="o">.</span><span class="n">callable</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Format choice: bsdiff4.</strong> Reasoning:</p>
+<ul>
+<li>It's well-established (the format <code>bsdiff</code>+<code>bspatch</code> use, in production since 2003).</li>
+<li><code>bsdiff4</code> ships as a pure-Python lib with a tiny C accelerator; &lt;50 KB wheel.</li>
+<li>It produces meaningfully smaller deltas than <code>zstd --train</code> for binary state-dicts where most bytes carry small numeric changes (the common case in fine-tuning).</li>
+<li>It's <em>not</em> tensor-aware — a future tensor-aware diff (e.g. quantised-residual or low-rank delta) could supplant it. When that happens we add a <code>delta_format: Option&lt;DeltaFormat&gt;</code> field to EnvelopeV2 and gate selection on it. For v0.2 we hard-code bsdiff4.</li>
+</ul>
+<p>The delta isn't authenticated by itself: the HMAC over <code>(callable, args, job_id)</code> in the envelope covers the <em>delta bytes</em> as they arrive. A reconstructed payload that doesn't match the broker's intent produces a different HMAC than the broker computed, so <code>safe_loads</code> rejects with <code>HmacMismatchError</code> before the bytes reach cloudpickle. The cache layer is not the security boundary.</p>
+<h3 id="phase-2-substrate-current-vs-phase-2-wiring-next">Phase 2 substrate (current) vs Phase 2 wiring (next)<a class="headerlink" href="#phase-2-substrate-current-vs-phase-2-wiring-next" title="Permanent link">&para;</a></h3>
+<p>The substrate ships in two slices:</p>
+<ol>
+<li><strong>Substrate (this PR / #174 Phase 2 substrate):</strong> <code>zakuro/wire/cache.py</code> with <code>PayloadCache</code> LRU + <code>apply_delta</code> (bsdiff4). 15 unit tests. Module is standalone; no worker integration yet.</li>
+<li><strong>Wiring (next PR, after #200 lands):</strong> the QUIC handler's <code>_handle_chunk</code> calls <code>cache.get(env.delta_against)</code> + <code>apply_delta</code> before forwarding to the executor; <code>cache.put(env.cache_key, callable_bytes)</code> after successful dispatch. Cache miss / DeltaApplyError surface as <code>WorkerUnavailable { reason: "cache_miss" }</code> so the broker retries with the full payload.</li>
+</ol>
+<p>This split mirrors the #115 / #116 / #117 substrate-vs-wiring pattern: the substrate has its own narrow tests; the wiring exercises the end-to-end flow.</p>
 <h3 id="cross-repo">Cross-repo<a class="headerlink" href="#cross-repo" title="Permanent link">&para;</a></h3>
 <p><code>zc</code> adopts <code>zakuro-wire = 0.2.0</code> simultaneously per the multi-repo coherence rule. The integration test in <code>.github/workflows/integration.yml</code> covers the matrix: v0.1 broker × v0.1 worker (today), v0.1 broker × v0.2 worker (back-compat), and v0.2 broker × v0.2 worker (new path) once the matrix expands.</p>
 
