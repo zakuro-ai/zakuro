@@ -4,7 +4,7 @@
 #
 # The base image is digest-pinned; Dependabot tracks both the tag and the
 # digest under the `docker` ecosystem (see .github/dependabot.yml).
-FROM python:3.14-slim@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856
+FROM python:3.14-slim@sha256:c845af9399020c7e562969a13689e929074a10fd057acd1b1fad06a2fb068e97
 
 # Install uv (no apt packages — curl is dropped, healthcheck is in-process).
 RUN pip install --no-cache-dir uv
