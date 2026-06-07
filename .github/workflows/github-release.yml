@@ -11,7 +11,7 @@ permissions:
 jobs:
   create-release:
     if: github.event.workflow_run.conclusion == 'success'
-    runs-on: [self-hosted, i9-cpu]
+    runs-on: cpu
     steps:
       - uses: actions/checkout@v6
         with:
