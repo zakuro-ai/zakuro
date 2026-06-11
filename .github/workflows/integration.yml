@@ -59,7 +59,7 @@ jobs:
     # `image:` line in docker-compose.yml has been bumped.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Resolve broker digest
         # Surface the pinned zc digest in the log so a failing run is
