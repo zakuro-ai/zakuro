@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   lint-and-test:
-    runs-on: cpu
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'cpu' }}
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
@@ -37,7 +37,7 @@ jobs:
         run: task test:unit || true
 
   typecheck:
-    runs-on: cpu
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'cpu' }}
     continue-on-error: true
     steps:
       - uses: actions/checkout@v6
@@ -51,7 +51,7 @@ jobs:
         run: task ci:typecheck || true
 
   rust:
-    runs-on: cpu
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'cpu' }}
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust toolchain
@@ -69,7 +69,7 @@ jobs:
           RUSTFLAGS: -D warnings
 
   notice:
-    runs-on: cpu
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'cpu' }}
     steps:
       - uses: actions/checkout@v6
       - name: Set up Python
@@ -82,7 +82,7 @@ jobs:
         run: task notice:check
 
   security:
-    runs-on: cpu
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'cpu' }}
     continue-on-error: true
     steps:
       - uses: actions/checkout@v6
@@ -123,7 +123,7 @@ jobs:
           exit $FAIL
 
   vulnerability-scan:
-    runs-on: cpu
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'cpu' }}
     continue-on-error: true
     steps:
       - uses: actions/checkout@v6

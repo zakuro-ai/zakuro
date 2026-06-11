@@ -43,7 +43,7 @@ concurrency:
 jobs:
   compose-smoke:
     name: docker compose + broker health
-    runs-on: cpu
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'cpu' }}
     # Report-only on introduction. The first run of this lane caught a real
     # cross-repo issue — `zakuroai/zc@sha256:ec0871a8…` was built against
     # glibc 2.39, which doesn't exist in its runtime base, so the broker
