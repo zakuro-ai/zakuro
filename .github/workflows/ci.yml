@@ -5,6 +5,7 @@ on:
     branches: ["main", "master", "dev", "feature/**", "release/**"]
   pull_request:
     branches: ["main", "master"]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -17,7 +18,7 @@ permissions:
 
 jobs:
   lint-and-test:
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'cpu' }}
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
@@ -44,7 +45,7 @@ jobs:
         run: task test:unit || true
 
   typecheck:
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'cpu' }}
+    runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v6
@@ -65,7 +66,7 @@ jobs:
         run: task ci:typecheck || true
 
   rust:
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'cpu' }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - name: Install Rust toolchain
@@ -83,7 +84,7 @@ jobs:
           RUSTFLAGS: -D warnings
 
   notice:
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'cpu' }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - name: Set up Python
@@ -103,7 +104,7 @@ jobs:
         run: task notice:check
 
   security:
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'cpu' }}
+    runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v6
@@ -148,7 +149,7 @@ jobs:
           exit $FAIL
 
   vulnerability-scan:
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'cpu' }}
+    runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v6
@@ -171,8 +172,14 @@ jobs:
           exit-code: "0"
 
   bench:
+    # Runs on the self-hosted `cpu` runner for stable benchmark hardware.
+    # This is a public repo and the org runner group disallows public
+    # repositories (deliberate — avoids the public-repo self-hosted RCE
+    # risk), so auto-running bench on push would queue forever and block
+    # the run. Make it manual-only: dispatch it from an environment where
+    # a `cpu` runner is available.
     runs-on: cpu
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/checkout@v6
       - name: Set up Python
