@@ -114,7 +114,9 @@ jobs:
       - name: SOPS encryption check
         run: |
           FAIL=0
-          for f in $(find . -name '*.enc.*' -o -name 'secrets.*' -o -name '*.secret.*' 2>/dev/null); do
+          for f in $(find . -name '*.enc.*' -o -name '*.sops.*' -o -name '*.secret.*' 2>/dev/null); do
+            # .sops.yaml is the (plaintext) SOPS recipient config, not an encrypted secret.
+            [ "$(basename "$f")" = ".sops.yaml" ] && continue
             if ! head -c 20 "$f" | grep -q 'sops'; then
               echo "::error file=$f::Unencrypted secret file: $f"
               FAIL=1
