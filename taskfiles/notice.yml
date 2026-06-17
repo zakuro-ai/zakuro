@@ -4,9 +4,8 @@ tasks:
   generate:
     desc: Regenerate NOTICE from the resolved Python + Rust dependency tree
     cmds:
-      - uv sync --all-extras
-      - uv pip install --quiet pip-licenses
-      - uv run python scripts/generate_notice.py
+      - uv sync --all-extras --frozen
+      - uv run --frozen --with pip-licenses python scripts/generate_notice.py
 
   check:
     desc: Verify NOTICE is up-to-date with the lock files

@@ -27,6 +27,13 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install dependencies
         run: uv pip install -e ".[dev,worker,observability]" --system
       - name: Run linting
@@ -45,6 +52,13 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install dependencies
         run: uv pip install -e ".[dev,worker,observability]" --system
       - name: Run type checking (report-only)
@@ -76,6 +90,13 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install dependencies
         run: uv pip install -e ".[dev]" --system
       - name: Check NOTICE file
@@ -90,6 +111,8 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
       - name: Install dependencies
         run: uv pip install -e ".[dev,worker,observability]" --system
       - name: CodeQL init
@@ -114,7 +137,9 @@ jobs:
       - name: SOPS encryption check
         run: |
           FAIL=0
-          for f in $(find . -name '*.enc.*' -o -name 'secrets.*' -o -name '*.secret.*' 2>/dev/null); do
+          for f in $(find . -name '*.enc.*' -o -name '*.sops.*' -o -name '*.secret.*' 2>/dev/null); do
+            # .sops.yaml is the (plaintext) SOPS recipient config, not an encrypted secret.
+            [ "$(basename "$f")" = ".sops.yaml" ] && continue
             if ! head -c 20 "$f" | grep -q 'sops'; then
               echo "::error file=$f::Unencrypted secret file: $f"
               FAIL=1
@@ -131,6 +156,8 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
       - name: Install dependencies
         run: uv pip install -e ".[dev,worker,observability]" --system
       - name: pip-audit

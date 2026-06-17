@@ -20,7 +20,6 @@ import json
 import subprocess
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -80,7 +79,6 @@ def _by_licence(rows: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
 
 
 def render(py: list[dict[str, str]], rust: list[dict[str, str]] | None) -> str:
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     lines: list[str] = []
     lines.append("Zakuro")
     lines.append("Copyright (c) Zakuro AI contributors.")
@@ -91,7 +89,7 @@ def render(py: list[dict[str, str]], rust: list[dict[str, str]] | None) -> str:
     lines.append("third-party components bundled into, or required at runtime by, the published")
     lines.append("Zakuro wheels and container images.")
     lines.append("")
-    lines.append(f"Last regenerated: {now} (UTC). To refresh:")
+    lines.append("To refresh this file:")
     lines.append("")
     lines.append("    task notice:generate")
     lines.append("")
