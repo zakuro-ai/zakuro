@@ -42,7 +42,7 @@ concurrency:
 
 jobs:
   build-and-deploy:
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'cpu' }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
