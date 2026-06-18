@@ -69,7 +69,7 @@ services:
     #
     # To test a local zc build instead:
     #   ZAKURO_BROKER_IMAGE=zakuroai/zc:dev docker compose up
-    image: ${ZAKURO_BROKER_IMAGE:-zakuroai/zc@sha256:ec0871a8bf08875a7c7a67478d6da3804a0d88f4b65bcede4e0c8957d9f8cbd4}
+    image: ${ZAKURO_BROKER_IMAGE:-zakuroai/zc@sha256:ca869fb54442c90b7f0968c30d4eeb30acbe3bf5e9aa035d76b5463d7028f3cd}
     container_name: zakuro-broker
     ports:
       - "9000:9000"
