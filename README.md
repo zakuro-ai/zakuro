@@ -167,10 +167,10 @@ Each one runs end-to-end on a laptop and prints observed numbers — no faked da
 
 | notebook | path | what it shows |
 |---|---|---|
-| **Standalone** | [`notebooks/standalone_mode.ipynb`](notebooks/standalone_mode.ipynb) | `Compute()` without a URI → in-process fallback; advisory resource hints; memory-enforcement refusal |
-| **Two workers** | [`notebooks/two_worker_demo.ipynb`](notebooks/two_worker_demo.ipynb) | Spawn two workers via `zk.Worker.spawn()`, chain calls between them |
 | **Mesh adaptation tour** | [`notebooks/mesh_adaptation_tour.ipynb`](notebooks/mesh_adaptation_tour.ipynb) | Every `AdaptiveCompute` knob — warmup, soft/greedy, add/remove, health, drift |
 | **QUIC resilience** | [`notebooks/quic_resilience.ipynb`](notebooks/quic_resilience.ipynb) | Baseline → SIGKILL → respawn; 5 s detection; post-respawn recovery |
+
+> **Planned for v0.3:** `notebooks/standalone_mode.ipynb` (in-process fallback, resource hints) and `notebooks/two_worker_demo.ipynb` (multi-worker chaining via `zk.Worker.spawn()`) are not yet committed to this repo.
 
 The sakura repo adds [`bert_demo/hf_async_features.ipynb`](https://github.com/zakuro-ai/sakura/blob/master/bert_demo/hf_async_features.ipynb) — every `SakuraHFCallback` knob on a real BERT fine-tune.
 
