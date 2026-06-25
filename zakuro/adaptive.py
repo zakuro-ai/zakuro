@@ -789,6 +789,19 @@ class AdaptiveCompute:
 
         Safe to call multiple times; only one probe thread runs per
         ``AdaptiveCompute`` instance.
+
+        The probe thread is a daemon, so it will not keep the process alive on
+        its own — but you should still stop it explicitly to release the
+        worker connections it holds. Pair it with ``stop_health_probes`` in a
+        ``try/finally`` so the loop is torn down even if the body raises:
+
+        .. code-block:: python
+
+            ac.start_health_probes(interval=5.0, max_strikes=3)
+            try:
+                run_workload(ac)
+            finally:
+                ac.stop_health_probes()
         """
         if interval <= 0:
             raise ValueError("interval must be positive")

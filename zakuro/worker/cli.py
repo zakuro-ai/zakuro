@@ -12,8 +12,29 @@ import os
 import sys
 
 
+# Single source of truth for the "you need the worker extra" guidance so the
+# HTTP and QUIC paths print identical, actionable instructions. We deliberately
+# show BOTH install paths: a pip-installed wheel uses the extra, a source
+# checkout (git clone) uses `uv sync --extra worker`.
+_WORKER_EXTRA_HINT = (
+    "Install it with one of:\n"
+    "  pip install 'zakuro-ai[worker]'      # installed from PyPI/wheel\n"
+    "  uv sync --extra worker               # from a source checkout (git clone)\n"
+    "  uv pip install '.[worker]'           # source checkout without uv project sync"
+)
+
+
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Zakuro Worker Server")
+    parser = argparse.ArgumentParser(
+        description="Zakuro Worker Server",
+        epilog=(
+            "The worker requires the `[worker]` extra (fastapi, uvicorn, psutil, "
+            "aioquic). Core `pip install zakuro-ai` ships the client only; run "
+            "`pip install 'zakuro-ai[worker]'` or `uv sync --extra worker` before "
+            "starting a worker."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument(
         "--host",
         default=os.environ.get("ZAKURO_HOST", "0.0.0.0"),
@@ -50,8 +71,8 @@ def main() -> None:
             from zakuro.worker.quic_server import DEFAULT_PORT, run_quic_worker
         except ImportError as exc:
             sys.exit(
-                "QUIC transport requires the `[worker]` extra (aioquic): "
-                f"{exc}. Install with `pip install 'zakuro-ai[worker]'`."
+                "`--transport quic` requires the `[worker]` extra (aioquic), which "
+                f"is not installed: {exc}.\n{_WORKER_EXTRA_HINT}"
             )
         port = (
             args.port
@@ -61,13 +82,19 @@ def main() -> None:
         run_quic_worker(host=args.host, port=port)
         return
 
-    # Default: HTTP via FastAPI + uvicorn.
+    # Default: HTTP via FastAPI + uvicorn. Probe BOTH deps here so a partial
+    # install (e.g. uvicorn present but fastapi missing, the common
+    # `pip install zakuro-ai` then `zakuro-worker` -> `ImportError: fastapi`
+    # case) fails with the actionable hint instead of a raw traceback that
+    # surfaces deep inside `uvicorn.run(...)` when it imports the server module.
     try:
+        import fastapi  # noqa: F401
         import uvicorn
     except ImportError as exc:
         sys.exit(
-            "HTTP transport requires the `[worker]` extra (fastapi, uvicorn): "
-            f"{exc}. Install with `pip install 'zakuro-ai[worker]'`."
+            "Running the Zakuro worker (HTTP transport) requires the `[worker]` "
+            f"extra (fastapi, uvicorn, psutil), which is not installed: {exc}.\n"
+            f"{_WORKER_EXTRA_HINT}"
         )
     port = args.port if args.port is not None else int(os.environ.get("ZAKURO_PORT", "3960"))
 
