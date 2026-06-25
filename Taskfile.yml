@@ -103,3 +103,12 @@ tasks:
     desc: Open broker demo notebook in JupyterLab
     cmds:
       - jupyter lab notebooks/demo_broker.ipynb
+
+  ci-local:
+    desc: Run all CI checks locally (mirrors GitHub Actions)
+    cmds:
+      - task: ci:lint
+      - task: ci:format-check
+      - task: ci:typecheck
+      - task: test:unit
+      - cargo test --workspace
