@@ -30,7 +30,7 @@ For the Rust workspace (`crates/zakuro-wire`) you'll also need a stable Rust too
 The full dev loop runs in Docker too:
 
 ```bash
-task ci-local                        # mirrors what GitHub Actions runs
+task ci-local                        # lint, format-check, typecheck, pytest, cargo test
 ```
 
 ## Branch + commit conventions
