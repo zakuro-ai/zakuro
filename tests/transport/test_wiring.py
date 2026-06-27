@@ -77,7 +77,7 @@ def test_cli_no_ssl_kwargs_when_cert_dir_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("ZAKURO_CERT_DIR", raising=False)
-    monkeypatch.setattr("sys.argv", ["zakuro-worker", "--transport", "http", "--port", "0"])
+    monkeypatch.setattr("sys.argv", ["zakuro-worker", "--transport", "http", "--port", "0", "--host", "127.0.0.1"])
     captured: dict[str, object] = {}
 
     def fake_run(*args: object, **kwargs: object) -> None:
