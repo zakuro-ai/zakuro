@@ -407,9 +407,20 @@ def main() -> None:
     if args.worker_name:
         os.environ["ZAKURO_WORKER_NAME"] = args.worker_name
 
+    from zakuro.worker.posture import (
+        InsecureBindError,
+        StartupConfigError,
+        resolve_listener,
+    )
+
+    try:
+        host = resolve_listener(args.host, args.port)
+    except (InsecureBindError, StartupConfigError) as exc:
+        raise SystemExit(str(exc)) from exc
+
     uvicorn.run(
         "zakuro.worker.server:app",
-        host=args.host,
+        host=host,
         port=args.port,
         reload=False,
     )

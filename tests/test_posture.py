@@ -97,3 +97,43 @@ def test_validate_rejects_bad_payload_cap(monkeypatch):
     monkeypatch.setenv("ZAKURO_MAX_PAYLOAD_BYTES", "abc")
     with pytest.raises(P.StartupConfigError):
         P.validate_startup_config()
+
+
+def test_insecure_nonloopback_bind_refused():
+    with pytest.raises(P.InsecureBindError):
+        P.enforce_bind_policy("0.0.0.0")
+
+
+def test_loopback_bind_allowed_when_insecure():
+    assert P.enforce_bind_policy("127.0.0.1") == "127.0.0.1"
+
+
+def test_auth_required_allows_nonloopback(monkeypatch):
+    monkeypatch.setenv("ZAKURO_AUTH_REQUIRED", "1")
+    assert P.enforce_bind_policy("0.0.0.0") == "0.0.0.0"
+
+
+def test_wire_strict_allows_nonloopback(monkeypatch):
+    monkeypatch.setenv("ZAKURO_WIRE", "v1")
+    assert P.enforce_bind_policy("0.0.0.0") == "0.0.0.0"
+
+
+def test_explicit_override_allows_nonloopback(monkeypatch):
+    monkeypatch.setenv("ZAKURO_INSECURE_BIND", "1")
+    assert P.enforce_bind_policy("0.0.0.0") == "0.0.0.0"
+
+
+def test_resolve_listener_refuses_insecure_nonloopback():
+    with pytest.raises(P.InsecureBindError):
+        P.resolve_listener("0.0.0.0", 3960)
+
+
+def test_resolve_listener_ok_loopback():
+    assert P.resolve_listener("127.0.0.1", 3960) == "127.0.0.1"
+
+
+def test_banner_warns_when_exposed_with_override(monkeypatch, caplog):
+    monkeypatch.setenv("ZAKURO_INSECURE_BIND", "1")
+    with caplog.at_level("WARNING", logger="zakuro.worker.posture"):
+        P.log_security_banner("0.0.0.0", 3960)
+    assert any(r.levelname == "WARNING" for r in caplog.records)

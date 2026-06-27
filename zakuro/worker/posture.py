@@ -135,3 +135,51 @@ def validate_startup_config() -> None:
             _read_master_key()
         except EnvelopeRejectedError as exc:
             raise StartupConfigError(str(exc)) from exc
+
+
+def enforce_bind_policy(host: str) -> str:
+    """Return *host* if it is safe to bind, else raise :class:`InsecureBindError`.
+
+    Safe when the caller is authenticated (auth / wire / mTLS), the bind is
+    loopback-only, or the operator set ``ZAKURO_INSECURE_BIND=1`` (trusted-mesh
+    escape hatch).
+    """
+    if is_caller_authenticated() or is_loopback(host) or insecure_bind_allowed():
+        return host
+    raise InsecureBindError(
+        f"refusing to bind the Zakuro worker to {host!r}: no caller authentication "
+        "is enabled, so /execute would be an unauthenticated remote-code-execution "
+        "surface. Enable ONE of:\n"
+        "  - ZAKURO_AUTH_REQUIRED=1                       (JWT auth, RFC 0002)\n"
+        "  - ZAKURO_WIRE=v1 + ZAKURO_HMAC_KEY[_FILE]      (signed wire, RFC 0001)\n"
+        "  - ZAKURO_CERT_DIR=<dir>                        (mutual TLS)\n"
+        "  - bind loopback, e.g. --host 127.0.0.1\n"
+        "  - ZAKURO_INSECURE_BIND=1                       (accept the risk on a "
+        "trusted, network-isolated mesh)"
+    )
+
+
+def log_security_banner(host: str, port: int) -> None:
+    """Emit a one-line summary of the worker's security posture at startup."""
+    snap = security_posture(host=host, port=port)
+    if not snap["caller_authenticated"] and not snap["loopback"]:
+        logger.warning(
+            "Zakuro worker EXPOSED without caller authentication on %s:%s "
+            "(ZAKURO_INSECURE_BIND override) — relying on network isolation. "
+            "posture=%s",
+            host, port, snap,
+        )
+    else:
+        logger.info("Zakuro worker security posture on %s:%s — %s", host, port, snap)
+
+
+def resolve_listener(host: str, port: int) -> str:
+    """Validate config, enforce the bind policy, log the banner; return the host.
+
+    Raises :class:`StartupConfigError` or :class:`InsecureBindError`; entry
+    points catch these and ``sys.exit`` with the message.
+    """
+    validate_startup_config()
+    host = enforce_bind_policy(host)
+    log_security_banner(host, port)
+    return host

@@ -379,7 +379,17 @@ def main() -> None:
     if args.worker_name:
         os.environ["ZAKURO_WORKER_NAME"] = args.worker_name
     logging.basicConfig(level=logging.INFO)
-    run_quic_worker(host=args.host, port=args.port)
+    from zakuro.worker.posture import (
+        InsecureBindError,
+        StartupConfigError,
+        resolve_listener,
+    )
+
+    try:
+        host = resolve_listener(args.host, args.port)
+    except (InsecureBindError, StartupConfigError) as exc:
+        raise SystemExit(str(exc)) from exc
+    run_quic_worker(host=host, port=args.port)
 
 
 if __name__ == "__main__":

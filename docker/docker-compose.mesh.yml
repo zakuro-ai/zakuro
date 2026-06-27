@@ -63,6 +63,10 @@ services:
       ZAKURO_MEMORY_PRICE: "0.0001"
       ZAKURO_PORT: "3960"
       PYTHONUNBUFFERED: "1"
+      # Dev mesh is network-isolated (tailnet); accept the unauthenticated
+      # /execute surface explicitly. Production sets ZAKURO_WIRE=v1 + a key
+      # or ZAKURO_AUTH_REQUIRED=1 instead.
+      ZAKURO_INSECURE_BIND: "1"
     network_mode: "service:node1-broker"
     depends_on:
       node1-broker:
@@ -79,6 +83,10 @@ services:
       ZAKURO_MEMORY_PRICE: "0.0001"
       ZAKURO_PORT: "3961"
       PYTHONUNBUFFERED: "1"
+      # Dev mesh is network-isolated (tailnet); accept the unauthenticated
+      # /execute surface explicitly. Production sets ZAKURO_WIRE=v1 + a key
+      # or ZAKURO_AUTH_REQUIRED=1 instead.
+      ZAKURO_INSECURE_BIND: "1"
     network_mode: "service:node1-broker"
     depends_on:
       node1-broker:
@@ -95,6 +103,10 @@ services:
       ZAKURO_MEMORY_PRICE: "0.0001"
       ZAKURO_PORT: "3962"
       PYTHONUNBUFFERED: "1"
+      # Dev mesh is network-isolated (tailnet); accept the unauthenticated
+      # /execute surface explicitly. Production sets ZAKURO_WIRE=v1 + a key
+      # or ZAKURO_AUTH_REQUIRED=1 instead.
+      ZAKURO_INSECURE_BIND: "1"
     network_mode: "service:node1-broker"
     depends_on:
       node1-broker:
@@ -170,6 +182,10 @@ services:
       ZAKURO_MIN_CHARGE: "0.00035"
       ZAKURO_PORT: "3960"
       PYTHONUNBUFFERED: "1"
+      # Dev mesh is network-isolated (tailnet); accept the unauthenticated
+      # /execute surface explicitly. Production sets ZAKURO_WIRE=v1 + a key
+      # or ZAKURO_AUTH_REQUIRED=1 instead.
+      ZAKURO_INSECURE_BIND: "1"
     network_mode: "service:node2-broker"
     depends_on:
       node2-broker:
@@ -187,6 +203,10 @@ services:
       ZAKURO_MIN_CHARGE: "0.00035"
       ZAKURO_PORT: "3961"
       PYTHONUNBUFFERED: "1"
+      # Dev mesh is network-isolated (tailnet); accept the unauthenticated
+      # /execute surface explicitly. Production sets ZAKURO_WIRE=v1 + a key
+      # or ZAKURO_AUTH_REQUIRED=1 instead.
+      ZAKURO_INSECURE_BIND: "1"
     network_mode: "service:node2-broker"
     depends_on:
       node2-broker:
@@ -204,6 +224,10 @@ services:
       ZAKURO_MIN_CHARGE: "0.00035"
       ZAKURO_PORT: "3962"
       PYTHONUNBUFFERED: "1"
+      # Dev mesh is network-isolated (tailnet); accept the unauthenticated
+      # /execute surface explicitly. Production sets ZAKURO_WIRE=v1 + a key
+      # or ZAKURO_AUTH_REQUIRED=1 instead.
+      ZAKURO_INSECURE_BIND: "1"
     network_mode: "service:node2-broker"
     depends_on:
       node2-broker:
@@ -221,6 +245,10 @@ services:
       ZAKURO_MIN_CHARGE: "0.00035"
       ZAKURO_PORT: "3963"
       PYTHONUNBUFFERED: "1"
+      # Dev mesh is network-isolated (tailnet); accept the unauthenticated
+      # /execute surface explicitly. Production sets ZAKURO_WIRE=v1 + a key
+      # or ZAKURO_AUTH_REQUIRED=1 instead.
+      ZAKURO_INSECURE_BIND: "1"
     network_mode: "service:node2-broker"
     depends_on:
       node2-broker:
@@ -238,6 +266,10 @@ services:
       ZAKURO_MIN_CHARGE: "0.00035"
       ZAKURO_PORT: "3964"
       PYTHONUNBUFFERED: "1"
+      # Dev mesh is network-isolated (tailnet); accept the unauthenticated
+      # /execute surface explicitly. Production sets ZAKURO_WIRE=v1 + a key
+      # or ZAKURO_AUTH_REQUIRED=1 instead.
+      ZAKURO_INSECURE_BIND: "1"
     network_mode: "service:node2-broker"
     depends_on:
       node2-broker:
@@ -255,6 +287,10 @@ services:
       ZAKURO_MIN_CHARGE: "0.00035"
       ZAKURO_PORT: "3965"
       PYTHONUNBUFFERED: "1"
+      # Dev mesh is network-isolated (tailnet); accept the unauthenticated
+      # /execute surface explicitly. Production sets ZAKURO_WIRE=v1 + a key
+      # or ZAKURO_AUTH_REQUIRED=1 instead.
+      ZAKURO_INSECURE_BIND: "1"
     network_mode: "service:node2-broker"
     depends_on:
       node2-broker:
