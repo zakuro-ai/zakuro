@@ -44,6 +44,31 @@ Out of scope:
 - DoS against `zakuro-ai.com` infrastructure — report those directly to operations.
 - Findings against a fork or a release older than the current minor.
 
+## Worker network exposure (fail-closed bind)
+
+A Zakuro worker's `/execute` endpoint deserialises cloudpickle. Treat any
+worker reachable off a trusted, network-isolated mesh as a remote-code-execution
+surface unless a caller-authentication control is enabled. From v0.2.24 the
+worker **refuses to bind a non-loopback address** when none of these is on:
+
+| Control | Enable with |
+| --- | --- |
+| JWT auth (RFC 0002) | `ZAKURO_AUTH_REQUIRED=1` |
+| HMAC-signed wire (RFC 0001) | `ZAKURO_WIRE=v1` + `ZAKURO_HMAC_KEY` or `ZAKURO_HMAC_KEY_FILE` |
+| Mutual TLS | `ZAKURO_CERT_DIR=<dir>` |
+
+Escape hatch for a trusted, isolated mesh: `ZAKURO_INSECURE_BIND=1` (logs a
+startup WARNING). Loopback binds (`--host 127.0.0.1`) are always allowed.
+
+Other hardening env vars:
+
+- `ZAKURO_MAX_PAYLOAD_BYTES` — inbound `/execute` body cap (default 256 MiB).
+
+> **Roadmap (v0.4, cross-repo):** `ZAKURO_WIRE=v1` and `ZAKURO_AUTH_REQUIRED=1`
+> will become the *defaults* once the SDK client wraps signed envelopes and the
+> `zc` broker rollout is coordinated. Until then they are opt-in and this
+> fail-closed bind guard is the safety net.
+
 ## Disclosure policy
 
 We follow **coordinated disclosure**.

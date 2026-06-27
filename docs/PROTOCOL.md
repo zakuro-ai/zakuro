@@ -75,6 +75,14 @@ The server deserialises, invokes `func(*args, **kwargs)` in its thread pool, the
 
 No timeout is enforced at the protocol layer — long-running calls keep the stream open. Callers should cancel the stream (QUIC `STOP_SENDING` + `RESET_STREAM`) to abort.
 
+### Inbound size cap & bind policy
+
+The worker rejects any `/execute` body larger than `ZAKURO_MAX_PAYLOAD_BYTES`
+(default 256 MiB) at the `unwrap_payload` chokepoint, before decode/HMAC. It
+also refuses to bind a non-loopback interface when no caller-authentication
+control (`ZAKURO_AUTH_REQUIRED` / `ZAKURO_WIRE=v1` / `ZAKURO_CERT_DIR`) is
+enabled, unless `ZAKURO_INSECURE_BIND=1` is set. See `SECURITY.md`.
+
 ## 4. INFO payload
 
 `stat=0` response is UTF-8 JSON matching the HTTP `/info` endpoint. Minimum required fields:
