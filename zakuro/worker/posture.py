@@ -23,7 +23,7 @@ import os
 logger = logging.getLogger("zakuro.worker.posture")
 
 _TRUE = {"1", "true", "yes"}
-_FALSE = {"", "0", "false", "no"}
+_FALSE = {"", "0", "false", "no", "off", "none"}
 _WIRE_STRICT = {"v1"}
 _WIRE_OFF = {"", "legacy", "off", "0", "none"}
 _LOOPBACK = {"127.0.0.1", "::1", "localhost"}

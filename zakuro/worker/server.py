@@ -418,11 +418,31 @@ def main() -> None:
     except (InsecureBindError, StartupConfigError) as exc:
         raise SystemExit(str(exc)) from exc
 
+    # mTLS rollout (#115 Phase 2): honour ZAKURO_CERT_DIR identically to the
+    # `zakuro-worker` CLI. The bind guard (zakuro.worker.posture) treats a
+    # configured cert dir as caller-authenticating, so this listener MUST
+    # actually terminate mutual TLS when it is set. Keep in sync with
+    # zakuro/worker/cli.py.
+    ssl_kwargs: dict[str, object] = {}
+    if os.environ.get("ZAKURO_CERT_DIR", "").strip():
+        # Defer the import: zakuro.transport pulls in cryptography.
+        from zakuro.transport import load_server_tls
+
+        material = load_server_tls()
+        ssl_kwargs = {
+            "ssl_certfile": str(material.cert_path),
+            "ssl_keyfile": str(material.key_path),
+            "ssl_ca_certs": str(material.ca_bundle_path),
+            # uvicorn accepts ssl.CERT_REQUIRED as int (2) -> require client certs.
+            "ssl_cert_reqs": 2,
+        }
+
     uvicorn.run(
         "zakuro.worker.server:app",
         host=host,
         port=args.port,
         reload=False,
+        **ssl_kwargs,
     )
 
 

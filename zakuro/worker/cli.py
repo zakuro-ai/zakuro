@@ -124,6 +124,7 @@ def main() -> None:
     # server stays on plaintext HTTP (dev / CI / behind-a-TLS-ingress).
     ssl_kwargs: dict[str, object] = {}
     if os.environ.get("ZAKURO_CERT_DIR", "").strip():
+        # Defer the import: zakuro.transport pulls in cryptography.
         from zakuro.transport import load_server_tls
 
         material = load_server_tls()
@@ -131,6 +132,7 @@ def main() -> None:
             "ssl_certfile": str(material.cert_path),
             "ssl_keyfile": str(material.key_path),
             "ssl_ca_certs": str(material.ca_bundle_path),
+            # uvicorn accepts ssl.CERT_REQUIRED as int (2) -> require client certs.
             "ssl_cert_reqs": 2,
         }
 

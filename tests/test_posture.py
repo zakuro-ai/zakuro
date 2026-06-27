@@ -104,7 +104,7 @@ def test_insecure_nonloopback_bind_refused():
         P.enforce_bind_policy("0.0.0.0")
 
 
-def test_loopback_bind_allowed_when_insecure():
+def test_loopback_always_allowed():
     assert P.enforce_bind_policy("127.0.0.1") == "127.0.0.1"
 
 
