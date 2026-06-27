@@ -56,7 +56,9 @@ _ANONYMOUS_CLAIMS = Claims(
 
 
 def _auth_required() -> bool:
-    return os.environ.get("ZAKURO_AUTH_REQUIRED", "").strip() in {"1", "true", "yes"}
+    from zakuro.worker.posture import is_auth_required
+
+    return is_auth_required()
 
 
 def _record_failure(reason: str, tenant_id: str = "") -> None:
@@ -68,9 +70,7 @@ def _record_failure(reason: str, tenant_id: str = "") -> None:
     is importable.
     """
     try:
-        from zakuro.observability.metrics import (  # type: ignore[import-not-found]
-            record_auth_failure,
-        )
+        from zakuro.observability.metrics import record_auth_failure
     except ImportError:  # pragma: no cover
         return
     record_auth_failure(reason, tenant_id)
