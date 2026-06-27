@@ -57,3 +57,43 @@ def test_security_posture_includes_host_and_port():
     assert snap["port"] == 3960
     assert snap["loopback"] is False
     assert snap["caller_authenticated"] is False
+
+
+def test_validate_ok_with_defaults():
+    P.validate_startup_config()  # no raise
+
+
+def test_validate_rejects_wire_typo(monkeypatch):
+    monkeypatch.setenv("ZAKURO_WIRE", "true")  # not 'v1' nor a known off-token
+    with pytest.raises(P.StartupConfigError):
+        P.validate_startup_config()
+
+
+def test_validate_accepts_known_off_tokens(monkeypatch):
+    for tok in ("", "legacy", "off"):
+        monkeypatch.setenv("ZAKURO_WIRE", tok)
+        P.validate_startup_config()  # no raise
+
+
+def test_validate_rejects_auth_typo(monkeypatch):
+    monkeypatch.setenv("ZAKURO_AUTH_REQUIRED", "tru")
+    with pytest.raises(P.StartupConfigError):
+        P.validate_startup_config()
+
+
+def test_validate_strict_without_key_fails(monkeypatch):
+    monkeypatch.setenv("ZAKURO_WIRE", "v1")  # strict but no ZAKURO_HMAC_KEY*
+    with pytest.raises(P.StartupConfigError):
+        P.validate_startup_config()
+
+
+def test_validate_strict_with_key_ok(monkeypatch):
+    monkeypatch.setenv("ZAKURO_WIRE", "v1")
+    monkeypatch.setenv("ZAKURO_HMAC_KEY", "00" * 32)  # valid hex
+    P.validate_startup_config()  # no raise
+
+
+def test_validate_rejects_bad_payload_cap(monkeypatch):
+    monkeypatch.setenv("ZAKURO_MAX_PAYLOAD_BYTES", "abc")
+    with pytest.raises(P.StartupConfigError):
+        P.validate_startup_config()

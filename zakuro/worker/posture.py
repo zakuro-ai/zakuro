@@ -100,3 +100,38 @@ def security_posture(host: str | None = None, port: int | None = None) -> dict[s
     if port is not None:
         snap["port"] = port
     return snap
+
+
+def validate_startup_config() -> None:
+    """Fail fast on inconsistent security env vars.
+
+    Raises :class:`StartupConfigError` when a security toggle is set to an
+    unrecognised value (which would silently fail *open*), when the payload
+    cap is malformed, or when strict wire is on without a usable master key.
+    """
+    wire = os.environ.get("ZAKURO_WIRE", "").strip().lower()
+    if wire not in _WIRE_STRICT and wire not in _WIRE_OFF:
+        raise StartupConfigError(
+            f"ZAKURO_WIRE={wire!r} is not recognised. Use 'v1' for strict mode, "
+            "or leave it unset for legacy mode — a typo here silently disables "
+            "wire security."
+        )
+
+    auth = os.environ.get("ZAKURO_AUTH_REQUIRED", "").strip().lower()
+    if auth not in _TRUE and auth not in _FALSE:
+        raise StartupConfigError(
+            f"ZAKURO_AUTH_REQUIRED={auth!r} is not recognised. Use '1' to require "
+            "auth, or leave it unset to disable — a typo here silently disables auth."
+        )
+
+    # Eagerly validate the payload cap (raises StartupConfigError on garbage).
+    max_payload_bytes()
+
+    # Strict wire with no usable key must fail at boot, not on first request.
+    if is_wire_strict():
+        from zakuro.worker.envelope import EnvelopeRejectedError, _read_master_key
+
+        try:
+            _read_master_key()
+        except EnvelopeRejectedError as exc:
+            raise StartupConfigError(str(exc)) from exc
