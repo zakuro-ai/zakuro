@@ -874,3 +874,10 @@ These are intentionally out of scope — they require cross-repo coordination or
 2. **Dependency upper bounds** (Wave 1) and **Docker demo/compute pinning + 3.14-builder/3.11-runtime ABI fix** (Wave 1).
 3. **Coverage floor `--cov-fail-under`** (issue #22, Wave 2) and the **red "Deploy notebook (staging)" CI lane** (Wave 2).
 4. **Public-mirror version sync** (v0.2.0 ↔ v0.2.23) and **`master`→`main`** (issue #25, Wave 3).
+
+### Surfaced by the final whole-branch review (after this plan was executed)
+
+5. **Pre-buffer DoS hardening:** the `ZAKURO_MAX_PAYLOAD_BYTES` cap fires only *after* the body is fully buffered — HTTP via `request.body()` (`server.py`), QUIC via `_StreamBuffer.feed` accumulating to the attacker-declared ~4 GiB length prefix (`quic_server.py`). The cap stops the cloudpickle amplification but not a single-large-body OOM. Follow-up: a `Content-Length` → 413 short-circuit in the HTTP handler and an `expected`-vs-`max_payload_bytes()` check inside `_StreamBuffer.feed` before buffering.
+6. **Cross-repo release blocker (`zakuro-image`):** the published worker / all-in-one compute images launch the worker via S6 *inside* the image. Once this fail-closed guard ships, any such launch that uses `0.0.0.0` without a control (or `ZAKURO_INSECURE_BIND=1`) will crash-loop. Must be coordinated in `zakuro-image` (and `docker/docker-compose.compute.yml`) before/with the release that carries this branch.
+
+> Note: the final review also caught a **Critical mTLS fail-open in `server.py` main** (the default Docker entrypoint bound plaintext while the guard treated `ZAKURO_CERT_DIR` as authenticating). That was **fixed within this branch** (commit `9587137`): `server.py` now terminates mutual TLS when `ZAKURO_CERT_DIR` is set, matching `cli.py`.
