@@ -559,3 +559,123 @@ class TestDispatch:
         ):
             boom.to(ac)()
         assert ac.stats()[0]["failures"] == 1
+
+
+class _ScriptedFn:
+    """Minimal stand-in for ``zakuro.fn.Fn`` honouring the contract that
+    :meth:`AdaptiveCompute.dispatch` relies on: ``_func.__name__``, ``.to()``,
+    and ``_execute_single_compute()``. Each call consumes the next scripted
+    outcome — ``("ok", value)`` returns it, ``("fail", exc)`` raises it — and
+    records which Compute it was pointed at, so tests can assert worker choice.
+    """
+
+    def __init__(self, outcomes: list[tuple[str, object]]) -> None:
+        self._outcomes = list(outcomes)
+        self._compute: object = None
+        self.targets: list[object] = []
+
+        def _f() -> None:  # pragma: no cover - only its __name__ is read
+            ...
+
+        _f.__name__ = "scripted"
+        self._func = _f
+
+    def to(self, compute: object) -> _ScriptedFn:
+        self._compute = compute
+        return self
+
+    def _execute_single_compute(self, *args: object, **kwargs: object) -> object:
+        self.targets.append(self._compute)
+        kind, payload = self._outcomes.pop(0)
+        if kind == "fail":
+            raise payload  # type: ignore[misc]
+        return payload
+
+
+class TestKnobValidation:
+    def test_rejects_negative_retries(self) -> None:
+        with pytest.raises(ValueError, match="max_dispatch_retries"):
+            AdaptiveCompute(workers=[_fast_worker()], max_dispatch_retries=-1)
+
+    def test_rejects_negative_eject(self) -> None:
+        with pytest.raises(ValueError, match="eject_after_failures"):
+            AdaptiveCompute(workers=[_fast_worker()], eject_after_failures=-1)
+
+
+class TestSeed:
+    def test_same_seed_same_pick_sequence(self) -> None:
+        workers = [_fast_worker(), _slow_worker(), _fast_worker()]
+        a = AdaptiveCompute(workers=workers, softmax_temperature=1.0, seed=7)
+        b = AdaptiveCompute(workers=workers, softmax_temperature=1.0, seed=7)
+        assert [a._pick_locked() for _ in range(50)] == [b._pick_locked() for _ in range(50)]
+
+    def test_different_seed_diverges(self) -> None:
+        workers = [_fast_worker(), _slow_worker(), _fast_worker()]
+        a = AdaptiveCompute(workers=workers, softmax_temperature=1.0, seed=1)
+        b = AdaptiveCompute(workers=workers, softmax_temperature=1.0, seed=2)
+        assert [a._pick_locked() for _ in range(50)] != [b._pick_locked() for _ in range(50)]
+
+
+class TestDispatchRetry:
+    def _ac(self, n: int, **kw: object) -> AdaptiveCompute:
+        workers = [Compute(host=f"w{i}.local", port=3960, verify=False) for i in range(n)]
+        return AdaptiveCompute(workers=workers, softmax_temperature=0.0, initial_latency=1.0, **kw)
+
+    def test_retry_lands_on_a_different_worker(self) -> None:
+        ac = self._ac(2, max_dispatch_retries=1)
+        fn = _ScriptedFn([("fail", RuntimeError("worker0 down")), ("ok", 99)])
+        assert ac.dispatch(fn, (), {}) == 99
+        # First attempt → worker 0 (greedy tie-break), retry excludes it → worker 1.
+        assert ac.workers.index(fn.targets[0]) == 0  # type: ignore[arg-type]
+        assert ac.workers.index(fn.targets[1]) == 1  # type: ignore[arg-type]
+        assert ac.stats()[0]["failures"] == 1
+        assert ac.stats()[1]["failures"] == 0
+
+    def test_raises_last_exception_when_retries_exhausted(self) -> None:
+        ac = self._ac(2, max_dispatch_retries=1)
+        last = RuntimeError("second")
+        fn = _ScriptedFn([("fail", RuntimeError("first")), ("fail", last)])
+        with pytest.raises(RuntimeError, match="second"):
+            ac.dispatch(fn, (), {})
+        assert ac.stats()[0]["failures"] == 1
+        assert ac.stats()[1]["failures"] == 1
+
+    def test_no_retry_by_default(self) -> None:
+        ac = self._ac(2)  # max_dispatch_retries=0
+        fn = _ScriptedFn([("fail", ValueError("once"))])
+        with pytest.raises(ValueError, match="once"):
+            ac.dispatch(fn, (), {})
+        assert len(fn.targets) == 1  # single attempt only
+
+
+class TestDispatchEject:
+    def _ac(self, n: int, **kw: object) -> AdaptiveCompute:
+        workers = [Compute(host=f"w{i}.local", port=3960, verify=False) for i in range(n)]
+        return AdaptiveCompute(workers=workers, softmax_temperature=0.0, initial_latency=1.0, **kw)
+
+    def test_suspends_after_consecutive_failures(self) -> None:
+        ac = self._ac(1, eject_after_failures=2)
+        for _ in range(2):
+            fn = _ScriptedFn([("fail", RuntimeError("boom"))])
+            with pytest.raises(RuntimeError):
+                ac.dispatch(fn, (), {})
+        assert ac.stats()[0]["suspended"] is True
+
+    def test_success_resets_consecutive_failures(self) -> None:
+        ac = self._ac(1, eject_after_failures=2)
+        fn = _ScriptedFn([("fail", RuntimeError("boom"))])
+        with pytest.raises(RuntimeError):
+            ac.dispatch(fn, (), {})
+        ac.dispatch(_ScriptedFn([("ok", 1)]), (), {})  # resets the streak
+        fn = _ScriptedFn([("fail", RuntimeError("boom"))])
+        with pytest.raises(RuntimeError):
+            ac.dispatch(fn, (), {})
+        # Two non-consecutive failures must not eject.
+        assert ac.stats()[0]["suspended"] is False
+
+    def test_default_never_suspends_on_dispatch_failure(self) -> None:
+        ac = self._ac(1)  # eject_after_failures=0
+        for _ in range(5):
+            with pytest.raises(RuntimeError):
+                ac.dispatch(_ScriptedFn([("fail", RuntimeError("boom"))]), (), {})
+        assert ac.stats()[0]["suspended"] is False
