@@ -111,4 +111,5 @@ tasks:
       - task: ci:format-check
       - task: ci:typecheck
       - task: test:unit
+      - task: test:coverage-check
       - cargo test --workspace
