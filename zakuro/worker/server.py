@@ -24,6 +24,7 @@ import contextlib
 
 from fastapi import Depends
 
+from zakuro import __version__
 from zakuro.auth import Claims, require_jwt_scope
 from zakuro.observability import (
     init_logging,
@@ -57,7 +58,7 @@ instrument_httpx()  # outbound calls carry W3C traceparent for cross-hop stitchi
 app = FastAPI(
     title="Zakuro Worker",
     description="Worker node for Zakuro distributed computing",
-    version="0.2.0",
+    version=__version__,
 )
 
 # /metrics endpoint, no-op when prometheus_client is not installed. Once
@@ -291,7 +292,7 @@ async def info(
     return {
         "name": worker_name,
         "worker_type": os.environ.get("ZAKURO_WORKER_TYPE", "zakuro"),
-        "version": "0.2.0",
+        "version": __version__,
         "resources": {
             "cpus_total": float(cpus),
             "cpus_available": float(cpus),
@@ -386,7 +387,7 @@ async def root() -> dict[str, str]:
     """Root endpoint."""
     return {
         "service": "Zakuro Worker",
-        "version": "0.2.0",
+        "version": __version__,
         "docs": "/docs",
     }
 
