@@ -11,7 +11,6 @@ import argparse
 import os
 import sys
 
-
 # Single source of truth for the "you need the worker extra" guidance so the
 # HTTP and QUIC paths print identical, actionable instructions. We deliberately
 # show BOTH install paths: a pip-installed wheel uses the extra, a source
