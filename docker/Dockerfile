@@ -1,9 +1,21 @@
 # Worker image (slim variant). The distroless variant lives in
-# Dockerfile.distroless and shares the same builder stage to keep image
+# Dockerfile.distroless and shares the same builder approach to keep image
 # behaviour identical between variants.
 #
 # The base image is digest-pinned; Dependabot tracks both the tag and the
 # digest under the `docker` ecosystem (see .github/dependabot.yml).
+
+# ----- builder stage ---------------------------------------------------
+# Build the wheel from source inside the image so `docker build` works from
+# a clean checkout — no prior `task build:wheel` / `python -m build` step is
+# required, and there is no dependency on a (gitignored) host dist/. (#232)
+FROM python:3.14-slim@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856 AS builder
+RUN pip install --no-cache-dir uv
+WORKDIR /src
+COPY . .
+RUN uv build --wheel --out-dir /dist
+
+# ----- runtime stage ---------------------------------------------------
 FROM python:3.14-slim@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856
 
 # Install uv (no apt packages — curl is dropped, healthcheck is in-process).
@@ -14,7 +26,7 @@ RUN useradd -m -s /bin/bash zakuro
 WORKDIR /app
 
 # Install zakuro + the worker extras into the system site-packages.
-COPY dist/*.whl /tmp/
+COPY --from=builder /dist/*.whl /tmp/
 RUN uv pip install /tmp/*.whl --system \
     && uv pip install fastapi "uvicorn[standard]" psutil --system \
     && rm /tmp/*.whl

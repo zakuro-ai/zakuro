@@ -20,18 +20,22 @@ FROM python:3.14-slim@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab04
 
 RUN pip install --no-cache-dir uv
 
-WORKDIR /build
-COPY dist/*.whl /tmp/
+# Build the wheel from source so the image is self-contained — `docker build`
+# works from a clean checkout with no prior `task build:wheel` step and no
+# dependency on a (gitignored) host dist/. (#232)
+WORKDIR /src
+COPY . .
+RUN uv build --wheel --out-dir /tmp/dist
 
 # Install into an isolated prefix we can copy verbatim into the runtime.
 ENV INSTALL_PREFIX=/install
 RUN mkdir -p "$INSTALL_PREFIX" \
     && uv pip install --no-cache --target "$INSTALL_PREFIX" \
-        /tmp/*.whl \
+        /tmp/dist/*.whl \
         fastapi \
         "uvicorn[standard]" \
         psutil \
-    && rm /tmp/*.whl
+    && rm -rf /tmp/dist
 
 # ----- runtime stage ---------------------------------------------------
 FROM gcr.io/distroless/python3-debian12:nonroot@sha256:7d1042ce588ab97019fe95c24ffca7bc5a82ccdac572511d5e09bda4435c89c5
