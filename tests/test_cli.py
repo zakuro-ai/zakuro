@@ -34,7 +34,8 @@ class TestInit:
         monkeypatch.chdir(tmp_path)
         (tmp_path / "zakuro.yaml").write_text("host: existing\n")
         assert main(["init", "--local", "--force"]) == 0
-        assert "my.zakuro-ai.com" in (tmp_path / "zakuro.yaml").read_text()
+        lines = (tmp_path / "zakuro.yaml").read_text().splitlines()
+        assert "host: my.zakuro-ai.com" in lines
 
 
 class TestDoctor:
