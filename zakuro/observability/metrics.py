@@ -50,6 +50,12 @@ except ImportError:  # pragma: no cover - exercised only without the extra
     # and every worker that imports metrics (the default HTTP/FastAPI server)
     # crashes on startup.
     class _NoopMetric:
+        # Constructed exactly like a real prometheus metric, e.g.
+        # ``Counter("name", "desc", ["label"])`` — must accept those args (and
+        # any keyword args like ``registry=``/``buckets=``) without error, or
+        # the module-level metric definitions below raise ``TypeError`` and the
+        # whole process (e.g. the worker) fails to import when prometheus_client
+        # is not installed.
         def __init__(self, *_args: Any, **_kwargs: Any) -> None: ...
 
         def labels(self, *_args: Any, **_kwargs: Any) -> _NoopMetric:
