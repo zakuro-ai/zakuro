@@ -559,3 +559,132 @@ class TestDispatch:
         ):
             boom.to(ac)()
         assert ac.stats()[0]["failures"] == 1
+
+
+class _FakeFn:
+    """Minimal Fn stand-in exercising AdaptiveCompute.dispatch directly (#222).
+
+    Fails whenever the currently-bound compute is one of ``fail_on`` (by
+    identity), letting us test cross-worker retry + eject without a real
+    transport.
+    """
+
+    def __init__(self, fail_on: list[Compute] | None = None) -> None:
+        self._compute: Compute | None = None
+        self._fail_on = fail_on or []
+        self.bound: list[Compute] = []
+
+        def _fake() -> str:
+            return "ok"
+
+        self._func = _fake
+
+    def to(self, compute: Compute) -> _FakeFn:
+        self._compute = compute
+        return self
+
+    def _execute_single_compute(self, *args: object, **kwargs: object) -> str:
+        assert self._compute is not None
+        self.bound.append(self._compute)
+        if any(self._compute is c for c in self._fail_on):
+            raise RuntimeError("worker down")
+        return "ok"
+
+
+class TestDispatchRetries:
+    def test_no_retry_by_default(self) -> None:
+        w0 = Compute(cpus=1)
+        ac = AdaptiveCompute(workers=[w0, Compute(cpus=1)], initial_latency=0.001)
+        fn = _FakeFn(fail_on=[w0])  # first-picked worker always fails
+        with pytest.raises(RuntimeError, match="worker down"):
+            ac.dispatch(fn, (), {})
+        # Exactly one attempt, no failover.
+        assert len(fn.bound) == 1
+
+    def test_retry_fails_over_to_healthy_worker(self) -> None:
+        w0 = Compute(cpus=1)
+        w1 = Compute(cpus=1)
+        ac = AdaptiveCompute(workers=[w0, w1], initial_latency=0.001, max_dispatch_retries=2)
+        fn = _FakeFn(fail_on=[w0])
+        result = ac.dispatch(fn, (), {})
+        assert result == "ok"
+        # Tried the failing worker, then the healthy one.
+        assert fn.bound[0] is w0
+        assert fn.bound[-1] is w1
+        assert ac.stats()[0]["failures"] == 1
+        assert ac.stats()[1]["failures"] == 0
+
+    def test_retries_exhausted_reraise(self) -> None:
+        w0, w1 = Compute(cpus=1), Compute(cpus=1)
+        ac = AdaptiveCompute(workers=[w0, w1], initial_latency=0.001, max_dispatch_retries=5)
+        fn = _FakeFn(fail_on=[w0, w1])  # both down
+        with pytest.raises(RuntimeError, match="worker down"):
+            ac.dispatch(fn, (), {})
+        # Two distinct workers tried; no infinite spin despite 5 retries.
+        assert len(fn.bound) == 2
+
+    def test_negative_retries_rejected(self) -> None:
+        with pytest.raises(ValueError, match="max_dispatch_retries"):
+            AdaptiveCompute(workers=[Compute(cpus=1)], max_dispatch_retries=-1)
+
+
+class TestEject:
+    def test_worker_ejected_after_consecutive_failures(self) -> None:
+        w0, w1 = Compute(cpus=1), Compute(cpus=1)
+        ac = AdaptiveCompute(
+            workers=[w0, w1],
+            initial_latency=0.001,
+            max_dispatch_retries=1,
+            eject_after_failures=1,
+        )
+        fn = _FakeFn(fail_on=[w0, w1])
+        with pytest.raises(RuntimeError):
+            ac.dispatch(fn, (), {})
+        assert ac.stats()[0]["ejected"] is True
+        assert ac.stats()[1]["ejected"] is True
+
+    def test_success_resets_consecutive_failures(self) -> None:
+        w0 = Compute(cpus=1)
+        ac = AdaptiveCompute(workers=[w0], initial_latency=0.001, eject_after_failures=3)
+        # One failure then a success — counter should not latch.
+        fn_fail = _FakeFn(fail_on=[w0])
+        with pytest.raises(RuntimeError):
+            ac.dispatch(fn_fail, (), {})
+        assert ac.stats()[0]["consecutive_failures"] == 1
+        fn_ok = _FakeFn()
+        ac.dispatch(fn_ok, (), {})
+        assert ac.stats()[0]["consecutive_failures"] == 0
+        assert ac.stats()[0]["ejected"] is False
+
+    def test_invalid_eject_threshold_rejected(self) -> None:
+        with pytest.raises(ValueError, match="eject_after_failures"):
+            AdaptiveCompute(workers=[Compute(cpus=1)], eject_after_failures=0)
+
+
+class TestSeed:
+    def test_same_seed_same_soft_choices(self) -> None:
+        # Soft allocation (tau > 0) is RNG-driven; identical seeds must give
+        # identical pick sequences.
+        def _ac() -> AdaptiveCompute:
+            return AdaptiveCompute(
+                workers=[Compute(cpus=1) for _ in range(4)],
+                softmax_temperature=1.0,
+                seed=1234,
+            )
+
+        a, b = _ac(), _ac()
+        assert [a.pick() for _ in range(50)] == [b.pick() for _ in range(50)]
+
+    def test_different_seed_diverges(self) -> None:
+        a = AdaptiveCompute(
+            workers=[Compute(cpus=1) for _ in range(4)],
+            softmax_temperature=1.0,
+            seed=1,
+        )
+        b = AdaptiveCompute(
+            workers=[Compute(cpus=1) for _ in range(4)],
+            softmax_temperature=1.0,
+            seed=2,
+        )
+        # Overwhelmingly likely to differ across 50 draws over 4 workers.
+        assert [a.pick() for _ in range(50)] != [b.pick() for _ in range(50)]
