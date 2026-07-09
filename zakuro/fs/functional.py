@@ -1,6 +1,9 @@
 # from gnutools.fs import load_config as _load_config, parent
+from __future__ import annotations
+
 import os
 import re
+from typing import Any
 
 # from gnutools.utils import id_generator
 from gnutools import fs
@@ -10,7 +13,7 @@ from tqdm import tqdm
 from zakuro.var import __FILESTORE__, __ZFS_URI__
 
 
-def PathURI(src):  # noqa: N802
+def PathURI(src: str) -> str:  # noqa: N802
     if not src.startswith(f"{__ZFS_URI__}://"):
         if src.startswith(f"/{__ZFS_URI__}/"):
             src = f"{__ZFS_URI__}://{src[len('/zfs/') :]}"
@@ -26,7 +29,7 @@ def PathURI(src):  # noqa: N802
     return src
 
 
-def Path(src):  # noqa: N802
+def Path(src: str) -> str:  # noqa: N802
     src = PathURI(src)
     return f"/{__ZFS_URI__}/{src.split('zfs://')[1]}"
 
@@ -34,14 +37,14 @@ def Path(src):  # noqa: N802
 class Object:
     def __init__(
         self,
-        filepath,
-        host=None,
-        username=None,
-        password=None,
-        read_binary=False,
-        secure=False,
-        version_id=0,
-    ):
+        filepath: str,
+        host: str | None = None,
+        username: str | None = None,
+        password: str | None = None,
+        read_binary: bool = False,
+        secure: bool = False,
+        version_id: int = 0,
+    ) -> None:
         if host is not None:
             from minio import Minio
 
@@ -58,7 +61,8 @@ class Object:
         self._filepath = filepath
         self._version_id = version_id
         if read_binary:
-            self._cdata = self.collect()
+            # collect() is currently commented out below; preserve runtime behavior.
+            self._cdata = self.collect()  # type: ignore[attr-defined]
         else:
             self._cdata = None
 
@@ -79,7 +83,7 @@ class Object:
     #     return self._cdata
 
 
-def allow_spark(spark):
+def allow_spark(spark: Any) -> Any:
     from zakuro.functional import load_config
 
     cfg = load_config()
@@ -96,12 +100,12 @@ def allow_spark(spark):
     return spark
 
 
-def bucket_prefix(root):
+def bucket_prefix(root: str) -> tuple[str, str]:
     bucket, _, _, prefix = split_zfs(root)
     return bucket, prefix
 
 
-def get_file(src):
+def get_file(src: str) -> Any:
     from miniofs import client
 
     try:
@@ -120,7 +124,7 @@ def get_file(src):
     return None
 
 
-def get_dir(src):
+def get_dir(src: str) -> Any:
     from miniofs import client
 
     src = map_uri(src)
@@ -137,15 +141,15 @@ def get_dir(src):
         return None
 
 
-def listparents(*args, **kwargs):
+def listparents(*args: Any, **kwargs: Any) -> list[str]:
     return list({fs.parent(f) for f in listfiles(*args, **kwargs)})
 
 
-def listdirs(src):
+def listdirs(src: str) -> list[str]:
     return listparents(src)
 
 
-def list_empty(src):
+def list_empty(src: str) -> list[str]:
     group, partition = split_zfs(src)[1:3]
     dirs = [
         f"{__ZFS_URI__}://{group.upper()}/{partition.lower()}/{obj.object_name}"
@@ -155,7 +159,7 @@ def list_empty(src):
     return dirs
 
 
-def list_objects(src):
+def list_objects(src: str) -> list[Any]:
     from miniofs import client
 
     try:
@@ -172,7 +176,7 @@ def list_objects(src):
     return objs
 
 
-def heal(src):
+def heal(src: str) -> list[str]:
     return [mv(d, f"{__ZFS_URI__}/trash", dry_run=False) for d in list_empty(src)]
 
 
@@ -192,7 +196,12 @@ def heal(src):
 #     retyrb fukes
 
 
-def listfiles(src, patterns=None, uri=True, absolute=False):
+def listfiles(
+    src: str,
+    patterns: list[str] | None = None,
+    uri: bool = True,
+    absolute: bool = False,
+) -> list[str]:
     if patterns is None:
         patterns = []
     src = f"{src}/" if not src.endswith("/") else src
@@ -203,7 +212,7 @@ def listfiles(src, patterns=None, uri=True, absolute=False):
         if not obj.is_dir
     ]
 
-    def check_conditions(cnds, f):
+    def check_conditions(cnds: list[str], f: str) -> bool:
         for c in cnds:
             try:
                 assert re.search(c, f) is None
@@ -252,7 +261,7 @@ def listfiles(src, patterns=None, uri=True, absolute=False):
 #     return files
 
 
-def download_file(file, filestore=f"/{__FILESTORE__}"):
+def download_file(file: str, filestore: str = f"/{__FILESTORE__}") -> str:
     from miniofs import client
 
     bucket, object_name = bucket_prefix(file)
@@ -266,7 +275,9 @@ def download_file(file, filestore=f"/{__FILESTORE__}"):
     return output_file
 
 
-def download_files(root, patterns=None, filestore=f"/{__FILESTORE__}"):
+def download_files(
+    root: str, patterns: list[str] | None = None, filestore: str = f"/{__FILESTORE__}"
+) -> list[str]:
     if patterns is None:
         patterns = []
     files = listfiles(root, patterns)
@@ -283,7 +294,7 @@ def download_files(root, patterns=None, filestore=f"/{__FILESTORE__}"):
 #     return bucket, object_name
 
 
-def upload(file, zfs_path):
+def upload(file: str, zfs_path: str) -> None:
     splits = zfs_path.split(f"{__ZFS_URI__}://")[1].split("/")
     group = splits[0].lower()
     partition = splits[1].lower()
@@ -301,7 +312,7 @@ def upload(file, zfs_path):
     os.system(command)
 
 
-def split_zfs(src):
+def split_zfs(src: str) -> tuple[str, str, str, str]:
     src = PathURI(src)
     splits = src.split(f"{__ZFS_URI__}://")[1].split("/")
     group = splits[0].lower()
@@ -311,12 +322,12 @@ def split_zfs(src):
     return f"{partition}-{group}", group, partition, suffix
 
 
-def map_uri(src):
+def map_uri(src: str) -> str:
     bucket, _, _, suffix = split_zfs(src)
     return f"zfs/{bucket}/{suffix}"
 
 
-def mv(src, dst, dry_run=False, verbose=False):
+def mv(src: str, dst: str, dry_run: bool = False, verbose: bool = False) -> str:
     # command = f"nohup mc mv -q -r {map_uri(src)} {map_uri(dst)} >/tmp/.miniofs.out 2>&1 &"
     src = map_uri(src) if not src.startswith("zfs/") else src
     dst = map_uri(dst) if not dst.startswith("zfs/") else dst
@@ -327,7 +338,7 @@ def mv(src, dst, dry_run=False, verbose=False):
     return command
 
 
-def exists(src):
+def exists(src: str) -> bool:
     return (get_dir(src) is not None) | (get_file(src) is not None)
 
 
@@ -348,6 +359,10 @@ def exists(src):
 #         )
 #     ]
 if __name__ == "__main__":
-    from miniofs import Path, listfiles
+    # miniofs provides its own Path/listfiles that shadow the module-level ones
+    # for this ad-hoc script; miniofs is untyped so mypy cannot see the real signature.
+    from miniofs import Path, listfiles  # type: ignore[no-redef]
 
-    listfiles("zfs://KIRON/var/csv/", recursive=True, patterns=[".csv"], uri=False)
+    listfiles(  # type: ignore[call-arg]
+        "zfs://KIRON/var/csv/", recursive=True, patterns=[".csv"], uri=False
+    )

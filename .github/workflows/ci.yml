@@ -44,11 +44,10 @@ jobs:
       - name: Check formatting
         run: task ci:format-check
       - name: Run tests
-        run: task test:unit || true
-      # The test run stays report-only (|| true) while the suite is being
-      # stabilised (see #167), but the coverage gate below is NOT masked, so a
-      # coverage regression fails CI independently of any individual test. It
-      # reads the .coverage data the run above wrote — it does not re-run tests.
+        run: task test:unit
+      # Tests are now blocking (#167): a failing unit test fails CI. The
+      # coverage gate below reads the .coverage data this run wrote — it does
+      # not re-run tests — and fails independently on a coverage regression.
       - name: Enforce coverage threshold
         run: task test:coverage-check
       - name: Upload coverage report
@@ -61,7 +60,6 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
       - name: Set up Python
@@ -79,8 +77,8 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install dependencies
         run: uv pip install -e ".[dev,worker,observability]" --system
-      - name: Run type checking (report-only)
-        run: task ci:typecheck || true
+      - name: Run type checking
+        run: task ci:typecheck
 
   rust:
     runs-on: ubuntu-latest

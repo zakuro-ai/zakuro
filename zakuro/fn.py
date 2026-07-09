@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Callable
-from typing import Any, Generic, TypeVar, overload
+from typing import Any, Generic, TypeVar, cast, overload
 
 import cloudpickle
 
@@ -60,7 +60,7 @@ class Fn(Generic[R]):
         from zakuro.adaptive import AdaptiveCompute
 
         if isinstance(self._compute, AdaptiveCompute):
-            return self._compute.dispatch(self, args, kwargs)
+            return cast(R, self._compute.dispatch(self, args, kwargs))
 
         # Remote execution with a single Compute target.
         return self._execute_single_compute(*args, **kwargs)
@@ -94,7 +94,7 @@ class Fn(Generic[R]):
         func_bytes = cloudpickle.dumps(self._func)
         processor = get_processor(uri, self._compute)
         with processor:
-            return processor.execute(func_bytes, args, kwargs)
+            return cast(R, processor.execute(func_bytes, args, kwargs))
 
     # Retained as an alias for any external callers that hooked into the
     # pre-adaptive name.

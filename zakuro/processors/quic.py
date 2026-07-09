@@ -12,7 +12,7 @@ import asyncio
 import contextlib
 import ssl
 import threading
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import cloudpickle
 
@@ -122,7 +122,7 @@ def _build_client_protocol_class() -> type:
 
         async def request(self, op: int, payload: bytes) -> tuple[int, bytes]:
             stream_id = self._quic.get_next_available_stream_id(is_unidirectional=False)
-            fut: asyncio.Future = asyncio.get_event_loop().create_future()
+            fut: asyncio.Future[tuple[int, bytes]] = asyncio.get_event_loop().create_future()
             self._pending[stream_id] = fut
             frame = bytes([op]) + len(payload).to_bytes(4, "big") + payload
             self._quic.send_stream_data(stream_id, frame, end_stream=True)
@@ -267,13 +267,13 @@ class QuicProcessor(Processor):
         status, body = _run_sync(self._protocol.request(OP_INFO, b""))
         if status != STAT_OK:
             raise RuntimeError(f"info failed: {body!r}")
-        return json.loads(body.decode())
+        return cast("dict[str, Any]", json.loads(body.decode()))
 
     def ping(self) -> bool:
         if not self._connected or self._protocol is None:
             return False
         try:
             status, _ = _run_sync(self._protocol.request(OP_HEALTH, b""))
-            return status == STAT_OK
+            return bool(status == STAT_OK)
         except Exception:
             return False

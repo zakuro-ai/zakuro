@@ -54,7 +54,7 @@ import threading
 import time
 from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from zakuro.compute import Compute
@@ -631,7 +631,7 @@ class AdaptiveCompute:
             probe_fn = _identity
 
         # Wrap probe_fn as a zk.fn we can dispatch to a single worker.
-        probe = zk.fn(probe_fn) if not hasattr(probe_fn, "_func") else probe_fn
+        probe: Any = zk.fn(probe_fn) if not hasattr(probe_fn, "_func") else probe_fn
 
         # Snapshot the list of (idx, compute) up-front so mutations during
         # the walk don't skip or double-count workers.
@@ -894,7 +894,9 @@ class AdaptiveCompute:
                 from zakuro.processors.base import ProcessorConfig
                 from zakuro.processors.quic import QuicProcessor
 
-                config = ProcessorConfig(scheme="quic", host=compute.host, port=compute.port)
+                config = ProcessorConfig(
+                    scheme="quic", host=cast(str, compute.host), port=compute.port
+                )
                 processor = QuicProcessor(config, compute)
                 processor.connect()
                 try:
@@ -960,7 +962,7 @@ class AdaptiveCompute:
         error: str | None = None
         try:
             fn.to(compute)
-            result = fn._execute_single_compute(*args, **kwargs)  # type: ignore[attr-defined]
+            result = fn._execute_single_compute(*args, **kwargs)
             ok = True
             return result
         except Exception as exc:
