@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
@@ -31,7 +31,7 @@
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
         <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
@@ -768,10 +768,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#expose-a-worker-over-tailscale-remote-network" class="md-nav__link">
+  <a href="#expose-a-worker-over-the-mesh-remote-network" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Expose a worker over Tailscale / remote network
+        Expose a worker over the mesh / remote network
       
     </span>
   </a>
@@ -1482,10 +1482,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#expose-a-worker-over-tailscale-remote-network" class="md-nav__link">
+  <a href="#expose-a-worker-over-the-mesh-remote-network" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Expose a worker over Tailscale / remote network
+        Expose a worker over the mesh / remote network
       
     </span>
   </a>
@@ -1918,11 +1918,11 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">zakuro</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">zk</span>
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">result</span> <span class="o">=</span> <span class="n">zk</span><span class="o">.</span><span class="n">fn</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">zk</span><span class="o">.</span><span class="n">Compute</span><span class="p">(</span><span class="n">uri</span><span class="o">=</span><span class="s2">&quot;zakuro://127.0.0.1:3961&quot;</span><span class="p">))(</span><span class="mi">7</span><span class="p">)</span>
 </code></pre></div>
-<h3 id="expose-a-worker-over-tailscale-remote-network">Expose a worker over Tailscale / remote network<a class="headerlink" href="#expose-a-worker-over-tailscale-remote-network" title="Permanent link">&para;</a></h3>
+<h3 id="expose-a-worker-over-the-mesh-remote-network">Expose a worker over the mesh / remote network<a class="headerlink" href="#expose-a-worker-over-the-mesh-remote-network" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nv">ZAKURO_WORKER_NAME</span><span class="o">=</span>gpu-01<span class="w"> </span><span class="nv">ZAKURO_WORKER_TAGS</span><span class="o">=</span>gpu,a100<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span>zakuro-worker<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">3960</span>
 </code></pre></div>
-<p>Clients reach it via <code>zakuro://gpu-01.&lt;tailnet&gt;:3960</code> (or whatever FQDN/IP resolves).</p>
+<p>Clients reach it via <code>zakuro://&lt;mesh-ip&gt;:3960</code> (or whatever FQDN/IP resolves).</p>
 <h3 id="dockerized-worker">Dockerized worker<a class="headerlink" href="#dockerized-worker" title="Permanent link">&para;</a></h3>
 <p>See <code>docker/Dockerfile</code> in this repo. The container's entrypoint is <code>zakuro-worker</code>, port 3960 is <code>EXPOSE</code>d, and the relevant env vars are wired through <code>docker/compose.*.yml</code>.</p>
 <h3 id="sanity-check-a-live-worker">Sanity-check a live worker<a class="headerlink" href="#sanity-check-a-live-worker" title="Permanent link">&para;</a></h3>
@@ -2049,7 +2049,7 @@
       <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.action.edit", "search.suggest", "search.highlight", "search.share"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
     
     
-      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>
