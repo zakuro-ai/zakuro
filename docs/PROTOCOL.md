@@ -15,7 +15,7 @@ This spec is authoritative — language bindings (Rust, Go, …) should match it
 - **Default port**: 4433.
 - **ALPN protocol identifier**: `"zk-worker"` (ASCII, no length byte in this document — ALPN itself encodes length).
   - Distinct from `"zk-quic"` which zc's broker-mesh uses. A single UDP socket must not accept both ALPNs — brokers and workers should bind separate ports.
-- **TLS**: self-signed by default. Clients skip CA verification but pin the peer via out-of-band knowledge (URI + tailnet). The certificate is persisted to `$HOME/.zakuro/quic_worker_cert.der` + `quic_worker_key.der` on the server and regenerated if missing.
+- **TLS**: self-signed by default. Clients skip CA verification but pin the peer via out-of-band knowledge (URI + mesh). The certificate is persisted to `$HOME/.zakuro/quic_worker_cert.der` + `quic_worker_key.der` on the server and regenerated if missing.
 
 ## 2. Frame format
 
@@ -116,7 +116,7 @@ Both endpoints MUST offer exactly `["zk-worker"]`. Handshake MUST fail if the pe
 
 ### 6.3 Peer authentication
 
-At this layer there is no mTLS. Identity is established out-of-band (Tailscale, WireGuard, VPC). Callers requiring authentication SHOULD add an auth token to the EXECUTE payload (e.g. `{"auth": "...", "func": ..., ...}`) and have the server reject unauthenticated calls with `stat=2`.
+At this layer there is no mTLS. Identity is established out-of-band (WireGuard, VPC). Callers requiring authentication SHOULD add an auth token to the EXECUTE payload (e.g. `{"auth": "...", "func": ..., ...}`) and have the server reject unauthenticated calls with `stat=2`.
 
 ## 7. Version negotiation
 

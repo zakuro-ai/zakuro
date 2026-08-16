@@ -111,10 +111,13 @@ def _build_client_protocol_class() -> type:
                 # server finished responding. Fail every pending request
                 # with ConnectionError so the caller can decide whether to
                 # reconnect and retry.
-                err = ConnectionError(
-                    f"QUIC connection terminated: {getattr(event, 'reason_phrase', '')}"
-                    or "QUIC connection dropped"
-                )
+                # The `or` fallback used to sit on the f-string, which is
+                # always truthy -- so "QUIC connection dropped" was
+                # unreachable and an event with no reason_phrase produced a
+                # message ending in a bare colon. Fall back on the phrase
+                # itself, which is the value that can actually be empty.
+                reason = getattr(event, "reason_phrase", "") or "connection dropped"
+                err = ConnectionError(f"QUIC connection terminated: {reason}")
                 for fut in list(self._pending.values()):
                     if not fut.done():
                         fut.set_exception(err)

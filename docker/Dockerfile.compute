@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 # =============================================================================
 # ZAKURO — Full platform image on top of compute
-# FROM compute (s6 + tailscale + minio + jupyterlab + spark/ray/dask)
+# FROM compute (s6 + minio + jupyterlab + spark/ray/dask)
 # Adds: zakuro-ai Python package + worker s6 service
 # =============================================================================
 

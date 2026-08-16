@@ -38,7 +38,6 @@ class TestDetectBackend:
         with (
             patch("zakuro.standalone._tcp_reachable", return_value=False),
             patch("zakuro.standalone._has_zc_cli", return_value=False),
-            patch("zakuro.standalone._discover_tailscale_worker", return_value=None),
         ):
             assert detect_backend() is None
 
@@ -66,7 +65,6 @@ class TestDetectBackend:
         with (
             patch("zakuro.standalone._tcp_reachable", return_value=False) as tcp,
             patch("zakuro.standalone._has_zc_cli", return_value=False),
-            patch("zakuro.standalone._discover_tailscale_worker", return_value=None),
         ):
             assert detect_backend() is None
             probed_hosts = {call.args[0] for call in tcp.call_args_list}
