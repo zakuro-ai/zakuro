@@ -116,7 +116,7 @@ Both endpoints MUST offer exactly `["zk-worker"]`. Handshake MUST fail if the pe
 
 ### 6.3 Peer authentication
 
-At this layer there is no mTLS. Identity is established out-of-band (Tailscale, WireGuard, VPC). Callers requiring authentication SHOULD add an auth token to the EXECUTE payload (e.g. `{"auth": "...", "func": ..., ...}`) and have the server reject unauthenticated calls with `stat=2`.
+At this layer there is no mTLS. Identity is established out-of-band (WireGuard, VPC). Callers requiring authentication SHOULD add an auth token to the EXECUTE payload (e.g. `{"auth": "...", "func": ..., ...}`) and have the server reject unauthenticated calls with `stat=2`.
 
 ## 7. Version negotiation
 

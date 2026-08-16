@@ -20,7 +20,6 @@ class TestConfig:
         assert config.default_host == "my.zakuro-ai.com"
         assert config.default_port == 9000
         assert config.auth_token is None
-        assert config.tailscale_enabled is True
 
     def test_env_override_host(self) -> None:
         """Test environment variable overrides host."""
@@ -69,15 +68,21 @@ class TestConfig:
         assert config.storage_access_key == "access"
         assert config.storage_secret_key == "secret"
 
-    def test_env_tailscale_authkey(self) -> None:
-        """Test TAILSCALE_AUTHKEY environment variable."""
+    def test_a_legacy_tailscale_key_in_the_env_is_ignored(self) -> None:
+        """TAILSCALE_AUTHKEY used to populate Config.tailscale_auth_key.
+
+        The mesh is WireGuard and the field is gone. A stale export in
+        somebody's shell profile must be inert rather than an error -- and
+        must not resurrect the attribute.
+        """
         with (
             patch.dict(os.environ, {"TAILSCALE_AUTHKEY": "tskey-xxx"}, clear=True),
             patch("pathlib.Path.exists", return_value=False),
         ):
             config = Config.load()
 
-        assert config.tailscale_auth_key == "tskey-xxx"
+        assert not hasattr(config, "tailscale_auth_key")
+        assert not hasattr(config, "tailscale_enabled")
 
     def test_to_dict_masks_token(self) -> None:
         """Test that to_dict masks the auth token."""

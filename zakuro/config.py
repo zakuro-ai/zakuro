@@ -40,9 +40,6 @@ class Config:
     storage_secret_key: str = ""
     storage_secure: bool = False
 
-    # Tailscale
-    tailscale_enabled: bool = True
-    tailscale_auth_key: str | None = None
 
     # Hub settings
     hub_url: str = "http://hub.zakuro.ai"
@@ -77,7 +74,6 @@ class Config:
             "port": "default_port",
             "auth": "auth_token",
             "storage": None,  # Nested
-            "tailscale": None,  # Nested
             "hub": None,  # Nested
         }
 
@@ -87,11 +83,6 @@ class Config:
                     attr = f"storage_{sk}"
                     if hasattr(config, attr):
                         setattr(config, attr, sv)
-            elif key == "tailscale" and isinstance(value, dict):
-                for tk, tv in value.items():
-                    attr = f"tailscale_{tk}"
-                    if hasattr(config, attr):
-                        setattr(config, attr, tv)
             elif key == "hub" and isinstance(value, dict):
                 if "url" in value:
                     config.hub_url = value["url"]
@@ -117,8 +108,6 @@ class Config:
             "ZAKURO_STORAGE_SECURE": ("storage_secure", lambda x: x.lower() == "true"),
             "ZAKURO_HUB_URL": "hub_url",
             "ZAKURO_CACHE_DIR": "cache_dir",
-            "TAILSCALE_AUTHKEY": "tailscale_auth_key",
-            "TAILSCALE_ENABLED": ("tailscale_enabled", lambda x: x.lower() == "true"),
         }
 
         for env_var, target in env_map.items():
@@ -139,7 +128,6 @@ class Config:
             "default_port": self.default_port,
             "auth_token": "***" if self.auth_token else None,
             "storage_host": self.storage_host,
-            "tailscale_enabled": self.tailscale_enabled,
             "hub_url": self.hub_url,
             "cache_dir": self.cache_dir,
         }
