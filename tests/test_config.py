@@ -79,9 +79,9 @@ class TestConfig:
         with patch("pathlib.Path.exists", return_value=False):
             config = Config.load()
 
-        assert not any(
-            attr.endswith(("_auth_key", "_enabled")) for attr in vars(config)
-        ), f"unexpected mesh auth field on Config: {vars(config)}"
+        assert not any(attr.endswith(("_auth_key", "_enabled")) for attr in vars(config)), (
+            f"unexpected mesh auth field on Config: {vars(config)}"
+        )
 
     def test_to_dict_masks_token(self) -> None:
         """Test that to_dict masks the auth token."""

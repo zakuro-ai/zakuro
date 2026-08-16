@@ -40,7 +40,6 @@ class Config:
     storage_secret_key: str = ""
     storage_secure: bool = False
 
-
     # Hub settings
     hub_url: str = "http://hub.zakuro.ai"
     cache_dir: str = field(default_factory=lambda: str(Path.home() / ".zakuro"))
