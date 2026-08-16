@@ -1,8 +1,8 @@
 """Worker discovery via DNS.
 
 The mesh is WireGuard: peers hold ordinary addresses on 10.13.13.0/24 and are
-reached by name or IP, so there is no peer-listing daemon to interrogate the
-way `tailscale status --json` was interrogated here.
+reached by name or IP. There is no peer-listing daemon to interrogate, which is
+what this module used to shell out to.
 """
 
 from __future__ import annotations

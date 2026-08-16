@@ -68,21 +68,20 @@ class TestConfig:
         assert config.storage_access_key == "access"
         assert config.storage_secret_key == "secret"
 
-    def test_a_legacy_tailscale_key_in_the_env_is_ignored(self) -> None:
-        """TAILSCALE_AUTHKEY used to populate Config.tailscale_auth_key.
+    def test_config_carries_no_mesh_auth_fields(self) -> None:
+        """Config used to hold a mesh auth key and an enable flag, set from
+        the environment.
 
-        The mesh is WireGuard and the field is gone. A stale export in
-        somebody's shell profile must be inert rather than an error -- and
-        must not resurrect the attribute.
+        The mesh is WireGuard and there is no such credential to carry: a peer
+        profile comes from the dashboard, not from a Config attribute. These
+        assertions exist so the fields cannot quietly come back.
         """
-        with (
-            patch.dict(os.environ, {"TAILSCALE_AUTHKEY": "tskey-xxx"}, clear=True),
-            patch("pathlib.Path.exists", return_value=False),
-        ):
+        with patch("pathlib.Path.exists", return_value=False):
             config = Config.load()
 
-        assert not hasattr(config, "tailscale_auth_key")
-        assert not hasattr(config, "tailscale_enabled")
+        assert not any(
+            attr.endswith(("_auth_key", "_enabled")) for attr in vars(config)
+        ), f"unexpected mesh auth field on Config: {vars(config)}"
 
     def test_to_dict_masks_token(self) -> None:
         """Test that to_dict masks the auth token."""
