@@ -7,8 +7,12 @@ from zakuro.worker import posture as P  # noqa: N812
 @pytest.fixture(autouse=True)
 def _clear_env(monkeypatch):
     for k in (
-        "ZAKURO_AUTH_REQUIRED", "ZAKURO_WIRE", "ZAKURO_CERT_DIR",
-        "ZAKURO_INSECURE_BIND", "ZAKURO_HMAC_KEY", "ZAKURO_HMAC_KEY_FILE",
+        "ZAKURO_AUTH_REQUIRED",
+        "ZAKURO_WIRE",
+        "ZAKURO_CERT_DIR",
+        "ZAKURO_INSECURE_BIND",
+        "ZAKURO_HMAC_KEY",
+        "ZAKURO_HMAC_KEY_FILE",
         "ZAKURO_MAX_PAYLOAD_BYTES",
     ):
         monkeypatch.delenv(k, raising=False)

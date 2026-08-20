@@ -167,7 +167,9 @@ def log_security_banner(host: str, port: int) -> None:
             "Zakuro worker EXPOSED without caller authentication on %s:%s "
             "(ZAKURO_INSECURE_BIND override) — relying on network isolation. "
             "posture=%s",
-            host, port, snap,
+            host,
+            port,
+            snap,
         )
     else:
         logger.info("Zakuro worker security posture on %s:%s — %s", host, port, snap)
