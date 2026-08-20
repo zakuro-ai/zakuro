@@ -687,6 +687,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="3. EXECUTE payload">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inbound-size-cap-bind-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inbound size cap &amp; bind policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1229,6 +1246,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="3. EXECUTE payload">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inbound-size-cap-bind-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inbound size cap &amp; bind policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1461,6 +1495,12 @@
 <li>on user exception, responds <code>stat=1</code> + <code>cloudpickle.dumps(exc)</code> — <strong>not</strong> <code>stat=2</code>. The caller is responsible for re-raising.</li>
 </ul>
 <p>No timeout is enforced at the protocol layer — long-running calls keep the stream open. Callers should cancel the stream (QUIC <code>STOP_SENDING</code> + <code>RESET_STREAM</code>) to abort.</p>
+<h3 id="inbound-size-cap-bind-policy">Inbound size cap &amp; bind policy<a class="headerlink" href="#inbound-size-cap-bind-policy" title="Permanent link">&para;</a></h3>
+<p>The worker rejects any <code>/execute</code> body larger than <code>ZAKURO_MAX_PAYLOAD_BYTES</code>
+(default 256 MiB) at the <code>unwrap_payload</code> chokepoint, before decode/HMAC. It
+also refuses to bind a non-loopback interface when no caller-authentication
+control (<code>ZAKURO_AUTH_REQUIRED</code> / <code>ZAKURO_WIRE=v1</code> / <code>ZAKURO_CERT_DIR</code>) is
+enabled, unless <code>ZAKURO_INSECURE_BIND=1</code> is set. See <code>SECURITY.md</code>.</p>
 <h2 id="4-info-payload">4. INFO payload<a class="headerlink" href="#4-info-payload" title="Permanent link">&para;</a></h2>
 <p><code>stat=0</code> response is UTF-8 JSON matching the HTTP <code>/info</code> endpoint. Minimum required fields:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
