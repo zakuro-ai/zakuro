@@ -33,11 +33,8 @@ host: my.zakuro-ai.com   # default broker host
 port: 9000               # default broker port
 # auth: <api-token>      # or set ZAKURO_AUTH
 
-tailscale:
-  enabled: true
-
 hub:
-  url: http://hub.zakuro.ai
+  url: https://hub.zakuro-ai.com
 """
 
 
