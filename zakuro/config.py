@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -88,7 +89,9 @@ class Config:
                 if "cache_dir" in value:
                     config.cache_dir = value["cache_dir"]
             elif key in key_map and key_map[key]:
-                setattr(config, key_map[key], value)
+                mapped = key_map[key]
+                assert mapped is not None
+                setattr(config, mapped, value)
             elif hasattr(config, key):
                 setattr(config, key, value)
 
@@ -97,7 +100,7 @@ class Config:
     @classmethod
     def _load_env(cls, config: Config) -> Config:
         """Load from environment variables."""
-        env_map: dict[str, str | tuple[str, type]] = {
+        env_map: dict[str, str | tuple[str, Callable[[str], Any]]] = {
             "ZAKURO_HOST": "default_host",
             "ZAKURO_PORT": ("default_port", int),
             "ZAKURO_AUTH": "auth_token",

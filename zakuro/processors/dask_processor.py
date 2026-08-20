@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import cloudpickle
 
@@ -159,7 +159,7 @@ class DaskProcessor(Processor):
         ]
 
         # Gather all results
-        return self._client.gather(futures)
+        return cast("list[Any]", self._client.gather(futures))
 
     def map(
         self,
@@ -181,4 +181,4 @@ class DaskProcessor(Processor):
         func = cloudpickle.loads(func_bytes)
 
         futures = self._client.map(func, iterables)
-        return self._client.gather(futures)
+        return cast("list[Any]", self._client.gather(futures))

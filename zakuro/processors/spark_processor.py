@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import cloudpickle
 
@@ -168,7 +168,7 @@ class SparkProcessor(Processor):
 
         # Create RDD and map
         rdd = self._sc.parallelize(work_items, len(work_items))
-        return rdd.map(_execute_task).collect()
+        return cast("list[Any]", rdd.map(_execute_task).collect())
 
     def map(
         self,
@@ -192,4 +192,4 @@ class SparkProcessor(Processor):
             return func(item)
 
         rdd = self._sc.parallelize(iterables)
-        return rdd.map(_apply_func).collect()
+        return cast("list[Any]", rdd.map(_apply_func).collect())

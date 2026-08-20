@@ -2,14 +2,16 @@ import os
 
 from minio import Minio
 
-from zakuro import cfg
+# Legacy module-level attribute; not exported by ``zakuro`` (kept as-is to
+# preserve existing runtime behavior).
+from zakuro import cfg  # type: ignore[attr-defined]
 
 from .functional import *  # noqa: F403
 
 client = None
 
 
-def refresh():
+def refresh() -> None:
     try:
         assert os.path.exists(os.environ["MINIOFS_CREDS"])
     except Exception:

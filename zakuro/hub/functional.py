@@ -1,3 +1,8 @@
+# NOTE: legacy hub helpers referencing constants (``config.ZAKURO_URI``,
+# ``config.DEFAULT_ZAKURO_HOME``, ``config.ZAKURO_HUB``) and ``zakuro.load``
+# that are not exported by the current package. Kept as-is to preserve runtime
+# behavior; the attribute accesses are ignored for mypy rather than silently
+# rewired.
 import os
 import sys
 
@@ -9,18 +14,18 @@ import zakuro
 from zakuro import config
 
 
-def restart_from(model, model_path):
+def restart_from(model: torch.nn.Module, model_path: str) -> None:
     if os.path.exists(model_path):
         load_ckpt(model, model_path)
-    elif model_path.startswith(config.ZAKURO_URI):
+    elif model_path.startswith(config.ZAKURO_URI):  # type: ignore[attr-defined]
         restart_from_hub(model, model_path)
     else:
-        restart_from_hub(model, f"{config.ZAKURO_URI}{model_path}")
+        restart_from_hub(model, f"{config.ZAKURO_URI}{model_path}")  # type: ignore[attr-defined]
 
 
-def restart_from_hub(model, key):
-    model_name, version = key.split(config.ZAKURO_URI)[1].split("/")
-    output_dir = f"{config.DEFAULT_ZAKURO_HOME}/{model_name}"
+def restart_from_hub(model: torch.nn.Module, key: str) -> torch.nn.Module:
+    model_name, version = key.split(config.ZAKURO_URI)[1].split("/")  # type: ignore[attr-defined]
+    output_dir = f"{config.DEFAULT_ZAKURO_HOME}/{model_name}"  # type: ignore[attr-defined]
     output_file = f"{output_dir}/{version}.pth"
 
     # Download the model
@@ -33,19 +38,20 @@ def restart_from_hub(model, key):
     return model
 
 
-def load_ckpt(model, model_path):
+def load_ckpt(model: torch.nn.Module, model_path: str) -> None:
     try:
-        ckpt = zakuro.load(model_path)
+        ckpt = zakuro.load(model_path)  # type: ignore[attr-defined]
         model.load_state_dict(ckpt.state_dict)
     except Exception:
         state_dict = torch.load(model_path)
         model.load_state_dict(state_dict)
 
 
-def download_model(model_name, version, output_file):
+def download_model(model_name: str, version: str, output_file: str) -> bool:
     tmp_file = f"/tmp/{version}.pth"
-    print(f"ZakuroHub >> Downloading the model from {config.ZAKURO_URI}{model_name}/{version}...")
-    res = requests.get(f"{config.ZAKURO_HUB}/{model_name}/{version}")
+    hub_uri = config.ZAKURO_URI  # type: ignore[attr-defined]
+    print(f"ZakuroHub >> Downloading the model from {hub_uri}{model_name}/{version}...")
+    res = requests.get(f"{config.ZAKURO_HUB}/{model_name}/{version}")  # type: ignore[attr-defined]
     assert res.status_code == 200
     with open(tmp_file, "wb") as f:
         f.write(res.content)
