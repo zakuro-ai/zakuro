@@ -45,6 +45,22 @@ hub:
 
 # Friendly aliases accepted by `zakuro config get` in addition to the raw
 # Config attribute names.
+#: Substrings that mark a config field as a credential. Matched against the
+#: attribute name so the rule holds for fields that do not exist yet.
+_SECRET_MARKERS = ("secret", "token", "password", "_key", "credential")
+
+
+def _is_secret_attr(attr: str) -> bool:
+    """Would printing this attribute disclose a credential?
+
+    Deliberately name-based and deliberately broad. The alternative -- an
+    explicit list of secret fields -- is the same hand-maintained construct
+    that already failed once in `Config.to_dict`.
+    """
+    lowered = attr.lower()
+    return any(marker in lowered for marker in _SECRET_MARKERS)
+
+
 _CONFIG_ALIASES = {
     "host": "default_host",
     "port": "default_port",
@@ -133,8 +149,16 @@ def _cmd_config_get(args: argparse.Namespace) -> int:
     if attr not in redacted and not hasattr(cfg, attr):
         print(f"unknown config key: {args.key}", file=sys.stderr)
         return 1
-    # Prefer the redacted view so secrets stay masked even when addressed
-    # by their raw attribute name.
+    # Two layers, because the first one alone is what failed. `to_dict()` is
+    # hand-maintained, so a secret added to Config and forgotten here would be
+    # printed in clear by the fallback below -- which is exactly how
+    # storage_secret_key, storage_access_key and tailscale_auth_key leaked.
+    # The denylist is derived from the field NAME, so a future `*_key`,
+    # `*_token` or `*_secret` field is covered the day it is added, whether or
+    # not anyone remembers this function.
+    if attr not in redacted and _is_secret_attr(attr):
+        print(f"refusing to print secret config key: {args.key}", file=sys.stderr)
+        return 1
     value = redacted[attr] if attr in redacted else getattr(cfg, attr)
     print(value)
     return 0
