@@ -89,6 +89,7 @@ Repository = "https://github.com/zakuro-ai/zakuro"
 Issues = "https://github.com/zakuro-ai/zakuro/issues"
 
 [project.scripts]
+zakuro = "zakuro.cli:main"
 zakuro-worker = "zakuro.worker.cli:main"
 
 [tool.hatch.version]
