@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from zakuro import cli
 from zakuro.cli import main
 
 
@@ -114,3 +115,60 @@ class TestAllocatorReplay:
 
 def test_no_command_prints_help_and_fails() -> None:
     assert main([]) == 1
+
+
+def test_config_get_masks_every_credential(capsys, monkeypatch):
+    """No config key prints a credential in clear.
+
+    Regression test. `Config.to_dict()` enumerated seven fields and omitted
+    three credentials, and `config get` fell back to a raw attribute read for
+    anything the dict did not carry -- so `zakuro config get storage_secret_key`
+    printed the MinIO secret verbatim, while the code comment beside it claimed
+    secrets stayed masked.
+
+    Asserts the value is absent from the output rather than asserting the mask
+    text, so this still fails if the masking style changes but the disclosure
+    returns.
+    """
+    secrets = {
+        "ZAKURO_STORAGE_SECRET_KEY": ("storage_secret_key", "s3cret-secret-key"),
+        "ZAKURO_STORAGE_ACCESS_KEY": ("storage_access_key", "s3cret-access-key"),
+        "TAILSCALE_AUTHKEY": ("tailscale_auth_key", "tskey-s3cret"),
+        "ZAKURO_AUTH": ("auth_token", "tok3n-s3cret"),
+    }
+    for env, (key, value) in secrets.items():
+        monkeypatch.setenv(env, value)
+        assert cli.main(["config", "get", key]) == 0
+        out = capsys.readouterr().out
+        assert value not in out, f"{key} disclosed {value!r} via `config get`"
+        monkeypatch.delenv(env)
+
+
+def test_config_get_all_masks_every_credential(capsys, monkeypatch):
+    """The no-argument listing must not disclose them either."""
+    monkeypatch.setenv("ZAKURO_STORAGE_SECRET_KEY", "s3cret-secret-key")
+    monkeypatch.setenv("TAILSCALE_AUTHKEY", "tskey-s3cret")
+    assert cli.main(["config", "get"]) == 0
+    out = capsys.readouterr().out
+    assert "s3cret-secret-key" not in out
+    assert "tskey-s3cret" not in out
+    # Present-and-masked, not merely absent. Asserting absence alone would
+    # pass against the original bug too, where these keys were omitted from
+    # the listing entirely -- a test that cannot fail against the defect it
+    # guards is not a regression test.
+    assert "storage_secret_key=***" in out
+    assert "tailscale_auth_key=***" in out
+
+
+def test_an_unlisted_secret_field_is_refused_rather_than_printed(capsys):
+    """A credential added to Config but forgotten in `to_dict` must not leak.
+
+    This is the failure mode that produced the original bug, so the guard is
+    name-based: anything that looks like a credential is refused outright when
+    the redacted view does not carry it.
+    """
+    assert cli._is_secret_attr("storage_secret_key")
+    assert cli._is_secret_attr("some_future_api_token")
+    assert cli._is_secret_attr("db_password")
+    assert not cli._is_secret_attr("default_host")
+    assert not cli._is_secret_attr("cache_dir")

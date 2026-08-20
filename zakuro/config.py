@@ -139,6 +139,13 @@ class Config:
             "default_port": self.default_port,
             "auth_token": "***" if self.auth_token else None,
             "storage_host": self.storage_host,
+            # Masked, not omitted. Omitting a secret from this view is what
+            # leaked it: `zakuro config get` falls back to a raw attribute
+            # read for any key this dict does not carry, so a field missing
+            # here is a field printed in plaintext.
+            "storage_access_key": "***" if self.storage_access_key else "",
+            "storage_secret_key": "***" if self.storage_secret_key else "",
+            "tailscale_auth_key": "***" if self.tailscale_auth_key else None,
             "tailscale_enabled": self.tailscale_enabled,
             "hub_url": self.hub_url,
             "cache_dir": self.cache_dir,
