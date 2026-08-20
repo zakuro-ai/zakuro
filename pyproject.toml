@@ -10,7 +10,7 @@ readme = "README.md"
 license = "BSD-3-Clause"
 requires-python = ">=3.10"
 authors = [
-    { name = "ZakuroAI", email = "dev@zakuro.ai" },
+    { name = "ZakuroAI", email = "dev@zakuro-ai.com" },
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -83,8 +83,8 @@ dev = [
 all = ["zakuro-ai[worker,dev,all-processors,observability]"]
 
 [project.urls]
-Homepage = "https://zakuro.ai"
-Documentation = "https://docs.zakuro.ai"
+Homepage = "https://zakuro-ai.com"
+Documentation = "https://docs.zakuro-ai.com"
 Repository = "https://github.com/zakuro-ai/zakuro"
 Issues = "https://github.com/zakuro-ai/zakuro/issues"
 

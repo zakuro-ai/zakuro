@@ -31,25 +31,25 @@ def test_extract_peer_from_direct_mtls() -> None:
     cert = {
         "subject": ((("commonName", "tenant-acme/worker-1"),),),
         "subjectAltName": (
-            ("URI", "spiffe://zakuro.ai/ns/acme/sa/worker"),
+            ("URI", "spiffe://zakuro-ai.com/ns/acme/sa/worker"),
             ("DNS", "worker-1.acme.zakuro.local"),
         ),
     }
     ident = extract_peer_from_request(_StubRequest(tls_obj=_StubSSLObject(cert)))
     assert ident.subject_cn == "tenant-acme/worker-1"
-    assert ident.spiffe_id == "spiffe://zakuro.ai/ns/acme/sa/worker"
+    assert ident.spiffe_id == "spiffe://zakuro-ai.com/ns/acme/sa/worker"
     assert ident.dns_sans == ("worker-1.acme.zakuro.local",)
 
 
 def test_extract_peer_falls_through_to_xfcc_header() -> None:
     header = (
         'Subject="CN=tenant-acme/worker-1";'
-        "URI=spiffe://zakuro.ai/ns/acme/sa/worker;"
+        "URI=spiffe://zakuro-ai.com/ns/acme/sa/worker;"
         "DNS=worker-1.acme.zakuro.local"
     )
     ident = extract_peer_from_request(_StubRequest(headers={"x-forwarded-client-cert": header}))
     assert ident.subject_cn == "tenant-acme/worker-1"
-    assert ident.spiffe_id == "spiffe://zakuro.ai/ns/acme/sa/worker"
+    assert ident.spiffe_id == "spiffe://zakuro-ai.com/ns/acme/sa/worker"
     assert "worker-1.acme.zakuro.local" in ident.dns_sans
 
 
@@ -60,7 +60,7 @@ def test_extract_peer_returns_anonymous_when_no_material() -> None:
 
 def test_parse_xfcc_takes_first_entry_only() -> None:
     # Two entries — direct peer first, chain ancestor second
-    header = 'Subject="CN=direct-peer";URI=spiffe://zakuro.ai/ns/a/sa/w,Subject="CN=ca-cert"'
+    header = 'Subject="CN=direct-peer";URI=spiffe://zakuro-ai.com/ns/a/sa/w,Subject="CN=ca-cert"'
     ident = parse_x_forwarded_client_cert(header)
     assert ident.subject_cn == "direct-peer"
 

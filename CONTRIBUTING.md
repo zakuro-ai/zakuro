@@ -93,6 +93,6 @@ The `chore(release): vX.Y.Z` commits are bot output — don't write them by hand
 
 - Open a GitHub Discussion for design questions or longer-form conversations.
 - Use issues for bugs and concrete feature asks.
-- For private questions email `dev@zakuro.ai`.
+- For private questions email `dev@zakuro-ai.com`.
 
 We're happy you're here. Send the patch.

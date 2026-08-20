@@ -6,8 +6,8 @@ resolver = "2"
 edition = "2021"
 license = "BSD-3-Clause"
 repository = "https://github.com/zakuro-ai/zakuro"
-homepage = "https://zakuro.ai"
-authors = ["ZakuroAI <git@zakuro.ai>"]
+homepage = "https://zakuro-ai.com"
+authors = ["ZakuroAI <git@zakuro-ai.com>"]
 rust-version = "1.75"
 
 [workspace.dependencies]
