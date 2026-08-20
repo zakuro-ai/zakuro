@@ -118,7 +118,8 @@ class ZakuroClient:
         """Get worker information."""
         response = self.client.get("/info")
         response.raise_for_status()
-        return response.json()
+        info: dict = response.json()
+        return info
 
     def close(self) -> None:
         """Close HTTP client."""

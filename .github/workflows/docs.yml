@@ -2,9 +2,9 @@ name: docs
 
 # Versioned docs publishing (#144) via mkdocs-material + mike.
 #
-#   - Every tag push (vX.Y.Z) deploys to docs.zakuro.ai/X.Y/ and aliases
+#   - Every tag push (vX.Y.Z) deploys to docs.zakuro-ai.com/X.Y/ and aliases
 #     `latest` to that version.
-#   - master pushes deploy a `dev` slot at docs.zakuro.ai/dev/ so we can
+#   - master pushes deploy a `dev` slot at docs.zakuro-ai.com/dev/ so we can
 #     preview changes before tagging.
 #   - PR builds run a strict mkdocs build to fail fast on broken refs but
 #     do not deploy.
@@ -12,7 +12,7 @@ name: docs
 # Manual setup required before first deploy (one-time admin work, not in
 # this PR):
 #   - Enable GitHub Pages on this repo, source = `gh-pages` branch.
-#   - Configure CNAME for docs.zakuro.ai pointing at <user>.github.io.
+#   - Configure CNAME for docs.zakuro-ai.com pointing at <user>.github.io.
 #   - First release tag will populate the version dropdown.
 
 on:
@@ -63,7 +63,7 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           git config user.name "zakuro-docs-bot"
-          git config user.email "docs@zakuro.ai"
+          git config user.email "docs@zakuro-ai.com"
 
       - name: Strict build (PR preflight)
         if: github.event_name == 'pull_request'

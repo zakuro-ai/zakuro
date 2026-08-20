@@ -10,6 +10,35 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from typing import TypedDict
+
+
+class SSLKwargs(TypedDict, total=False):
+    """uvicorn TLS keyword arguments, typed to match ``uvicorn.run``.
+
+    ``total=False`` because the whole block is absent on the plaintext path.
+
+    Shared with ``zakuro.worker.server``, which builds the same dict from
+    ZAKURO_CERT_DIR and spreads it into ``uvicorn.run``. One definition rather
+    than two kept in sync by comment.
+    """
+
+    ssl_certfile: str
+    ssl_keyfile: str
+    ssl_ca_certs: str
+    ssl_cert_reqs: int
+
+
+# Single source of truth for the "you need the worker extra" guidance so the
+# HTTP and QUIC paths print identical, actionable instructions. We deliberately
+# show BOTH install paths: a pip-installed wheel uses the extra, a source
+# checkout (git clone) uses `uv sync --extra worker`.
+_WORKER_EXTRA_HINT = (
+    "Install it with one of:\n"
+    "  pip install 'zakuro-ai[worker]'      # installed from PyPI/wheel\n"
+    "  uv sync --extra worker               # from a source checkout (git clone)\n"
+    "  uv pip install '.[worker]'           # source checkout without uv project sync"
+)
 
 # Single source of truth for the "you need the worker extra" guidance so the
 # HTTP and QUIC paths print identical, actionable instructions. We deliberately
@@ -122,7 +151,7 @@ def main() -> None:
     # server cert + private key + CA bundle and pass to uvicorn so the
     # listener terminates TLS itself. When the env var is unset, the
     # server stays on plaintext HTTP (dev / CI / behind-a-TLS-ingress).
-    ssl_kwargs: dict[str, object] = {}
+    ssl_kwargs: SSLKwargs = {}
     if os.environ.get("ZAKURO_CERT_DIR", "").strip():
         # Defer the import: zakuro.transport pulls in cryptography.
         from zakuro.transport import load_server_tls

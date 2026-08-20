@@ -13,7 +13,7 @@ Zakuro is pre-1.0. Only the **current minor release on `master`** receives secur
 
 ## Reporting a vulnerability
 
-**Do not file a public issue.** Email **security@zakuro.ai** with the details listed below. We reply within **2 business days** to acknowledge the report and within **10 business days** with a triage classification (accept / mitigate / decline) and a tentative fix window.
+**Do not file a public issue.** Email **security@zakuro-ai.com** with the details listed below. We reply within **2 business days** to acknowledge the report and within **10 business days** with a triage classification (accept / mitigate / decline) and a tentative fix window.
 
 For especially sensitive reports, request our GPG public key in your initial message and we will send it before you transmit any proof-of-concept.
 

@@ -26,7 +26,8 @@ if TYPE_CHECKING:
 def _free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+        port: int = s.getsockname()[1]
+        return port
 
 
 def _locate_zakuro_worker() -> str | None:
@@ -232,7 +233,8 @@ class Worker:
         if self._transport == "http":
             r = httpx.get(f"http://{self._host}:{self._port}/info", timeout=2.0)
             r.raise_for_status()
-            return r.json()
+            payload: dict[str, Any] = r.json()
+            return payload
         from zakuro.compute import Compute
         from zakuro.processors.base import ProcessorConfig
         from zakuro.processors.quic import QuicProcessor

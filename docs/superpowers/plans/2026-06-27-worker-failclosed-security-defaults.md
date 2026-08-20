@@ -590,7 +590,7 @@ Leave the `run_quic_worker(...)` **function** signature/default (`host: str = "0
 Dev compose files start workers on `0.0.0.0` in legacy/no-auth mode, so they would now be refused. Add the explicit, eyes-open override to each worker service. In `docker/docker-compose.yml`, `docker/docker-compose.mesh.yml`, `docker/docker-compose.two-nodes.yml` (and any other compose file with a worker service), add to the worker service `environment:` block:
 
 ```yaml
-      # Dev mesh is network-isolated (tailnet); accept the unauthenticated
+      # Dev mesh is network-isolated; accept the unauthenticated
       # /execute surface explicitly. Production sets ZAKURO_WIRE=v1 + a key
       # or ZAKURO_AUTH_REQUIRED=1 instead.
       ZAKURO_INSECURE_BIND: "1"

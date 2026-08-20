@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import cloudpickle
 import httpx
@@ -213,7 +213,7 @@ class BrokerProcessor(Processor):
 
         response = self._client.get(f"/credits/{self._user_id}")
         response.raise_for_status()
-        return response.json()
+        return cast("dict[str, Any]", response.json())
 
     def add_credits(self, amount: float, description: str = "API deposit") -> dict[str, Any]:
         """Add credits to account.
@@ -233,7 +233,7 @@ class BrokerProcessor(Processor):
             json={"amount": amount, "description": description},
         )
         response.raise_for_status()
-        return response.json()
+        return cast("dict[str, Any]", response.json())
 
     def list_workers(self) -> list[dict[str, Any]]:
         """List available workers.
@@ -246,7 +246,7 @@ class BrokerProcessor(Processor):
 
         response = self._client.get("/workers")
         response.raise_for_status()
-        return response.json().get("workers", [])
+        return cast("list[dict[str, Any]]", response.json().get("workers", []))
 
     def estimate_price(
         self,
@@ -279,7 +279,7 @@ class BrokerProcessor(Processor):
             },
         )
         response.raise_for_status()
-        return response.json()
+        return cast("dict[str, Any]", response.json())
 
     def whoami(self) -> dict[str, Any]:
         """Get authenticated user info from broker.
@@ -292,7 +292,7 @@ class BrokerProcessor(Processor):
 
         response = self._client.get("/me")
         response.raise_for_status()
-        return response.json()
+        return cast("dict[str, Any]", response.json())
 
     def ping(self) -> bool:
         """Check broker health."""

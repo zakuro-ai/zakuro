@@ -22,7 +22,7 @@ versions may add new symbols but never remove existing ones.
 from __future__ import annotations
 
 from zakuro import __build__, __version__
-from zakuro.adaptive import AdaptiveCompute
+from zakuro.adaptive import AdaptiveCompute, DecisionReplay, replay_decisions
 from zakuro.compute import Compute
 from zakuro.config import Config
 from zakuro.fn import Fn, cls, fn
@@ -36,6 +36,8 @@ __all__ = [
     # core types
     "Compute",
     "AdaptiveCompute",
+    "DecisionReplay",
+    "replay_decisions",
     "Fn",
     "Worker",
     "Config",

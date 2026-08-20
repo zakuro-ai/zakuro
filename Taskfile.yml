@@ -81,7 +81,9 @@ tasks:
   build:image:
     desc: Build zakuro image (FROM compute)
     cmds:
-      - task: build:wheel
+      # The image builds its own wheel from source in a builder stage
+      # (docker/Dockerfile.compute), so no `task build:wheel` prereq is
+      # needed — `docker build` is self-contained from a clean checkout. (#232)
       - docker build -f docker/Dockerfile.compute -t zakuroai/zakuro:${HW:-cpu} .
 
   up:compute:
@@ -111,4 +113,5 @@ tasks:
       - task: ci:format-check
       - task: ci:typecheck
       - task: test:unit
+      - task: test:coverage-check
       - cargo test --workspace

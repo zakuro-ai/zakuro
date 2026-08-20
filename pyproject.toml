@@ -10,7 +10,7 @@ readme = "README.md"
 license = "BSD-3-Clause"
 requires-python = ">=3.10"
 authors = [
-    { name = "ZakuroAI", email = "dev@zakuro.ai" },
+    { name = "ZakuroAI", email = "dev@zakuro-ai.com" },
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -79,16 +79,22 @@ dev = [
     "pre-commit>=3.0",
     "ruff>=0.1.0",
     "mypy>=1.0",
+    # Type stubs for otherwise-untyped runtime deps so mypy checks call sites
+    # against real signatures instead of silencing the modules (#167).
+    "types-PyYAML",
+    "types-psutil",
+    "types-tqdm",
 ]
 all = ["zakuro-ai[worker,dev,all-processors,observability]"]
 
 [project.urls]
-Homepage = "https://zakuro.ai"
-Documentation = "https://docs.zakuro.ai"
+Homepage = "https://zakuro-ai.com"
+Documentation = "https://docs.zakuro-ai.com"
 Repository = "https://github.com/zakuro-ai/zakuro"
 Issues = "https://github.com/zakuro-ai/zakuro/issues"
 
 [project.scripts]
+zakuro = "zakuro.cli:main"
 zakuro-worker = "zakuro.worker.cli:main"
 
 [tool.hatch.version]
@@ -123,6 +129,30 @@ python_version = "3.10"
 warn_return_any = true
 warn_unused_ignores = true
 disallow_untyped_defs = true
+
+# Optional / native / stub-less third-party libraries. These ship no py.typed
+# marker and no stubs on PyPI, so mypy can only treat their surface as Any.
+# Silencing the import keeps the rest of our code checked without vendoring
+# stubs for deps we don't own. (yaml/psutil/tqdm get real stubs via the dev
+# extra instead — see types-* above.)
+[[tool.mypy.overrides]]
+module = [
+    "cloudpickle",
+    "bsdiff4",
+    "torch",
+    "torch.*",
+    "gnutools",
+    "gnutools.*",
+    "miniofs",
+    "pyspark",
+    "pyspark.*",
+    "ray",
+    "ray.*",
+    "distributed",
+    "zakuro.var",
+    "zakuro.functional",
+]
+ignore_missing_imports = true
 
 [dependency-groups]
 dev = [

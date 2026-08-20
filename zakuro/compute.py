@@ -146,7 +146,7 @@ class Compute:
             ) from exc
 
     def _discover_worker(self) -> str:
-        """Discover worker via Tailscale or fallback to localhost."""
+        """Discover worker via DNS or fallback to localhost."""
         from zakuro.discovery import discover_worker
 
         return discover_worker()

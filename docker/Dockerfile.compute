@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 # =============================================================================
 # ZAKURO — Full platform image on top of compute
-# FROM compute (s6 + tailscale + minio + jupyterlab + spark/ray/dask)
+# FROM compute (s6 + minio + jupyterlab + spark/ray/dask)
 # Adds: zakuro-ai Python package + worker s6 service
 # =============================================================================
 
@@ -9,12 +9,23 @@ ARG FRAMEWORK=all
 ARG HW=cpu
 ARG COMPUTE_TAG=${HW}
 
+# ----- builder stage ---------------------------------------------------
+# Build the wheel from source so the image is self-contained — `docker build`
+# works from a clean checkout with no prior `task build:wheel` step and no
+# dependency on a (gitignored) host dist/. (#232)
+FROM python:3.14-slim@sha256:7a500125bc50693f2214e842a621440a1b1b9cbb2188f74ab045d29ed2ea5856 AS builder
+RUN pip install --no-cache-dir uv
+WORKDIR /src
+COPY . .
+RUN uv build --wheel --out-dir /dist
+
+# ----- runtime stage ---------------------------------------------------
 FROM zakuroai/compute:${COMPUTE_TAG}
 
 USER root
 
-# Install zakuro-ai wheel with worker extras
-COPY dist/*.whl /tmp/
+# Install zakuro-ai wheel (built in the builder stage) with worker extras
+COPY --from=builder /dist/*.whl /tmp/
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     WHL=$(ls /tmp/*.whl) && \
     uv pip install --system --break-system-packages "${WHL}[worker]" && \
