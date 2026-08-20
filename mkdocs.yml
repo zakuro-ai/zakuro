@@ -1,6 +1,6 @@
 # mkdocs-material + mike configuration for zakuro-ai/zakuro (#144).
 #
-# Versioned hosting is published to https://docs.zakuro.ai/ via the
+# Versioned hosting is published to https://docs.zakuro-ai.com/ via the
 # .github/workflows/docs.yml workflow:
 #   - Every tag push deploys a /<version>/ slot using `mike`.
 #   - The `latest` alias is updated on the most recent release.
@@ -12,7 +12,7 @@
 
 site_name: Zakuro
 site_description: Context-aware distributed-ML runtime
-site_url: https://docs.zakuro.ai/
+site_url: https://docs.zakuro-ai.com/
 repo_url: https://github.com/zakuro-ai/zakuro
 repo_name: zakuro-ai/zakuro
 edit_uri: edit/master/docs/
