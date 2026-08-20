@@ -42,6 +42,19 @@ def _wait_for_lines(path: Path, n: int, timeout: float = 2.0) -> list[dict[str, 
     return _read_jsonl(path) if path.exists() else []
 
 
+@pytest.fixture(autouse=True)
+def _force_standalone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin dispatch to the in-process standalone path.
+
+    These tests measure the decision-log writer, not backend discovery. Without
+    this, ``detect_backend`` probes localhost + the configured broker on every
+    dispatch — on a host that happens to have the ``zc`` CLI installed but no
+    reachable worker, each probe blocks for the full TCP timeout, turning the
+    non-blocking-hot-path assertion into a multi-minute hang (#167).
+    """
+    monkeypatch.setenv("ZAKURO_STANDALONE", "force")
+
+
 @pytest.fixture
 def adaptive() -> AdaptiveCompute:
     """Single in-process worker — enough to exercise the dispatch path."""

@@ -72,4 +72,4 @@ Use `$IMAGE@$DIGEST` in `docker-compose.yml`, Helm values, Kubernetes manifests,
 
 ## Reporting a verification failure
 
-If `cosign verify` or `slsa-verifier verify-artifact` fails on a wheel or image we appear to have released, **do not run the artefact**. Report to **security@zakuro.ai** — a verification failure on a legitimate Zakuro release is either a supply-chain incident or a packaging bug, and we treat both at the same priority.
+If `cosign verify` or `slsa-verifier verify-artifact` fails on a wheel or image we appear to have released, **do not run the artefact**. Report to **security@zakuro-ai.com** — a verification failure on a legitimate Zakuro release is either a supply-chain incident or a packaging bug, and we treat both at the same priority.

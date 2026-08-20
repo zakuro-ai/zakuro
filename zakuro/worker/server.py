@@ -144,7 +144,7 @@ async def _check_storage_reachable() -> tuple[bool, str | None]:
     if not endpoint or not access_key or not secret_key:
         return True, None
     try:
-        from minio import Minio  # type: ignore[import-not-found]
+        from minio import Minio
 
         client = Minio(
             endpoint,

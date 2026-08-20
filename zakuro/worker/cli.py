@@ -10,6 +10,20 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from typing import TypedDict
+
+
+class _SSLKwargs(TypedDict, total=False):
+    """uvicorn TLS keyword arguments, typed to match ``uvicorn.run``.
+
+    ``total=False`` because the whole block is absent on the plaintext path.
+    """
+
+    ssl_certfile: str
+    ssl_keyfile: str
+    ssl_ca_certs: str
+    ssl_cert_reqs: int
+
 
 # Single source of truth for the "you need the worker extra" guidance so the
 # HTTP and QUIC paths print identical, actionable instructions. We deliberately
@@ -101,7 +115,7 @@ def main() -> None:
     # server cert + private key + CA bundle and pass to uvicorn so the
     # listener terminates TLS itself. When the env var is unset, the
     # server stays on plaintext HTTP (dev / CI / behind-a-TLS-ingress).
-    ssl_kwargs: dict[str, object] = {}
+    ssl_kwargs: _SSLKwargs = {}
     if os.environ.get("ZAKURO_CERT_DIR", "").strip():
         # Defer the import: zakuro.transport pulls in cryptography which
         # we don't want on the `--help` path.

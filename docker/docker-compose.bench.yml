@@ -1,6 +1,6 @@
-# Zakuro P2P Benchmark Setup (No Tailscale Required)
+# Zakuro P2P Benchmark Setup (no mesh required)
 #
-# Simplified P2P mesh for local benchmarking without Tailscale.
+# Simplified P2P mesh for local benchmarking over the Docker network only.
 # Each broker+worker runs on localhost with different ports.
 # P2P coordination happens via localhost HTTP calls.
 #

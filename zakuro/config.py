@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -40,12 +41,8 @@ class Config:
     storage_secret_key: str = ""
     storage_secure: bool = False
 
-    # Tailscale
-    tailscale_enabled: bool = True
-    tailscale_auth_key: str | None = None
-
     # Hub settings
-    hub_url: str = "http://hub.zakuro.ai"
+    hub_url: str = "https://hub.zakuro-ai.com"
     cache_dir: str = field(default_factory=lambda: str(Path.home() / ".zakuro"))
 
     @classmethod
@@ -77,7 +74,6 @@ class Config:
             "port": "default_port",
             "auth": "auth_token",
             "storage": None,  # Nested
-            "tailscale": None,  # Nested
             "hub": None,  # Nested
         }
 
@@ -87,18 +83,15 @@ class Config:
                     attr = f"storage_{sk}"
                     if hasattr(config, attr):
                         setattr(config, attr, sv)
-            elif key == "tailscale" and isinstance(value, dict):
-                for tk, tv in value.items():
-                    attr = f"tailscale_{tk}"
-                    if hasattr(config, attr):
-                        setattr(config, attr, tv)
             elif key == "hub" and isinstance(value, dict):
                 if "url" in value:
                     config.hub_url = value["url"]
                 if "cache_dir" in value:
                     config.cache_dir = value["cache_dir"]
             elif key in key_map and key_map[key]:
-                setattr(config, key_map[key], value)
+                mapped = key_map[key]
+                assert mapped is not None
+                setattr(config, mapped, value)
             elif hasattr(config, key):
                 setattr(config, key, value)
 
@@ -107,7 +100,7 @@ class Config:
     @classmethod
     def _load_env(cls, config: Config) -> Config:
         """Load from environment variables."""
-        env_map: dict[str, str | tuple[str, type]] = {
+        env_map: dict[str, str | tuple[str, Callable[[str], Any]]] = {
             "ZAKURO_HOST": "default_host",
             "ZAKURO_PORT": ("default_port", int),
             "ZAKURO_AUTH": "auth_token",
@@ -117,8 +110,6 @@ class Config:
             "ZAKURO_STORAGE_SECURE": ("storage_secure", lambda x: x.lower() == "true"),
             "ZAKURO_HUB_URL": "hub_url",
             "ZAKURO_CACHE_DIR": "cache_dir",
-            "TAILSCALE_AUTHKEY": "tailscale_auth_key",
-            "TAILSCALE_ENABLED": ("tailscale_enabled", lambda x: x.lower() == "true"),
         }
 
         for env_var, target in env_map.items():
@@ -139,7 +130,6 @@ class Config:
             "default_port": self.default_port,
             "auth_token": "***" if self.auth_token else None,
             "storage_host": self.storage_host,
-            "tailscale_enabled": self.tailscale_enabled,
             "hub_url": self.hub_url,
             "cache_dir": self.cache_dir,
         }
