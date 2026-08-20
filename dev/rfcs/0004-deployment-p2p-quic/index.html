@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://docs.zakuro.ai/latest/rfcs/0004-deployment-p2p-quic/">
+        <link rel="canonical" href="https://docs.zakuro-ai.com/latest/rfcs/0004-deployment-p2p-quic/">
       
       
       
@@ -1137,7 +1137,7 @@
 <h3 id="1-bootstrap-cli">1. Bootstrap CLI<a class="headerlink" href="#1-bootstrap-cli" title="Permanent link">&para;</a></h3>
 <p>A new entry point <code>zakuro init</code> lives in <code>zakuro/worker/cli.py</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>zakuro<span class="w"> </span>init<span class="w">                    </span><span class="c1"># First node in a mesh — generates the CA</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">                               </span><span class="c1"># root, the node&#39;s signing key, and a join</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">                               </span><span class="c1"># root, the node's signing key, and a join</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">                               </span><span class="c1"># token. Prints the token + the listening</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">                               </span><span class="c1"># mesh address to stdout.</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>

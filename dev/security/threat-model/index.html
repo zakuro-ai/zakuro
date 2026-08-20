@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://docs.zakuro.ai/latest/security/threat-model/">
+        <link rel="canonical" href="https://docs.zakuro-ai.com/latest/security/threat-model/">
       
       
         <link rel="prev" href="../verifying-releases/">
@@ -1317,7 +1317,7 @@
 
 
 <h1 id="threat-model-stride-linddun">Threat model — STRIDE + LINDDUN<a class="headerlink" href="#threat-model-stride-linddun" title="Permanent link">&para;</a></h1>
-<p><strong>Status:</strong> Draft (2026-05). Maintainer: security@zakuro.ai. Refresh cadence: quarterly, or sooner when an RFC lands that materially shifts a trust boundary.</p>
+<p><strong>Status:</strong> Draft (2026-05). Maintainer: security@zakuro-ai.com. Refresh cadence: quarterly, or sooner when an RFC lands that materially shifts a trust boundary.</p>
 <p>This document is the single shared mental model for what we are defending against in Zakuro. It is consulted at PR review (does this change cross a trust boundary?), at RFC time (does the proposed design address the existing threats?), and at audit time (what is in and out of scope?).</p>
 <h2 id="1-scope">1. Scope<a class="headerlink" href="#1-scope" title="Permanent link">&para;</a></h2>
 <p>Covered:</p>
@@ -1622,7 +1622,7 @@
 <tr>
 <td><strong>N</strong>on-repudiation</td>
 <td>A user cannot disclaim an action they did not take</td>
-<td>Audit log retention bounded; users can request deletion via <code>dev@zakuro.ai</code> (GDPR Article 17)</td>
+<td>Audit log retention bounded; users can request deletion via <code>dev@zakuro-ai.com</code> (GDPR Article 17)</td>
 </tr>
 <tr>
 <td><strong>D</strong>etectability</td>
@@ -1691,7 +1691,7 @@
 <ul>
 <li>Every RFC must include a "Threats considered" section pointing back here.</li>
 <li>Every PR that crosses a trust boundary in §2 must annotate which TB-N it touches and why the mitigation still holds.</li>
-<li>Every quarter, security@zakuro.ai opens an issue titled "Threat model refresh — YYYY-QN" that re-walks §3 and §6 and updates this file. Closing that issue is gated on a maintainer sign-off.</li>
+<li>Every quarter, security@zakuro-ai.com opens an issue titled "Threat model refresh — YYYY-QN" that re-walks §3 and §6 and updates this file. Closing that issue is gated on a maintainer sign-off.</li>
 <li>A successful external pentest report (tracking <a href="https://github.com/zakuro-ai/zakuro/issues/143">#143</a>) is appended to §6 as a dated annex.</li>
 </ul>
 <h2 id="8-references">8. References<a class="headerlink" href="#8-references" title="Permanent link">&para;</a></h2>

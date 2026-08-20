@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://docs.zakuro.ai/latest/lxc-reproduction/">
+        <link rel="canonical" href="https://docs.zakuro-ai.com/latest/lxc-reproduction/">
       
       
       
@@ -1130,11 +1130,11 @@
 <li>A <code>gpu-profile</code> in LXD that exposes the GPU inside containers (sample below).</li>
 </ul>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>lxc<span class="w"> </span>profile<span class="w"> </span>create<span class="w"> </span>gpu-profile<span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>lxc<span class="w"> </span>profile<span class="w"> </span>edit<span class="w"> </span>gpu-profile<span class="w"> </span><span class="s">&lt;&lt;&#39;EOF&#39;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>lxc<span class="w"> </span>profile<span class="w"> </span>edit<span class="w"> </span>gpu-profile<span class="w"> </span><span class="s">&lt;&lt;'EOF'</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="s">name: gpu-profile</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="s">description: &quot;&quot;</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="s">description: ""</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="s">config:</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="s">  nvidia.runtime: &quot;true&quot;</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="s">  nvidia.runtime: "true"</span>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="s">devices:</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="s">  gpu0:</span>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="s">    type: gpu</span>
@@ -1156,32 +1156,32 @@
 <h2 id="2-install-python-uv-zakuro-in-each-container">2. Install Python + uv + zakuro in each container<a class="headerlink" href="#2-install-python-uv-zakuro-in-each-container" title="Permanent link">&para;</a></h2>
 <p>Run the same block in both:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">for</span><span class="w"> </span>c<span class="w"> </span><span class="k">in</span><span class="w"> </span>zk-trainer<span class="w"> </span>zk-evaluator<span class="p">;</span><span class="w"> </span><span class="k">do</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>lxc<span class="w"> </span><span class="nb">exec</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$c</span><span class="s2">&quot;</span><span class="w"> </span>--<span class="w"> </span>bash<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>lxc<span class="w"> </span><span class="nb">exec</span><span class="w"> </span><span class="s2">"</span><span class="nv">$c</span><span class="s2">"</span><span class="w"> </span>--<span class="w"> </span>bash<span class="w"> </span>-c<span class="w"> </span><span class="s1">'</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="s1">    while pgrep apt &gt;/dev/null; do sleep 2; done  # wait for cloud-init</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="s1">    apt-get install -y -qq python3 python3-venv python3-pip curl</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="s1">    curl -LsSf https://astral.sh/uv/install.sh | sh</span>
 <a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="s1">    mkdir -p /opt/zk &amp;&amp; cd /opt/zk</span>
 <a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="s1">    uv venv --python 3.11 .venv</span>
 <a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="s1">    uv pip install --python .venv/bin/python \</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="s1">      &quot;zakuro-ai[worker] @ git+https://github.com/zakuro-ai/zakuro.git@master&quot; \</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="s1">      &quot;sakura-ml @ git+https://github.com/zakuro-ai/sakura.git@master&quot;</span>
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="s1">  &#39;</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="s1">      "zakuro-ai[worker] @ git+https://github.com/zakuro-ai/zakuro.git@master" \</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="s1">      "sakura-ml @ git+https://github.com/zakuro-ai/sakura.git@master"</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="s1">  '</span>
 <a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="k">done</span>
 </code></pre></div>
 <p><strong>Measured result:</strong></p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>$ lxc exec zk-trainer -- /opt/zk/.venv/bin/python -c \
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    &quot;import zakuro, sakura; print(zakuro.__version__, sakura.__version__,
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>     hasattr(zakuro, &#39;AdaptiveCompute&#39;))&quot;
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    "import zakuro, sakura; print(zakuro.__version__, sakura.__version__,
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>     hasattr(zakuro, 'AdaptiveCompute'))"
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>0.2.2 0.1.2 True
 </code></pre></div>
 <h2 id="3-download-the-benchmark-scripts">3. Download the benchmark scripts<a class="headerlink" href="#3-download-the-benchmark-scripts" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>lxc<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>zk-trainer<span class="w"> </span>--<span class="w"> </span>bash<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>lxc<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>zk-trainer<span class="w"> </span>--<span class="w"> </span>bash<span class="w"> </span>-c<span class="w"> </span><span class="s1">'</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="s1">  cd /opt/zk</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="s1">  for f in bench_mesh_adaptation.py bench_health_detection.py \</span>
 <a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="s1">           bench_drift_detection.py bench_quic_retry.py; do</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="s1">    curl -sL &quot;https://raw.githubusercontent.com/zakuro-ai/zakuro/master/scripts/$f&quot; -o &quot;$f&quot;</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="s1">    curl -sL "https://raw.githubusercontent.com/zakuro-ai/zakuro/master/scripts/$f" -o "$f"</span>
 <a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="s1">  done</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="s1">&#39;</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="s1">'</span>
 </code></pre></div>
 <h2 id="4-run-each-benchmark">4. Run each benchmark<a class="headerlink" href="#4-run-each-benchmark" title="Permanent link">&para;</a></h2>
 <p>All four run entirely inside <code>zk-trainer</code> (they spawn their own sub-workers). Replace <code>trainer</code> with whichever container you want if exercising cross-machine.</p>
@@ -1270,10 +1270,10 @@
 </tbody>
 </table>
 <h3 id="44-quic-retry">4.4 QUIC retry<a class="headerlink" href="#44-quic-retry" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>lxc<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>zk-trainer<span class="w"> </span>--<span class="w"> </span>bash<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>lxc<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>zk-trainer<span class="w"> </span>--<span class="w"> </span>bash<span class="w"> </span>-c<span class="w"> </span><span class="s1">'</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="s1">  PATH=/opt/zk/.venv/bin:$PATH \</span>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="s1">  /opt/zk/.venv/bin/python /opt/zk/bench_quic_retry.py --port 4476</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="s1">&#39;</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="s1">'</span>
 </code></pre></div>
 <p><strong>Measured result:</strong></p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>baseline dispatch     :   149 ms
@@ -1283,21 +1283,21 @@
 <p>Dead-connection detection: <strong>5.0 s</strong> after the 5 s idle_timeout we ship.</p>
 <h2 id="5-cross-container-dispatch-zk-evaluator-serves-zk-trainer-dispatches">5. Cross-container dispatch — <code>zk-evaluator</code> serves, <code>zk-trainer</code> dispatches<a class="headerlink" href="#5-cross-container-dispatch-zk-evaluator-serves-zk-trainer-dispatches" title="Permanent link">&para;</a></h2>
 <p>Start a QUIC worker inside <code>zk-evaluator</code>, bind to <code>0.0.0.0</code> so the sibling container can reach it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>lxc<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>zk-evaluator<span class="w"> </span>--<span class="w"> </span>bash<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>lxc<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>zk-evaluator<span class="w"> </span>--<span class="w"> </span>bash<span class="w"> </span>-c<span class="w"> </span><span class="s1">'</span>
 <a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="s1">  nohup /opt/zk/.venv/bin/zakuro-worker \</span>
 <a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="s1">    --transport quic --host 0.0.0.0 --port 4433 \</span>
 <a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="s1">    --worker-name eval-lxc &gt; /tmp/eval.log 2&gt;&amp;1 &amp;</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="s1">&#39;</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="s1">'</span>
 </code></pre></div>
 <p>Sanity-check reachability:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>lxc<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>zk-trainer<span class="w"> </span>--<span class="w"> </span>nc<span class="w"> </span>-uz<span class="w"> </span><span class="m">10</span>.2.0.217<span class="w"> </span><span class="m">4433</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span>reachable
 </code></pre></div>
 <p>Dispatch from trainer to evaluator's worker:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>lxc<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>zk-trainer<span class="w"> </span>--<span class="w"> </span>/opt/zk/.venv/bin/python<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;&#39;PY&#39;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>lxc<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>zk-trainer<span class="w"> </span>--<span class="w"> </span>/opt/zk/.venv/bin/python<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;'PY'</span>
 <a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="s">import time</span>
 <a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="s">import zakuro as zk</span>
 <a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="s">compute = zk.Compute(uri=&quot;quic://10.2.0.217:4433&quot;, verify=False)</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="s">compute = zk.Compute(uri="quic://10.2.0.217:4433", verify=False)</span>
 <a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>
 <a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="s">@zk.fn</span>
 <a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="s">def square(x): return x * x</span>
@@ -1305,12 +1305,12 @@
 <a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="s">t0 = time.perf_counter()</span>
 <a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="s">for i in range(10):</span>
 <a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="s">    assert square.to(compute)(i) == i * i</span>
-<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="s">print(f&quot;10 cross-container QUIC dispatches: {(time.perf_counter()-t0)*1000:.1f} ms&quot;)</span>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="s">print(f"10 cross-container QUIC dispatches: {(time.perf_counter()-t0)*1000:.1f} ms")</span>
 <a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="s">PY</span>
 </code></pre></div>
 <p><strong>Measured result:</strong> 10 dispatches → <strong>1 303.8 ms total</strong> (≈ 130 ms / call, fresh connection per call; with a persistent processor in <code>AdaptiveCompute</code> this drops to tens of ms).</p>
 <p>Stop the evaluator worker:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>lxc<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>zk-evaluator<span class="w"> </span>--<span class="w"> </span>pkill<span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;zakuro-worker.*4433&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>lxc<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>zk-evaluator<span class="w"> </span>--<span class="w"> </span>pkill<span class="w"> </span>-f<span class="w"> </span><span class="s2">"zakuro-worker.*4433"</span>
 </code></pre></div>
 <h2 id="6-teardown">6. Teardown<a class="headerlink" href="#6-teardown" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>lxc<span class="w"> </span>stop<span class="w"> </span>zk-trainer<span class="w"> </span>zk-evaluator

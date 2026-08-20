@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://docs.zakuro.ai/latest/zc-quic-patch/">
+        <link rel="canonical" href="https://docs.zakuro-ai.com/latest/zc-quic-patch/">
       
       
       
@@ -1079,7 +1079,7 @@
 </code></pre></div>
 <p>Then from zc's integration test suite (pseudo):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kd">let</span><span class="w"> </span><span class="n">body</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cloudpickle</span><span class="p">::</span><span class="n">dump</span><span class="p">(</span><span class="o">&amp;</span><span class="n">Request</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">func</span><span class="p">,</span><span class="w"> </span><span class="n">args</span><span class="p">,</span><span class="w"> </span><span class="n">kwargs</span><span class="w"> </span><span class="p">});</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kd">let</span><span class="w"> </span><span class="n">resp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">worker_quic</span><span class="p">::</span><span class="n">forward</span><span class="p">(</span><span class="s">&quot;quic://127.0.0.1:4433&quot;</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">body</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;req-1&quot;</span><span class="p">,</span><span class="w"> </span><span class="mf">30.0</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kd">let</span><span class="w"> </span><span class="n">resp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">worker_quic</span><span class="p">::</span><span class="n">forward</span><span class="p">(</span><span class="s">"quic://127.0.0.1:4433"</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">body</span><span class="p">,</span><span class="w"> </span><span class="s">"req-1"</span><span class="p">,</span><span class="w"> </span><span class="mf">30.0</span><span class="p">).</span><span class="k">await</span><span class="o">?</span><span class="p">;</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kd">let</span><span class="w"> </span><span class="n">result</span><span class="p">:</span><span class="w"> </span><span class="nc">MyReturn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cloudpickle</span><span class="p">::</span><span class="n">load</span><span class="p">(</span><span class="o">&amp;</span><span class="n">resp</span><span class="p">)</span><span class="o">?</span><span class="p">;</span>
 </code></pre></div>
 <p>The zakuro Python test suite (<code>tests/test_quic_worker.py</code>) already validates the server side byte-for-byte.</p>

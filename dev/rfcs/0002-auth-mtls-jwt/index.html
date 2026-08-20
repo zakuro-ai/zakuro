@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://docs.zakuro.ai/latest/rfcs/0002-auth-mtls-jwt/">
+        <link rel="canonical" href="https://docs.zakuro-ai.com/latest/rfcs/0002-auth-mtls-jwt/">
       
       
       
@@ -1066,7 +1066,7 @@
 <h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
 <p><strong>mTLS at the transport, JWT-with-scopes at the request.</strong> Both required, neither alone is sufficient.</p>
 <ul>
-<li><strong>mTLS layer</strong> — every QUIC connection and every HTTP request between {client, broker, worker, dashboard} presents an X.509 client certificate. Certificates are issued by an internal CA managed by <a href="https://cert-manager.io/">cert-manager</a> on the deployment cluster; SPIFFE-compatible SAN identities (<code>spiffe://zakuro.ai/ns/&lt;tenant&gt;/sa/&lt;service&gt;</code>) so the SVID model lands cleanly later.</li>
+<li><strong>mTLS layer</strong> — every QUIC connection and every HTTP request between {client, broker, worker, dashboard} presents an X.509 client certificate. Certificates are issued by an internal CA managed by <a href="https://cert-manager.io/">cert-manager</a> on the deployment cluster; SPIFFE-compatible SAN identities (<code>spiffe://zakuro-ai.com/ns/&lt;tenant&gt;/sa/&lt;service&gt;</code>) so the SVID model lands cleanly later.</li>
 <li><strong>JWT layer</strong> — once mTLS verifies the peer, the request carries an <code>Authorization: Bearer &lt;jwt&gt;</code> header. The JWT is short-lived (15 min), signed by a per-cluster Ed25519 key, and carries <code>tenant-id</code>, <code>worker-id</code>, and a <code>scopes</code> claim (<code>exec:fn</code>, <code>exec:cls</code>, <code>admin:credits</code>, ...).</li>
 <li><strong>Refusal semantics</strong> — a worker that receives a connection without a valid client cert closes the QUIC stream before reading any bytes. A worker that receives a valid mTLS connection but a missing / expired / wrong-scope JWT returns 401 / QUIC error code 0x100 with no payload.</li>
 </ul>
