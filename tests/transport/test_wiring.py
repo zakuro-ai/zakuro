@@ -77,7 +77,9 @@ def test_cli_no_ssl_kwargs_when_cert_dir_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("ZAKURO_CERT_DIR", raising=False)
-    monkeypatch.setattr("sys.argv", ["zakuro-worker", "--transport", "http", "--port", "0"])
+    monkeypatch.setattr(
+        "sys.argv", ["zakuro-worker", "--transport", "http", "--port", "0", "--host", "127.0.0.1"]
+    )
     captured: dict[str, object] = {}
 
     def fake_run(*args: object, **kwargs: object) -> None:
@@ -106,6 +108,52 @@ def test_cli_fails_closed_when_cert_dir_missing_files(
     with patch("uvicorn.run") as run, pytest.raises(TlsNotConfiguredError):
         main()
     run.assert_not_called()
+
+
+# ---- HTTP transport (zakuro.worker.server) ----------------------------------
+
+
+def test_server_passes_ssl_kwargs_when_cert_dir_set(
+    monkeypatch: pytest.MonkeyPatch, cert_dir: Path
+) -> None:
+    """uvicorn.run receives ssl_certfile/ssl_keyfile/ssl_ca_certs only when ZAKURO_CERT_DIR is set."""
+    monkeypatch.setenv("ZAKURO_CERT_DIR", str(cert_dir))
+    monkeypatch.setattr("sys.argv", ["zakuro-worker", "--port", "0"])
+    captured: dict[str, object] = {}
+
+    def fake_run(*args: object, **kwargs: object) -> None:
+        captured.update(kwargs)
+
+    with patch("uvicorn.run", side_effect=fake_run):
+        from zakuro.worker.server import main
+
+        main()
+
+    assert captured.get("ssl_certfile") == str(cert_dir / "tls.crt")
+    assert captured.get("ssl_keyfile") == str(cert_dir / "tls.key")
+    assert captured.get("ssl_ca_certs") == str(cert_dir / "ca.crt")
+    # CERT_REQUIRED == 2 in the stdlib
+    assert captured.get("ssl_cert_reqs") == ssl.CERT_REQUIRED
+
+
+def test_server_no_ssl_kwargs_when_cert_dir_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ZAKURO_CERT_DIR", raising=False)
+    monkeypatch.setattr("sys.argv", ["zakuro-worker", "--host", "127.0.0.1", "--port", "0"])
+    captured: dict[str, object] = {}
+
+    def fake_run(*args: object, **kwargs: object) -> None:
+        captured.update(kwargs)
+
+    with patch("uvicorn.run", side_effect=fake_run):
+        from zakuro.worker.server import main
+
+        main()
+
+    assert "ssl_certfile" not in captured
+    assert "ssl_keyfile" not in captured
+    assert "ssl_ca_certs" not in captured
 
 
 # ---- QUIC transport ---------------------------------------------------------

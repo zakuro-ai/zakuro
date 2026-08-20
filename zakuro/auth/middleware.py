@@ -56,7 +56,9 @@ _ANONYMOUS_CLAIMS = Claims(
 
 
 def _auth_required() -> bool:
-    return os.environ.get("ZAKURO_AUTH_REQUIRED", "").strip() in {"1", "true", "yes"}
+    from zakuro.worker.posture import is_auth_required
+
+    return is_auth_required()
 
 
 def _record_failure(reason: str, tenant_id: str = "") -> None:

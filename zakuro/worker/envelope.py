@@ -97,6 +97,17 @@ def unwrap_payload(raw: bytes) -> tuple[bytes, Envelope | None]:
     Raises :class:`EnvelopeRejected` (a :class:`WireError`) on any
     decode / HMAC / config failure.
     """
+    from zakuro.worker.posture import _DEFAULT_MAX_PAYLOAD, StartupConfigError, max_payload_bytes
+
+    try:
+        cap = max_payload_bytes()
+    except StartupConfigError:  # malformed cap at request time — fail closed
+        cap = _DEFAULT_MAX_PAYLOAD
+    if len(raw) > cap:
+        raise EnvelopeRejectedError(
+            f"request body {len(raw)} bytes exceeds ZAKURO_MAX_PAYLOAD_BYTES ({cap})"
+        )
+
     if not is_wire_strict():
         return raw, None
 

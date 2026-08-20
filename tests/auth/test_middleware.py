@@ -110,3 +110,13 @@ def test_rejects_malformed_authorization_header(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setenv("ZAKURO_WORKER_ID", "worker-1")
     r = TestClient(_build_app()).post("/execute", headers={"Authorization": "Basic dXNlcjpwYXNz"})
     assert r.status_code == 401
+
+
+def test_auth_required_delegates_to_posture(monkeypatch: pytest.MonkeyPatch) -> None:
+    from zakuro.auth import middleware
+    from zakuro.worker import posture
+
+    monkeypatch.setenv("ZAKURO_AUTH_REQUIRED", "1")
+    assert middleware._auth_required() is posture.is_auth_required() is True
+    monkeypatch.setenv("ZAKURO_AUTH_REQUIRED", "0")
+    assert middleware._auth_required() is posture.is_auth_required() is False

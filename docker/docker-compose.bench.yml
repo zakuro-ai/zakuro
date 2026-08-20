@@ -73,6 +73,10 @@ services:
       PYTHONUNBUFFERED: "1"
       # Simulated realistic workload (100-500ms)
       ZAKURO_TASK_DELAY: "0.2"  # 200ms average
+      # Dev mesh is network-isolated (tailnet); accept the unauthenticated
+      # /execute surface explicitly. Production sets ZAKURO_WIRE=v1 + a key
+      # or ZAKURO_AUTH_REQUIRED=1 instead.
+      ZAKURO_INSECURE_BIND: "1"
     depends_on:
       postgres:
         condition: service_healthy
