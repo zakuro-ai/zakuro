@@ -2,98 +2,94 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://docs.zakuro-ai.com/latest/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/PROTOCOL/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/STABILITY/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/cli/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/getting-started/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/lxc-reproduction/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/quick-start/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/secrets/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/observability/slos/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/rfcs/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/rfcs/0001-wire-format-postcard/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/rfcs/0002-auth-mtls-jwt/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/rfcs/0003-observability-stack/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/rfcs/0004-deployment-p2p-quic/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/rfcs/0005-credit-ledger-double-entry/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/rfcs/0006-batch-dispatch-async-iterator/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/rfcs/0007-tenant-isolation/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/rfcs/0008-mesh-gossip-swim-quic/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/security/compliance/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/security/pentest-scope/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/security/threat-model/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/security/verifying-releases/</loc>
-         <lastmod>2026-08-20</lastmod>
-    </url>
-    <url>
-         <loc>https://docs.zakuro-ai.com/latest/superpowers/plans/2026-06-27-worker-failclosed-security-defaults/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
     <url>
          <loc>https://docs.zakuro-ai.com/latest/zc-quic-patch/</loc>
-         <lastmod>2026-08-20</lastmod>
+         <lastmod>2026-08-21</lastmod>
     </url>
 </urlset>
