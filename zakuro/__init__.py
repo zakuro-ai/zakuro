@@ -24,6 +24,7 @@ from zakuro.adaptive import AdaptiveCompute, DecisionReplay, replay_decisions
 from zakuro.compute import Compute
 from zakuro.config import Config
 from zakuro.fn import Fn, cls, fn
+from zakuro.model import ChatResult, Model, model
 from zakuro.processors.registry import available_processors
 from zakuro.standalone import detect_backend, is_standalone
 from zakuro.worker.runner import Worker
@@ -37,6 +38,9 @@ __all__ = [
     "Fn",
     "fn",
     "cls",
+    "Model",
+    "ChatResult",
+    "model",
     "available_processors",
     "detect_backend",
     "is_standalone",
