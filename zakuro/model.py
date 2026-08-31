@@ -22,6 +22,7 @@ Broker resolution:
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -80,12 +81,22 @@ class Model:
             bare uuid.
         broker: Optional broker HTTP base URL (e.g. ``"http://host:9000"``).
             When omitted, resolved from :class:`zakuro.config.Config`.
+        api_key: Optional API key sent as ``Authorization: Bearer <key>``.
+            A broker running with auth enabled (the staging/production
+            fleets) rejects ``/infer`` without one; a keyless local broker
+            ignores it. Falls back to the ``ZAKURO_API_KEY`` environment
+            variable, so notebooks and CI never have to inline the secret.
 
     Raises:
         ValueError: If ``uri`` is not a recognized model reference.
     """
 
-    def __init__(self, uri: str, broker: str | None = None) -> None:
+    def __init__(
+        self,
+        uri: str,
+        broker: str | None = None,
+        api_key: str | None = None,
+    ) -> None:
         if not _is_model_uri(uri):
             raise ValueError(
                 f"Invalid model uri: {uri!r}. Expected 'zc://<uuid>', "
@@ -93,6 +104,7 @@ class Model:
             )
         self.uri = uri
         self._broker_override = broker
+        self._api_key = api_key
 
     @property
     def broker_url(self) -> str:
@@ -132,11 +144,17 @@ class Model:
             **params,
         }
 
+        headers = {}
+        api_key = self._api_key or os.environ.get("ZAKURO_API_KEY")
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
         broker_url = self.broker_url
         try:
             response = httpx.post(
                 f"{broker_url}/infer",
                 json=body,
+                headers=headers,
                 timeout=_INFER_TIMEOUT,
             )
         except httpx.HTTPError as exc:
@@ -147,8 +165,7 @@ class Model:
         if response.status_code < 200 or response.status_code >= 300:
             message = _extract_error_message(response)
             raise ModelInferenceError(
-                f"Inference request for model {self.uri} failed "
-                f"({response.status_code}): {message}"
+                f"Inference request for model {self.uri} failed ({response.status_code}): {message}"
             )
 
         data = response.json()
@@ -174,9 +191,9 @@ def _extract_error_message(response: httpx.Response) -> str:
     return response.text
 
 
-def model(uri: str, broker: str | None = None) -> Model:
+def model(uri: str, broker: str | None = None, api_key: str | None = None) -> Model:
     """Construct a :class:`Model` handle for ``uri``.
 
     See :class:`Model` for argument details.
     """
-    return Model(uri, broker=broker)
+    return Model(uri, broker=broker, api_key=api_key)
