@@ -24,7 +24,7 @@ class _FakeResponse:
 def test_chat_posts_to_infer_and_returns_chat_result(monkeypatch):
     captured = {}
 
-    def fake_post(url, json=None, timeout=None):
+    def fake_post(url, json=None, headers=None, timeout=None):
         captured["url"] = url
         captured["json"] = json
         return _FakeResponse(
@@ -75,7 +75,7 @@ def test_valid_model_uri_forms_accepted(uri):
 
 
 def test_404_error_response_surfaces_server_message(monkeypatch):
-    def fake_post(url, json=None, timeout=None):
+    def fake_post(url, json=None, headers=None, timeout=None):
         return _FakeResponse(404, {"error": "no provider serving zc://" + VALID_UUID})
 
     monkeypatch.setattr(httpx, "post", fake_post)
@@ -100,3 +100,45 @@ def test_default_broker_resolved_from_config(monkeypatch):
 
     m = Model(VALID_UUID)
     assert m.broker_url == "http://my.zakuro-ai.com:9000"
+
+
+def test_api_key_argument_sent_as_bearer(monkeypatch):
+    captured = {}
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        captured["headers"] = headers
+        return _FakeResponse(200, {"content": "ok"})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.delenv("ZAKURO_API_KEY", raising=False)
+    zk.model(VALID_UUID, broker="http://b:9000", api_key="zk_1_secret").chat(
+        [{"role": "user", "content": "hi"}]
+    )
+    assert captured["headers"] == {"Authorization": "Bearer zk_1_secret"}
+
+
+def test_api_key_env_fallback(monkeypatch):
+    captured = {}
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        captured["headers"] = headers
+        return _FakeResponse(200, {"content": "ok"})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setenv("ZAKURO_API_KEY", "zk_2_envkey")
+    zk.model(VALID_UUID, broker="http://b:9000").chat([{"role": "user", "content": "hi"}])
+    assert captured["headers"] == {"Authorization": "Bearer zk_2_envkey"}
+
+
+def test_no_api_key_sends_no_auth_header(monkeypatch):
+    # A keyless local broker must keep working exactly as before.
+    captured = {}
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        captured["headers"] = headers
+        return _FakeResponse(200, {"content": "ok"})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.delenv("ZAKURO_API_KEY", raising=False)
+    zk.model(VALID_UUID, broker="http://b:9000").chat([{"role": "user", "content": "hi"}])
+    assert captured["headers"] == {}
