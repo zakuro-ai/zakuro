@@ -23,6 +23,7 @@ from zakuro import public as public  # noqa: F401
 from zakuro.adaptive import AdaptiveCompute, DecisionReplay, replay_decisions
 from zakuro.compute import Compute
 from zakuro.config import Config
+from zakuro.dataset import Dataset, dataset
 from zakuro.fn import Fn, cls, fn
 from zakuro.model import ChatResult, Model, model
 from zakuro.processors.registry import available_processors
@@ -35,6 +36,8 @@ __all__ = [
     "replay_decisions",
     "Compute",
     "Config",
+    "Dataset",
+    "dataset",
     "Fn",
     "fn",
     "cls",
