@@ -112,13 +112,12 @@ def _parse_reference(reference: str) -> tuple[str | None, str | None]:
     """
     if not isinstance(reference, str) or not reference:
         raise ValueError("a dataset reference is required")
-    body = reference[len("zc://"):] if reference.startswith("zc://") else reference
+    body = reference[len("zc://") :] if reference.startswith("zc://") else reference
     if _UUID_RE.match(body):
         return None, body.lower()
     if not reference.startswith("zc://") or "/" not in body:
         raise ValueError(
-            f"not a dataset reference: {reference!r}. "
-            "Expected zc://<owner>/<name> or zc://<uuid>."
+            f"not a dataset reference: {reference!r}. Expected zc://<owner>/<name> or zc://<uuid>."
         )
     return reference, None
 
@@ -138,9 +137,7 @@ def _rows_from_bytes(path: str, payload: bytes) -> list[dict]:
     try:
         text = payload.decode("utf-8")
     except UnicodeDecodeError as exc:
-        raise DatasetFormatError(
-            f"{path} is not UTF-8 text; no reader for it here."
-        ) from exc
+        raise DatasetFormatError(f"{path} is not UTF-8 text; no reader for it here.") from exc
 
     if suffix in _DELIMITERS:
         reader = csv.DictReader(io.StringIO(text), delimiter=_DELIMITERS[suffix])
@@ -180,8 +177,9 @@ class Dataset:
     version simply lands beside the old one rather than invalidating it.
     """
 
-    def __init__(self, reference: str, api_url: str | None = None,
-                 cache_dir: str | Path | None = None) -> None:
+    def __init__(
+        self, reference: str, api_url: str | None = None, cache_dir: str | Path | None = None
+    ) -> None:
         self._reference = reference
         self._canonical, self._uuid = _parse_reference(reference)
         self._api_url = resolve_api_url(api_url)
@@ -190,16 +188,14 @@ class Dataset:
 
     # -- metadata ---------------------------------------------------------
 
-    def _resolved(self) -> dict:
+    def _resolved(self) -> dict[str, Any]:
         if self._meta is not None:
             return self._meta
-        self._meta = (self._resolve_by_uuid() if self._uuid
-                      else self._resolve_by_name())
+        self._meta = self._resolve_by_uuid() if self._uuid else self._resolve_by_name()
         return self._meta
 
     def _resolve_by_name(self) -> dict:
-        r = _get(f"{self._api_url}/api/datasets/resolve",
-                 params={"ref": self._canonical})
+        r = _get(f"{self._api_url}/api/datasets/resolve", params={"ref": self._canonical})
         if r.status_code in (404, 422):
             raise _not_found(self._reference)
         if r.status_code != 200:
@@ -207,9 +203,13 @@ class Dataset:
         body = r.json()
         dataset_id, digest = body["dataset_id"], body["digest"]
         files = self._version_files(dataset_id, digest)
-        return {"dataset_id": dataset_id, "digest": digest,
-                "name": body.get("name", "dataset"), "files": files,
-                "size_bytes": body.get("size_bytes", 0)}
+        return {
+            "dataset_id": dataset_id,
+            "digest": digest,
+            "name": body.get("name", "dataset"),
+            "files": files,
+            "size_bytes": body.get("size_bytes", 0),
+        }
 
     def _resolve_by_uuid(self) -> dict:
         r = _get(f"{self._api_url}/api/datasets/{self._uuid}")
@@ -221,29 +221,33 @@ class Dataset:
         latest = body.get("latest_version")
         if not latest:
             raise DatasetError(f"dataset {self._uuid} has no published version")
-        return {"dataset_id": body["id"], "digest": latest["digest"],
-                "name": body.get("name", "dataset"),
-                "files": latest.get("files", []),
-                "size_bytes": latest.get("size_bytes", 0)}
+        return {
+            "dataset_id": body["id"],
+            "digest": latest["digest"],
+            "name": body.get("name", "dataset"),
+            "files": latest.get("files", []),
+            "size_bytes": latest.get("size_bytes", 0),
+        }
 
     def _version_files(self, dataset_id: str, digest: str) -> list[dict]:
         r = _get(f"{self._api_url}/api/datasets/{dataset_id}/versions/{digest}")
         if r.status_code != 200:
             raise DatasetError(f"could not list files ({r.status_code})")
-        return r.json().get("files", [])
+        files: list[dict] = r.json().get("files", [])
+        return files
 
     @property
     def name(self) -> str:
-        return self._resolved()["name"]
+        return str(self._resolved()["name"])
 
     @property
     def digest(self) -> str:
         """The version digest -- the thing that makes the cache safe."""
-        return self._resolved()["digest"]
+        return str(self._resolved()["digest"])
 
     @property
     def size_bytes(self) -> int:
-        return self._resolved()["size_bytes"]
+        return int(self._resolved()["size_bytes"])
 
     @property
     def files(self) -> list[dict]:
@@ -257,30 +261,33 @@ class Dataset:
     # -- bytes ------------------------------------------------------------
 
     def _pick(self, path: str | None) -> dict:
-        files = self._resolved()["files"]
+        files: list[dict] = self._resolved()["files"]
         if not files:
             raise DatasetError(f"{self._reference} has no files")
         if path is None:
             # Lowest-sorting path, the same tie-break the marketplace's own
             # download route uses, so a single-file dataset always means its
             # one file and a multi-file one is at least predictable.
-            return min(files, key=lambda f: f["path"])
+            chosen: dict = min(files, key=lambda f: f["path"])
+            return chosen
         for f in files:
             if f["path"] == path:
                 return f
         raise FileNotFoundError(
-            f"{path!r} is not in {self._reference}. "
-            f"Available: {sorted(f['path'] for f in files)}"
+            f"{path!r} is not in {self._reference}. Available: {sorted(f['path'] for f in files)}"
         )
 
     def _fetch(self, file: dict) -> bytes:
         """This file's bytes, from the cache when they are already there."""
         target = self._cache_root / self.digest / file["path"]
         if target.exists():
-            return target.read_bytes()
+            data: bytes = target.read_bytes()
+            return data
 
-        url = (f"{self._api_url}/api/datasets/{self._resolved()['dataset_id']}"
-               f"/versions/{self.digest}/files/{file['path']}")
+        url = (
+            f"{self._api_url}/api/datasets/{self._resolved()['dataset_id']}"
+            f"/versions/{self.digest}/files/{file['path']}"
+        )
         r = _get(url)
         if r.status_code == 404:
             raise _not_found(self._reference)
@@ -295,8 +302,7 @@ class Dataset:
                 # The catalogue hands us the hash for free; not checking it
                 # would be choosing not to notice a truncated download.
                 raise OSError(
-                    f"{file['path']}: sha256 mismatch "
-                    f"(expected {expected}, got {actual})"
+                    f"{file['path']}: sha256 mismatch (expected {expected}, got {actual})"
                 )
 
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -329,7 +335,7 @@ class Dataset:
         rows = _rows_from_bytes(file["path"], self._fetch(file))
         return rows[:limit] if limit is not None else rows
 
-    def to_pandas(self, path: str | None = None):
+    def to_pandas(self, path: str | None = None) -> Any:
         """The rows as a ``pandas.DataFrame``.
 
         pandas is not a dependency of the SDK -- the core install is five
@@ -337,11 +343,10 @@ class Dataset:
         this asks for it only when called.
         """
         try:
-            import pandas
+            import pandas  # type: ignore[import-untyped]
         except ImportError as exc:
             raise ImportError(
-                "to_pandas() needs pandas, which zakuro-ai does not install. "
-                "pip install pandas"
+                "to_pandas() needs pandas, which zakuro-ai does not install. pip install pandas"
             ) from exc
         return pandas.DataFrame(self.load(path=path))
 
@@ -349,8 +354,9 @@ class Dataset:
         return f"Dataset({self._reference!r})"
 
 
-def dataset(reference: str, api_url: str | None = None,
-            cache_dir: str | Path | None = None) -> Dataset:
+def dataset(
+    reference: str, api_url: str | None = None, cache_dir: str | Path | None = None
+) -> Dataset:
     """A handle on a public marketplace dataset.
 
     >>> rows = dataset("zc://alice/sentiment-mini").load()
