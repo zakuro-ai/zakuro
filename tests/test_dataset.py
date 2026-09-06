@@ -16,8 +16,14 @@ import httpx
 import pytest
 
 import zakuro as zk
-from zakuro.dataset import (Dataset, DatasetFormatError, DatasetNotFound,
-                            PROD_API_URL, STAGING_API_URL, resolve_api_url)
+from zakuro.dataset import (
+    PROD_API_URL,
+    STAGING_API_URL,
+    Dataset,
+    DatasetFormatError,
+    DatasetNotFoundError,
+    resolve_api_url,
+)
 
 UUID = "e629e662-1d32-4e52-88e9-b0e83416c852"
 DIGEST = "f" * 64
@@ -207,7 +213,7 @@ class TestIntegrity:
         fake_get, _ = _routes(files=[{"path": "d.csv", "sha256": "0" * 64,
                                       "size_bytes": len(CSV)}])
         monkeypatch.setattr(httpx, "get", fake_get)
-        with pytest.raises(IOError, match="sha256"):
+        with pytest.raises(OSError, match="sha256"):
             zk.dataset("zc://alice/d", api_url="http://x",
                        cache_dir=tmp_path).download()
 
@@ -238,7 +244,7 @@ class TestNotFound:
             return _Resp(404, {"detail": {"errors": ["not found"]}})
 
         monkeypatch.setattr(httpx, "get", fake_get)
-        with pytest.raises(DatasetNotFound, match="private"):
+        with pytest.raises(DatasetNotFoundError, match="private"):
             zk.dataset("zc://alice/nope", api_url="http://x",
                        cache_dir=tmp_path).load()
 

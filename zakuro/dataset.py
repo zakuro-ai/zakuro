@@ -12,7 +12,7 @@ snippet with a bearer token in it. This is what that page can point at instead.
 Public datasets only, deliberately. The marketplace accepts a browser session
 and nothing else on its dataset routes — an API key is refused there on
 purpose — so there is no credential this could send that would unlock a
-private dataset. :class:`DatasetNotFound` says that rather than pretending.
+private dataset. :class:`DatasetNotFoundError` says that rather than pretending.
 
 Parsing is the standard library's ``csv`` and ``json``: this module adds no
 dependency to the SDK's core install, which is the reason :meth:`Dataset.load`
@@ -59,7 +59,7 @@ class DatasetError(RuntimeError):
     """Base class for every failure in this module."""
 
 
-class DatasetNotFound(DatasetError):
+class DatasetNotFoundError(DatasetError):
     """No public dataset at that reference."""
 
 
@@ -94,8 +94,8 @@ def _default_cache_dir() -> Path:
     return Path(root) / "zakuro" / "datasets"
 
 
-def _not_found(reference: str) -> DatasetNotFound:
-    return DatasetNotFound(
+def _not_found(reference: str) -> DatasetNotFoundError:
+    return DatasetNotFoundError(
         f"No public dataset at {reference!r}. It may not exist, or it may be "
         "private -- the SDK can only fetch public datasets. Download a private "
         "one from the hub in a browser."
@@ -294,7 +294,7 @@ class Dataset:
             if actual != expected:
                 # The catalogue hands us the hash for free; not checking it
                 # would be choosing not to notice a truncated download.
-                raise IOError(
+                raise OSError(
                     f"{file['path']}: sha256 mismatch "
                     f"(expected {expected}, got {actual})"
                 )
