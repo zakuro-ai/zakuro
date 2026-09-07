@@ -15,7 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.24] - 2026-09-07
+
 ### Added
+- `zk.dataset("zc://owner/name")` — resolve, download and `.load()` marketplace
+  datasets from the SDK; `zc dataset get` is the CLI counterpart ([#257]).
+- `Authorization: Bearer` on `/infer` via `api_key=` or `ZAKURO_API_KEY`, so
+  remote-mode brokers accept SDK inference calls ([#255]).
+- `zakuro-wire` 0.2.0 (EnvelopeV2 / ChunkFrame / V2Message) and a crates.io
+  publish workflow for workspace crates ([#256]).
 - BSD-3-Clause `LICENSE` file ([#236]).
 - Repository governance: `CODEOWNERS`, issue/PR templates, `SECURITY.md`, `CONTRIBUTING.md` ([#223]).
 
