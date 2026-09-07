@@ -1,4 +1,9 @@
 name: Publish Packages
+# Runs on GitHub-hosted runners, NOT the self-hosted `cpu` ARC pool: this is a
+# PUBLIC repo, and the org runner group disallows public repositories on
+# purpose (see the `bench` job in ci.yml — a public repo with self-hosted
+# runners is an RCE vector). Public repos get free hosted minutes, which is
+# also why ci.yml already runs there.
 
 on:
   workflow_dispatch:
@@ -18,7 +23,7 @@ permissions:
 jobs:
   publish-pypi:
     if: inputs.confirm_prod_deployed
-    runs-on: cpu
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: release
     steps:
@@ -44,7 +49,7 @@ jobs:
 
   publish-crate:
     if: inputs.confirm_prod_deployed
-    runs-on: cpu
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: release
     steps:
