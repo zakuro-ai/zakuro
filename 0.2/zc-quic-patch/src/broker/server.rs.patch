@@ -1,0 +1,40 @@
+--- src/broker/server.rs
++++ src/broker/server.rs
+@@ -1,0 +1,0 @@
+ // Routing state used inside handle_execute already has `routing.worker.uri`.
+ // When that URI is `quic://...` we forward through the QUIC pool rather than
+ // ureq. Everything downstream (billing, WAL, latency tracking) is unaffected
+ // because the request & response bodies are byte-identical to HTTP.
+
+ use super::worker_quic::{forward as forward_to_worker_quic, WorkerQuicPool, WorkerQuicError};
+
+ // Add a pool handle to BrokerState:
+ //     pub worker_quic_pool: WorkerQuicPool,
+ //
+ // Initialise it in BrokerState::new() with `WorkerQuicPool::new()`.
+
+@@ -1808,6 +1808,27 @@
+     let worker_uri = format!("{}/execute", routing.worker.uri.trim_end_matches('/'));
+
++    // QUIC path: bypass HTTP if the worker advertises a quic:// endpoint.
++    if routing.worker.uri.starts_with("quic://") {
++        let rt = tokio::runtime::Handle::try_current()
++            .expect("broker must run inside a tokio runtime");
++        let pool = state.worker_quic_pool.clone();
++        let body_owned = body.clone();
++        let request_id_owned = request_id.clone();
++        let result: Result<Vec<u8>, WorkerQuicError> = rt.block_on(forward_to_worker_quic(
++            &pool,
++            &routing.worker.uri,
++            &body_owned,
++            &request_id_owned,
++            effective_timeout,
++        ));
++        match result {
++            Ok(bytes) => return respond_with_bytes(request_id, bytes),
++            Err(WorkerQuicError::UserException(bytes)) => return respond_with_bytes(request_id, bytes),
++            Err(err) => return respond_with_protocol_error(request_id, err.to_string()),
++        }
++    }
++
+     let forward_result = forward_to_worker(&worker_uri, &body, &request_id, effective_timeout);

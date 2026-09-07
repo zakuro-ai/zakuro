@@ -1,0 +1,1371 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Context-aware distributed-ML runtime">
+      
+      
+      
+        <link rel="canonical" href="https://docs.zakuro-ai.com/latest/rfcs/0001-wire-format-postcard/">
+      
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>RFC 0001 — Wire format: replace cloudpickle with postcard - Zakuro</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#rfc-0001-wire-format-replace-cloudpickle-with-postcard" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Zakuro" class="md-header__button md-logo" aria-label="Zakuro" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Zakuro
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              RFC 0001 — Wire format: replace cloudpickle with postcard
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="deep-purple"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/zakuro-ai/zakuro" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    zakuro-ai/zakuro
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../quick-start/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Quick start
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../STABILITY/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../getting-started/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../observability/slos/" class="md-tabs__link">
+          
+  
+  
+  Operations
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../security/verifying-releases/" class="md-tabs__link">
+          
+  
+  
+  Security
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Zakuro" class="md-nav__button md-logo" aria-label="Zakuro" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Zakuro
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/zakuro-ai/zakuro" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    zakuro-ai/zakuro
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick-start/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../STABILITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API stability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../PROTOCOL/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Wire protocol
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../observability/slos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SLOs and burn-rate alerts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../security/verifying-releases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Verifying releases
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../security/threat-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Threat model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../security/compliance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compliance mapping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../security/pentest-scope/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pentest scope
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation plan
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rejected-alternatives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rejected alternatives
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#migration-rollout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration / rollout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions-for-implementation-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open questions for implementation time
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#amendment-v02-wire-174-175" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Amendment — v0.2 wire (#174, #175)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Amendment — v0.2 wire (#174, #175)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#added-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Added types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wire-format-invariants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wire-format invariants
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#backwards-forwards-compat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Backwards / forwards compat
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cache-eviction-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cache eviction policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#delta-apply-algorithm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delta-apply algorithm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#phase-2-substrate-current-vs-phase-2-wiring-next" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase 2 substrate (current) vs Phase 2 wiring (next)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cross-repo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-repo
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/zakuro-ai/zakuro/edit/master/docs/rfcs/0001-wire-format-postcard.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="rfc-0001-wire-format-replace-cloudpickle-with-postcard">RFC 0001 — Wire format: replace cloudpickle with postcard<a class="headerlink" href="#rfc-0001-wire-format-replace-cloudpickle-with-postcard" title="Permanent link">&para;</a></h1>
+<ul>
+<li><strong>Status:</strong> Accepted (2026-05)</li>
+<li><strong>Closes:</strong> <a href="https://github.com/zakuro-ai/zakuro/issues/117">#117</a></li>
+<li><strong>Authors:</strong> Maintainers + AI cleanup-sprint pass</li>
+</ul>
+<h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
+<p>Today <code>zakuro.worker.server</code> and <code>zakuro.client.ZakuroClient</code> ship Python callables across the network using <code>cloudpickle.dumps</code> / <code>cloudpickle.loads</code>. This is:</p>
+<ol>
+<li><strong>An RCE primitive.</strong> <code>cloudpickle.loads</code> on an attacker-influenced byte stream executes arbitrary code in the worker's process. The plugin POC's <a href="https://github.com/zakuro-ai/sakura/blob/master/THREAT_MODEL.md"><code>THREAT_MODEL.md</code></a> calls this out as the highest single-point-of-risk in the runtime.</li>
+<li><strong>The blocker on the Semgrep ratchet.</strong> The <code>zakuro.deserialization.cloudpickle-loads-untrusted</code> rule (<code>.semgrep/zakuro.yml</code>) fires on every <code>cloudpickle.loads</code> call site. The SAST lane is <code>continue-on-error: true</code> <em>because</em> this rule cannot be honoured today. Removing the call sites flips the lane back to strict.</li>
+<li><strong>Cross-language brittle.</strong> A Rust broker (<code>zc</code>) cannot inspect a cloudpickle payload without bundling a CPython interpreter. The postcard pivot is what unlocks the broker doing routing decisions on payload metadata.</li>
+</ol>
+<h2 id="decision">Decision<a class="headerlink" href="#decision" title="Permanent link">&para;</a></h2>
+<p><strong>Adopt <code>postcard</code> (Rust + Python) as the wire format for <code>ExecutionPlan</code>, <code>ExecutionResult</code>, and the function-dispatch envelope. Restrict <code>cloudpickle</code> to a narrow, audited path used only for the <em>callable body</em> of an <code>@zk.fn</code> and only across mTLS-verified trusted peers.</strong></p>
+<p>Specifically:</p>
+<ul>
+<li>The <strong>envelope</strong> (job-id, tenant-id, resource limits, hash of the callable, hash of the args) is postcard-encoded <code>serde</code> structs defined in <code>crates/zakuro-wire</code>.</li>
+<li>The <strong>callable body</strong> (function bytecode + closure cells) and the <strong>args</strong> are carried as opaque <code>bytes</code> fields inside the postcard envelope.</li>
+<li>The body is signed (HMAC with a per-tenant key derived from the JWT — see <a href="../0002-auth-mtls-jwt/">RFC 0002</a>) and the signature is verified before any <code>cloudpickle.loads</code> call.</li>
+<li>A worker that receives an envelope whose signature does not verify drops the payload and emits a security event without invoking the deserialiser.</li>
+</ul>
+<p>Rationale for postcard:</p>
+<ul>
+<li>Already in <code>sakura</code>'s workspace deps (<code>postcard = "1.0"</code>) so the broker can decode without a new external dep.</li>
+<li>Zero-copy on the Rust side; ~2× faster than msgpack for our payload shape.</li>
+<li><code>serde</code>-driven on both ends — a Python binding via PyO3 + <code>serde-pyobject</code> gives ergonomic conversion to/from Pydantic models with no schema duplication.</li>
+<li>Forward-compatibility via <code>#[serde(default)]</code> and the new <code>Variant: Future</code> enum tail — same migration tools as JSON.</li>
+</ul>
+<h2 id="implementation-plan">Implementation plan<a class="headerlink" href="#implementation-plan" title="Permanent link">&para;</a></h2>
+<p><strong>Step 0 — schema crate</strong> (<code>crates/zakuro-wire</code>):</p>
+<ul>
+<li>Define <code>pub struct Envelope</code>, <code>pub struct Job</code>, <code>pub struct Result</code>, <code>pub enum Error</code> with <code>#[derive(Serialize, Deserialize)]</code>.</li>
+<li>Pin postcard to the workspace version. Re-export <code>postcard::to_allocvec</code> / <code>postcard::from_bytes</code> as the only API the binding crate calls.</li>
+<li>Snapshot tests against frozen byte vectors so future schema changes are explicit.</li>
+</ul>
+<p><strong>Step 1 — Python binding</strong> (<code>zakuro/_wire/</code>):</p>
+<ul>
+<li>New tiny extension via PyO3 + <code>serde-pyobject</code> exposing <code>pack(envelope: dict) -&gt; bytes</code> and <code>unpack(blob: bytes) -&gt; dict</code>.</li>
+<li>Wrap into <code>zakuro.wire.safe_loads(blob: bytes, *, public_key) -&gt; Envelope</code> that verifies the HMAC and refuses any unauthenticated input.</li>
+<li>Mark <code>zakuro.wire.unsafe_pickle_load</code> (the cloudpickle fallback) with a deprecation warning and a <code># type: ignore[zakuro-safe-pickle]</code> escape hatch the Semgrep rule already understands.</li>
+</ul>
+<p><strong>Step 2 — replace call sites</strong>:</p>
+<ul>
+<li><code>zakuro/worker/server.py</code> <code>/execute</code> handler — was <code>cloudpickle.loads(payload)</code>. Becomes:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">envelope</span> <span class="o">=</span> <span class="n">zakuro</span><span class="o">.</span><span class="n">wire</span><span class="o">.</span><span class="n">safe_loads</span><span class="p">(</span><span class="n">payload</span><span class="p">,</span> <span class="n">public_key</span><span class="o">=</span><span class="n">tenant_key</span><span class="p">(</span><span class="n">request</span><span class="p">))</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">callable_blob</span> <span class="o">=</span> <span class="n">envelope</span><span class="o">.</span><span class="n">callable</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1"># Inside the verified envelope, cloudpickle.loads is the trusted path.</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">func</span> <span class="o">=</span> <span class="n">cloudpickle</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">callable_blob</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li><code>zakuro/client.py</code> <code>execute()</code> — wrap the cloudpickled callable in <code>Envelope { callable: bytes, args: bytes, ... }</code> and serialise with <code>zakuro.wire.pack(...)</code> before sending.</li>
+<li><code>sakura/dispatch/remote.py:27</code> (the one Semgrep flags) — same shape on the sakura side.</li>
+</ul>
+<p><strong>Step 3 — flip Semgrep to strict</strong>:</p>
+<ul>
+<li>Drop the <code>--error</code>-disabled run in <code>.github/workflows/sast.yml</code>.</li>
+<li>Update <code>.semgrep/zakuro.yml</code> to allow <code>cloudpickle.loads</code> only inside <code>zakuro.wire.*</code> and <code>tests/</code>.</li>
+</ul>
+<p><strong>Step 4 — wire-protocol version bump</strong>:</p>
+<ul>
+<li>Bump the QUIC ALPN to <code>zk-worker-v2</code> so a v1 client cannot accidentally talk to a v2 worker (the v1 payload is raw cloudpickle; v2 is a postcard envelope).</li>
+<li>Document in <a href="../../PROTOCOL/"><code>docs/PROTOCOL.md</code></a> — v2 envelope shape + HMAC verification flow.</li>
+</ul>
+<h2 id="rejected-alternatives">Rejected alternatives<a class="headerlink" href="#rejected-alternatives" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Why rejected</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>msgpack</td>
+<td>Schema-less, but slower than postcard on our payload shape and adds a dep on both sides. Postcard already in workspace.</td>
+</tr>
+<tr>
+<td>protobuf</td>
+<td>Schema-enforced and mature, but the build pipeline cost (proto compilation, generated code in two languages, breaking on schema changes) is high for the marginal benefit.</td>
+</tr>
+<tr>
+<td>Pydantic-only JSON</td>
+<td>Already in deps and human-debuggable, but ~10× slower than postcard at the payload sizes we measure on the bench harness — not acceptable for high-RPS broker dispatch.</td>
+</tr>
+<tr>
+<td>Keep cloudpickle, add mTLS-only peer auth</td>
+<td>Closes the network-attacker case but leaves the in-process / sidecar attacker (someone who can talk to a worker over a Unix socket) with full RCE. Defence-in-depth requires payload-level signing too.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="migration-rollout">Migration / rollout<a class="headerlink" href="#migration-rollout" title="Permanent link">&para;</a></h2>
+<ol>
+<li>RFC merged (this PR).</li>
+<li><code>crates/zakuro-wire</code> lands (Step 0). No runtime callers yet.</li>
+<li>Python binding lands (Step 1). Re-export wired into <code>zakuro.wire</code>; the existing cloudpickle path stays alongside under a feature flag.</li>
+<li>Worker + client switch over (Step 2). End-to-end bench harness checked: round-trip latency stays within −5 % / +5 % of cloudpickle.</li>
+<li>Semgrep ratcheted (Step 3).</li>
+<li>ALPN bump (Step 4) under a deprecation window — v1 supported for two minor releases, removed in the third.</li>
+</ol>
+<h2 id="open-questions-for-implementation-time">Open questions for implementation time<a class="headerlink" href="#open-questions-for-implementation-time" title="Permanent link">&para;</a></h2>
+<ul>
+<li>HMAC key derivation: per-tenant or per-worker? Decision deferred to RFC 0002.</li>
+<li><code>serde-pyobject</code> vs a hand-rolled <code>From&lt;PyAny&gt;</code> impl: defer to first implementation PR; benchmark both.</li>
+<li>Compression (zstd?) on the envelope's <code>args</code> field for ML payloads: defer to a separate "wire payload size" investigation once v2 is live.</li>
+</ul>
+<h2 id="amendment-v02-wire-174-175">Amendment — v0.2 wire (#174, #175)<a class="headerlink" href="#amendment-v02-wire-174-175" title="Permanent link">&para;</a></h2>
+<p><strong>Status:</strong> Accepted (2026-05). Crate version bumped to <code>zakuro-wire = 0.2.0</code>.</p>
+<p>v0.2 introduces three new types alongside (not replacing) the v0.1 <code>Envelope</code>. v0.1 callers stay byte-compatible; v0.2-capable workers accept both.</p>
+<h3 id="added-types">Added types<a class="headerlink" href="#added-types" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>EnvelopeV2</code> — same shape as <code>Envelope</code> plus:</li>
+<li><code>cache_key: Option&lt;String&gt;</code> — when present, the worker stores the (reconstructed) callable bytes in its bounded LRU under this key.</li>
+<li><code>delta_against: Option&lt;String&gt;</code> — when present, <code>callable</code> is a delta against the value cached under this key. The worker reconstructs the full payload before invoking the deserialiser. Cache-miss is signalled as <code>ErrorKind::WorkerUnavailable { reason: "cache_miss" }</code>; the caller retries with the full payload.</li>
+<li><code>ChunkFrame</code> — one frame in a multi-chunk streaming dispatch:</li>
+<li><code>stream_id: u64</code> — distinguishes concurrent chunked dispatches.</li>
+<li><code>seq: u32</code> — 0-indexed monotonic sequence within the stream.</li>
+<li><code>last: bool</code> — true on the final chunk; triggers reassembly.</li>
+<li><code>bytes: Vec&lt;u8&gt;</code> — chunk payload. Concatenation in <code>seq</code> order yields a postcard-encoded <code>EnvelopeV2</code>.</li>
+<li><code>V2Message</code> — top-level enum: <code>Envelope(EnvelopeV2)</code> or <code>Chunk(ChunkFrame)</code>. Callers serialise this so the worker dispatches on the variant tag.</li>
+</ul>
+<h3 id="wire-format-invariants">Wire-format invariants<a class="headerlink" href="#wire-format-invariants" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>Envelope</code> v0.1 byte layout is <strong>unchanged</strong>. A regression test (<code>v1_envelope_first_byte_unchanged</code>) asserts the first byte is still <code>0x00</code>.</li>
+<li><code>EnvelopeV2</code> starts with <code>0x01</code> (<code>WireVersion::V2</code>). v0.1 workers reject this as <code>UnknownWireVersion</code>.</li>
+<li><code>Option&lt;String&gt;</code> follows postcard convention: <code>0x00</code> = None; <code>0x01</code> + length-prefixed UTF-8 when Some. A None-valued v0.2 envelope is byte-shorter than a Some-valued one (regression test asserts this so an absent-deltas dispatch isn't unfairly penalised).</li>
+</ul>
+<h3 id="backwards-forwards-compat">Backwards / forwards compat<a class="headerlink" href="#backwards-forwards-compat" title="Permanent link">&para;</a></h3>
+<ul>
+<li>A v0.1 broker dispatching v0.1 <code>Envelope</code>s to a v0.2 worker → works unchanged.</li>
+<li>A v0.2 broker dispatching <code>EnvelopeV2</code> to a v0.1 worker → worker rejects with <code>UnknownWireVersion</code> (the first-byte tag is <code>0x01</code>, which doesn't exist in v0.1's <code>WireVersion</code> enum). Broker falls back to v0.1 <code>Envelope</code> per the worker's <code>/info</code>-advertised wire-version (forthcoming claim on <code>/info</code>).</li>
+<li>A v0.2 broker dispatching <code>EnvelopeV2</code> with <code>delta_against: Some(...)</code> to a v0.2 worker whose cache is cold → worker replies <code>WorkerUnavailable { reason: "cache_miss" }</code>; broker retries with full payload (no delta).</li>
+</ul>
+<h3 id="cache-eviction-policy">Cache eviction policy<a class="headerlink" href="#cache-eviction-policy" title="Permanent link">&para;</a></h3>
+<p>Cache lives on the worker, bounded by an LRU of N entries × cap-per-entry, both configurable via <code>ZAKURO_CACHE_MAX_ENTRIES</code> / <code>ZAKURO_CACHE_MAX_BYTES</code>. Defaults: 32 entries / 4 GB. Eviction is silent — callers that suffer a cache-miss on a delta retry with the full payload, which is the same code path as never having cached.</p>
+<p>Implementation: <a href="https://github.com/zakuro-ai/zakuro/blob/master/zakuro/wire/cache.py"><code>zakuro.wire.cache.PayloadCache</code></a> (an ordered-dict LRU; promotes on <code>get</code>; evicts oldest entry on either cap violation; refuses to admit a single value larger than the bytes budget).</p>
+<h3 id="delta-apply-algorithm">Delta-apply algorithm<a class="headerlink" href="#delta-apply-algorithm" title="Permanent link">&para;</a></h3>
+<p>The wire crate carries <code>callable</code> bytes opaquely. When <code>delta_against = Some(prev_key)</code>, the worker reconstructs:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">full</span> <span class="o">=</span> <span class="n">bsdiff4</span><span class="o">.</span><span class="n">patch</span><span class="p">(</span><span class="n">cache</span><span class="p">[</span><span class="n">prev_key</span><span class="p">],</span> <span class="n">envelope</span><span class="o">.</span><span class="n">callable</span><span class="p">)</span>
+</code></pre></div>
+<p><strong>Format choice: bsdiff4.</strong> Reasoning:</p>
+<ul>
+<li>It's well-established (the format <code>bsdiff</code>+<code>bspatch</code> use, in production since 2003).</li>
+<li><code>bsdiff4</code> ships as a pure-Python lib with a tiny C accelerator; &lt;50 KB wheel.</li>
+<li>It produces meaningfully smaller deltas than <code>zstd --train</code> for binary state-dicts where most bytes carry small numeric changes (the common case in fine-tuning).</li>
+<li>It's <em>not</em> tensor-aware — a future tensor-aware diff (e.g. quantised-residual or low-rank delta) could supplant it. When that happens we add a <code>delta_format: Option&lt;DeltaFormat&gt;</code> field to EnvelopeV2 and gate selection on it. For v0.2 we hard-code bsdiff4.</li>
+</ul>
+<p>The delta isn't authenticated by itself: the HMAC over <code>(callable, args, job_id)</code> in the envelope covers the <em>delta bytes</em> as they arrive. A reconstructed payload that doesn't match the broker's intent produces a different HMAC than the broker computed, so <code>safe_loads</code> rejects with <code>HmacMismatchError</code> before the bytes reach cloudpickle. The cache layer is not the security boundary.</p>
+<h3 id="phase-2-substrate-current-vs-phase-2-wiring-next">Phase 2 substrate (current) vs Phase 2 wiring (next)<a class="headerlink" href="#phase-2-substrate-current-vs-phase-2-wiring-next" title="Permanent link">&para;</a></h3>
+<p>The substrate ships in two slices:</p>
+<ol>
+<li><strong>Substrate (this PR / #174 Phase 2 substrate):</strong> <code>zakuro/wire/cache.py</code> with <code>PayloadCache</code> LRU + <code>apply_delta</code> (bsdiff4). 15 unit tests. Module is standalone; no worker integration yet.</li>
+<li><strong>Wiring (next PR, after #200 lands):</strong> the QUIC handler's <code>_handle_chunk</code> calls <code>cache.get(env.delta_against)</code> + <code>apply_delta</code> before forwarding to the executor; <code>cache.put(env.cache_key, callable_bytes)</code> after successful dispatch. Cache miss / DeltaApplyError surface as <code>WorkerUnavailable { reason: "cache_miss" }</code> so the broker retries with the full payload.</li>
+</ol>
+<p>This split mirrors the #115 / #116 / #117 substrate-vs-wiring pattern: the substrate has its own narrow tests; the wiring exercises the end-to-end flow.</p>
+<h3 id="cross-repo">Cross-repo<a class="headerlink" href="#cross-repo" title="Permanent link">&para;</a></h3>
+<p><code>zc</code> adopts <code>zakuro-wire = 0.2.0</code> simultaneously per the multi-repo coherence rule. The integration test in <code>.github/workflows/integration.yml</code> covers the matrix: v0.1 broker × v0.1 worker (today), v0.1 broker × v0.2 worker (back-compat), and v0.2 broker × v0.2 worker (new path) once the matrix expands.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      BSD-3-Clause
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.action.edit", "search.suggest", "search.highlight", "search.share"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
