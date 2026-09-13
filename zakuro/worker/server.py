@@ -24,6 +24,7 @@ import contextlib
 
 from fastapi import Depends
 
+from zakuro import __version__
 from zakuro.auth import Claims, require_jwt_scope
 from zakuro.observability import (
     init_logging,
@@ -57,7 +58,7 @@ instrument_httpx()  # outbound calls carry W3C traceparent for cross-hop stitchi
 app = FastAPI(
     title="Zakuro Worker",
     description="Worker node for Zakuro distributed computing",
-    version="0.2.0",
+    version=__version__,
 )
 
 # /metrics endpoint, no-op when prometheus_client is not installed. Once
@@ -143,7 +144,7 @@ async def _check_storage_reachable() -> tuple[bool, str | None]:
     if not endpoint or not access_key or not secret_key:
         return True, None
     try:
-        from minio import Minio  # type: ignore[import-not-found]
+        from minio import Minio
 
         client = Minio(
             endpoint,
@@ -291,7 +292,7 @@ async def info(
     return {
         "name": worker_name,
         "worker_type": os.environ.get("ZAKURO_WORKER_TYPE", "zakuro"),
-        "version": "0.2.0",
+        "version": __version__,
         "resources": {
             "cpus_total": float(cpus),
             "cpus_available": float(cpus),
@@ -386,7 +387,7 @@ async def root() -> dict[str, str]:
     """Root endpoint."""
     return {
         "service": "Zakuro Worker",
-        "version": "0.2.0",
+        "version": __version__,
         "docs": "/docs",
     }
 
@@ -407,11 +408,44 @@ def main() -> None:
     if args.worker_name:
         os.environ["ZAKURO_WORKER_NAME"] = args.worker_name
 
+    from zakuro.worker.posture import (
+        InsecureBindError,
+        StartupConfigError,
+        resolve_listener,
+    )
+
+    try:
+        host = resolve_listener(args.host, args.port)
+    except (InsecureBindError, StartupConfigError) as exc:
+        raise SystemExit(str(exc)) from exc
+
+    # mTLS rollout (#115 Phase 2): honour ZAKURO_CERT_DIR identically to the
+    # `zakuro-worker` CLI. The bind guard (zakuro.worker.posture) treats a
+    # configured cert dir as caller-authenticating, so this listener MUST
+    # actually terminate mutual TLS when it is set. The kwargs type is shared
+    # with zakuro/worker/cli.py so the two cannot drift.
+    from zakuro.worker.cli import SSLKwargs
+
+    ssl_kwargs: SSLKwargs = {}
+    if os.environ.get("ZAKURO_CERT_DIR", "").strip():
+        # Defer the import: zakuro.transport pulls in cryptography.
+        from zakuro.transport import load_server_tls
+
+        material = load_server_tls()
+        ssl_kwargs = {
+            "ssl_certfile": str(material.cert_path),
+            "ssl_keyfile": str(material.key_path),
+            "ssl_ca_certs": str(material.ca_bundle_path),
+            # uvicorn accepts ssl.CERT_REQUIRED as int (2) -> require client certs.
+            "ssl_cert_reqs": 2,
+        }
+
     uvicorn.run(
         "zakuro.worker.server:app",
-        host=args.host,
+        host=host,
         port=args.port,
         reload=False,
+        **ssl_kwargs,
     )
 
 

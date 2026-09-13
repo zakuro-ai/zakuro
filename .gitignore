@@ -24,6 +24,8 @@ dist/
 # Testing
 .pytest_cache/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
 .tox/
 
@@ -51,3 +53,7 @@ docker/.env
 # Rust build output
 target/
 
+# Local planning docs (superpowers) — kept out of the repo
+docs/superpowers/
+**/docs/superpowers/
+.superpowers/

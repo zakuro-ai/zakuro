@@ -19,6 +19,10 @@ x-worker-common: &worker-common
     ZAKURO_AUTH: ${ZAKURO_AUTH:-demo}
     ZAKURO_BROKER_URL: http://broker:9000
     PYTHONUNBUFFERED: "1"
+    # Dev mesh is network-isolated (tailnet); accept the unauthenticated
+    # /execute surface explicitly. Production sets ZAKURO_WIRE=v1 + a key
+    # or ZAKURO_AUTH_REQUIRED=1 instead.
+    ZAKURO_INSECURE_BIND: "1"
   depends_on:
     - broker
   networks:

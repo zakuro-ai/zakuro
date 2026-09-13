@@ -22,7 +22,7 @@ The user picked the **hybrid** approach over OTel-only or Sentry-extended in the
 | **Logs** | structlog JSON | [`structlog`](https://www.structlog.org/) | stdout → fluentbit/vector → backend of choice |
 | **Metrics** | Prometheus | [`prometheus_client`](https://github.com/prometheus/client_python) | scrape `/metrics` on the worker + broker |
 | **Traces** | OpenTelemetry | `opentelemetry-sdk` + `opentelemetry-exporter-otlp` | OTLP/HTTP to a collector |
-| **Errors** | Sentry (existing) | `sentry-sdk` (already wired) | sentry.zakuro.ai |
+| **Errors** | Sentry (existing) | `sentry-sdk` (already wired) | sentry.zakuro-ai.com |
 
 A single shared `request_context` (request-id, tenant-id, worker-id, trace-id, span-id) propagates across all four sinks so a log line, a metric label, a span, and a Sentry event for the same request can be correlated by joining on `request-id`.
 

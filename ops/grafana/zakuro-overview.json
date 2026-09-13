@@ -1,7 +1,7 @@
 {
   "uid": "zakuro-overview",
   "title": "Zakuro — runtime overview",
-  "description": "Runtime SLO + supporting-metric overview for the Zakuro worker fleet. Owners: oncall@zakuro.ai. Source-of-truth: ops/grafana/zakuro-overview.json on master — edit there, not in the Grafana UI.",
+  "description": "Runtime SLO + supporting-metric overview for the Zakuro worker fleet. Owners: oncall@zakuro-ai.com. Source-of-truth: ops/grafana/zakuro-overview.json on master — edit there, not in the Grafana UI.",
   "tags": ["zakuro", "slo", "runtime"],
   "timezone": "browser",
   "schemaVersion": 39,

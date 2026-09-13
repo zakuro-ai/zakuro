@@ -34,6 +34,8 @@ except ImportError as exc:  # pragma: no cover
         "QUIC worker transport requires aioquic; install the `[worker]` extra."
     ) from exc
 
+from zakuro import __version__
+
 logger = logging.getLogger(__name__)
 
 OP_EXECUTE = 1
@@ -117,7 +119,7 @@ def _info_payload() -> bytes:
         {
             "name": os.environ.get("ZAKURO_WORKER_NAME", f"worker-{platform.node()}"),
             "worker_type": os.environ.get("ZAKURO_WORKER_TYPE", "zakuro"),
-            "version": "0.2.0",
+            "version": __version__,
             "transport": "quic",
             "resources": {
                 "cpus_total": float(cpus),
@@ -379,7 +381,17 @@ def main() -> None:
     if args.worker_name:
         os.environ["ZAKURO_WORKER_NAME"] = args.worker_name
     logging.basicConfig(level=logging.INFO)
-    run_quic_worker(host=args.host, port=args.port)
+    from zakuro.worker.posture import (
+        InsecureBindError,
+        StartupConfigError,
+        resolve_listener,
+    )
+
+    try:
+        host = resolve_listener(args.host, args.port)
+    except (InsecureBindError, StartupConfigError) as exc:
+        raise SystemExit(str(exc)) from exc
+    run_quic_worker(host=host, port=args.port)
 
 
 if __name__ == "__main__":

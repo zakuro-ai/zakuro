@@ -202,14 +202,14 @@ import zakuro as zk
 result = zk.fn(lambda x: x ** 2).to(zk.Compute(uri="zakuro://127.0.0.1:3961"))(7)
 ```
 
-### Expose a worker over Tailscale / remote network
+### Expose a worker over the mesh / remote network
 
 ```bash
 ZAKURO_WORKER_NAME=gpu-01 ZAKURO_WORKER_TAGS=gpu,a100 \
   zakuro-worker --host 0.0.0.0 --port 3960
 ```
 
-Clients reach it via `zakuro://gpu-01.<tailnet>:3960` (or whatever FQDN/IP resolves).
+Clients reach it via `zakuro://<mesh-ip>:3960` (or whatever FQDN/IP resolves).
 
 ### Dockerized worker
 

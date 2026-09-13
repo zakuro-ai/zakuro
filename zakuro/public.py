@@ -22,11 +22,11 @@ versions may add new symbols but never remove existing ones.
 from __future__ import annotations
 
 from zakuro import __build__, __version__
-from zakuro.adaptive import AdaptiveCompute
+from zakuro.adaptive import AdaptiveCompute, DecisionReplay, replay_decisions
 from zakuro.compute import Compute
 from zakuro.config import Config
+from zakuro.dataset import Dataset, dataset
 from zakuro.fn import Fn, cls, fn
-from zakuro.replay import DecisionLogSummary, replay_decisions
 from zakuro.standalone import detect_backend, is_standalone
 from zakuro.worker.runner import Worker
 
@@ -36,16 +36,17 @@ __all__ = [
     "cls",
     # core types
     "Compute",
+    "Dataset",
+    "dataset",
     "AdaptiveCompute",
+    "DecisionReplay",
+    "replay_decisions",
     "Fn",
     "Worker",
     "Config",
     # helpers
     "detect_backend",
     "is_standalone",
-    # allocator decision-log replay
-    "replay_decisions",
-    "DecisionLogSummary",
     # version
     "__version__",
     "__build__",

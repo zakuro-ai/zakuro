@@ -238,9 +238,9 @@ class TestBrokerProcessor:
 
     def test_parse_uri(self) -> None:
         """Test parsing broker URI."""
-        config = ProcessorConfig.from_uri("zc://broker.zakuro.ai:9000")
+        config = ProcessorConfig.from_uri("zc://broker.zakuro-ai.com:9000")
         assert config.scheme == "zc"
-        assert config.host == "broker.zakuro.ai"
+        assert config.host == "broker.zakuro-ai.com"
         assert config.port == 9000
 
 

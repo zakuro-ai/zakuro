@@ -1,0 +1,75 @@
+name: Publish crate (crates.io)
+
+# Publishes a workspace crate to crates.io. Separate from publish.yml, which
+# handles PyPI on a release-branch flow -- this one is dispatched on demand
+# because crate publishes are one-off and irreversible (a version can be
+# yanked but never deleted or replaced).
+#
+# Why this exists: zakuro-ai/zc cannot be published to crates.io while its
+# manifest declares git dependencies -- cargo rejects the whole manifest with
+# "all dependencies must have a version specified when publishing". zc depends
+# on zakuro-wire by git rev, so zakuro-wire must be on crates.io before zc2 can
+# be. See zakuro-ai/zc#104.
+#
+# Requires the CARGO_REGISTRY_TOKEN secret on this repo (the `release`
+# environment). It is intentionally not defaulted or inherited -- the job fails
+# loudly if it is missing rather than half-running.
+
+on:
+  workflow_dispatch:
+    inputs:
+      crate:
+        description: "Workspace crate to publish"
+        required: true
+        default: "zakuro-wire"
+      dry_run:
+        description: "Package and validate only; do not upload"
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: cpu
+    timeout-minutes: 20
+    environment: release
+    # The ephemeral ARC (dind) runner does not always export $HOME, which
+    # aborts cargo and `git config --global` with "$HOME not set".
+    env:
+      HOME: /home/runner
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      # The ARC image ships no Rust toolchain.
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
+        with:
+          toolchain: "stable"
+
+      - name: Show what will be published
+        run: |
+          set -euo pipefail
+          cargo package --list -p "${{ inputs.crate }}" | head -40
+          echo "---"
+          cargo metadata --no-deps --format-version 1 \
+            | python3 -c "import json,sys; p=[x for x in json.load(sys.stdin)['packages'] if x['name']=='${{ inputs.crate }}'][0]; print('version:', p['version']); print('license:', p.get('license')); print('deps:', [d['name'] for d in p['deps']] if 'deps' in p else [d['name'] for d in p['dependencies']])"
+
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "::error::CARGO_REGISTRY_TOKEN is not set on this repo. Add it to the 'release' environment (or repo secrets) before publishing."
+            exit 1
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run -- packaging and validating only."
+            cargo publish --dry-run -p "${{ inputs.crate }}"
+          else
+            cargo publish -p "${{ inputs.crate }}" --token "$CARGO_REGISTRY_TOKEN"
+          fi

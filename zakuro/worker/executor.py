@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import cloudpickle
 
@@ -32,7 +32,7 @@ def execute_function(payload: bytes) -> bytes:
             kwargs = data.get("kwargs", {})
 
             result = func(*args, **kwargs)
-            return cloudpickle.dumps(result)
+            return cast(bytes, cloudpickle.dumps(result))
 
         elif action == "create_instance":
             # Class instantiation
@@ -50,7 +50,7 @@ def execute_function(payload: bytes) -> bytes:
                 instance_id = client_id
             else:
                 instance_id = _store_instance(instance)
-            return cloudpickle.dumps({"instance_id": instance_id})
+            return cast(bytes, cloudpickle.dumps({"instance_id": instance_id}))
 
         elif action == "call_method":
             # Method call on stored instance
@@ -62,14 +62,14 @@ def execute_function(payload: bytes) -> bytes:
             instance = _get_instance(instance_id)
             method = getattr(instance, method_name)
             result = method(*args, **kwargs)
-            return cloudpickle.dumps(result)
+            return cast(bytes, cloudpickle.dumps(result))
 
         else:
             raise ValueError(f"Unknown action: {action}")
 
     except Exception as e:
         # Return exception to be raised on client
-        return cloudpickle.dumps(e)
+        return cast(bytes, cloudpickle.dumps(e))
 
 
 # Simple in-memory instance storage

@@ -1,6 +1,6 @@
 # SLOs and burn-rate alerts
 
-**Status:** Initial (2026-05). Maintainer: oncall@zakuro.ai. Refresh cadence: every release with measured-numbers data; threshold review quarterly.
+**Status:** Initial (2026-05). Maintainer: oncall@zakuro-ai.com. Refresh cadence: every release with measured-numbers data; threshold review quarterly.
 
 Closes [#127](https://github.com/zakuro-ai/zakuro/issues/127). Wires the Prometheus metrics from [PR #185 / #124](https://github.com/zakuro-ai/zakuro/pull/185) into a Service-Level Objective set and the burn-rate alerts that page oncall when an SLO is being eaten faster than the error budget allows.
 

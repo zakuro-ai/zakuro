@@ -43,7 +43,21 @@ except ImportError:  # pragma: no cover - exercised only without the extra
     _ENABLED = False
 
     # Stub the names we re-export so type checkers / callers don't break.
+    # The collectors are instantiated unconditionally at import time (e.g.
+    # ``Counter(name, doc, labelnames=...)`` below), so the stub MUST accept the
+    # same constructor arguments — otherwise importing this module without
+    # ``prometheus_client`` raises ``TypeError: _NoopMetric() takes no arguments``
+    # and every worker that imports metrics (the default HTTP/FastAPI server)
+    # crashes on startup.
     class _NoopMetric:
+        # Constructed exactly like a real prometheus metric, e.g.
+        # ``Counter("name", "desc", ["label"])`` — must accept those args (and
+        # any keyword args like ``registry=``/``buckets=``) without error, or
+        # the module-level metric definitions below raise ``TypeError`` and the
+        # whole process (e.g. the worker) fails to import when prometheus_client
+        # is not installed.
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None: ...
+
         def labels(self, *_args: Any, **_kwargs: Any) -> _NoopMetric:
             return self
 

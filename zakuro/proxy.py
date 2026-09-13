@@ -92,6 +92,8 @@ class RemoteProxy(Generic[T]):
         kwargs: dict[str, Any],
     ) -> Any:
         """Call a method on the remote instance."""
+        if self._instance_id is None:
+            raise RuntimeError("Remote instance is not initialised (no instance_id)")
         payload = cloudpickle.dumps(
             {
                 "action": "call_method",

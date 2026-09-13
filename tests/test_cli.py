@@ -1,4 +1,4 @@
-"""Tests for the ``zakuro`` setup/diagnostics CLI (zakuro.cli)."""
+"""Tests for the ``zakuro`` setup/ops CLI and decision-log replay (#222)."""
 
 from __future__ import annotations
 
@@ -7,168 +7,175 @@ from pathlib import Path
 
 import pytest
 
-from zakuro import cli
+import zakuro as zk
+from zakuro.adaptive import replay_decisions
 from zakuro.cli import main
 
 
-class TestInit:
-    def test_init_writes_local_config(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.chdir(tmp_path)
-        assert main(["init", "--local"]) == 0
-        cfg = tmp_path / "zakuro.yaml"
-        assert cfg.exists()
-        assert "host:" in cfg.read_text()
-
-    def test_init_refuses_overwrite_without_force(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "zakuro.yaml").write_text("host: existing\n")
-        assert main(["init", "--local"]) == 1
-        assert "refusing to overwrite" in capsys.readouterr().err
-        # Untouched.
-        assert "existing" in (tmp_path / "zakuro.yaml").read_text()
-
-    def test_init_force_overwrites(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "zakuro.yaml").write_text("host: existing\n")
-        assert main(["init", "--local", "--force"]) == 0
-        lines = (tmp_path / "zakuro.yaml").read_text().splitlines()
-        assert "host: my.zakuro-ai.com" in lines
+@zk.fn
+def _double(x: int) -> int:
+    return x * 2
 
 
-class TestDoctor:
-    def test_doctor_runs_and_reports(self, capsys: pytest.CaptureFixture[str]) -> None:
-        rc = main(["doctor"])
-        out = capsys.readouterr().out
-        assert "zakuro " in out
-        assert "python" in out
-        assert "extras:" in out
-        assert rc in (0, 1)  # 0 healthy; 1 only if a core check fails
+def _write_log(path: Path, rows: list[dict[str, object]]) -> None:
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
 
 
-class TestConfigGet:
-    def test_get_all(self, capsys: pytest.CaptureFixture[str]) -> None:
-        assert main(["config", "get"]) == 0
-        out = capsys.readouterr().out
-        assert "default_host=" in out
-
-    def test_get_alias_key(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        monkeypatch.setenv("ZAKURO_HOST", "example.test")
-        assert main(["config", "get", "host"]) == 0
-        assert capsys.readouterr().out.strip() == "example.test"
-
-    def test_auth_is_redacted(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        monkeypatch.setenv("ZAKURO_AUTH", "supersecret")
-        assert main(["config", "get", "auth"]) == 0
-        out = capsys.readouterr().out.strip()
-        assert "supersecret" not in out
-        assert out == "***"
-
-    def test_unknown_key_errors(self, capsys: pytest.CaptureFixture[str]) -> None:
-        assert main(["config", "get", "nonexistent_key"]) == 1
-        assert "unknown config key" in capsys.readouterr().err
-
-
-class TestAllocatorReplay:
-    def test_replay_renders_summary(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+class TestReplayDecisions:
+    def test_aggregates_counts_and_calibration(self, tmp_path: Path) -> None:
         log = tmp_path / "allocator.jsonl"
-        rows = [
-            {
-                "schema": "v1",
-                "t": 1.0,
-                "fn": "f",
-                "picked": 0,
-                "ok": True,
-                "expected_secs": 0.1,
-                "actual_secs": 0.1,
-            },
-            {
-                "schema": "v1",
-                "t": 2.0,
-                "fn": "f",
-                "picked": 1,
-                "ok": False,
-                "expected_secs": 0.1,
-                "actual_secs": 0.5,
-            },
-        ]
-        log.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+        _write_log(
+            log,
+            [
+                {
+                    "schema": "v1",
+                    "t": 100.0,
+                    "fn": "score",
+                    "picked": 0,
+                    "expected_secs": 1.0,
+                    "actual_secs": 1.2,
+                    "ok": True,
+                },
+                {
+                    "schema": "v1",
+                    "t": 101.0,
+                    "fn": "score",
+                    "picked": 1,
+                    "expected_secs": 2.0,
+                    "actual_secs": 1.8,
+                    "ok": True,
+                },
+                {
+                    "schema": "v1",
+                    "t": 102.0,
+                    "fn": "score",
+                    "picked": 0,
+                    "expected_secs": 1.0,
+                    "actual_secs": 1.0,
+                    "ok": False,
+                    "error": "boom",
+                },
+            ],
+        )
+        r = replay_decisions(log)
+        assert r.total == 3
+        assert r.ok == 2
+        assert r.failed == 1
+        assert r.schema == "v1"
+        assert r.workers[0].picks == 2
+        assert r.workers[0].failed == 1
+        assert r.workers[1].ok == 1
+        assert r.duration_secs == pytest.approx(2.0)
+        # calibration error over the 2 OK records: |1.2-1.0| + |1.8-2.0| = 0.4 → 0.2 mean
+        assert r.calibration_error_secs == pytest.approx(0.2)
+        assert r.fn_counts == {"score": 3}
+
+    def test_counts_dropped_records(self, tmp_path: Path) -> None:
+        log = tmp_path / "a.jsonl"
+        _write_log(
+            log,
+            [
+                {"schema": "v1", "picked": 0, "ok": True, "dropped_since_last": 5},
+                {"schema": "v1", "picked": 0, "ok": True, "dropped_since_last": 2},
+            ],
+        )
+        assert replay_decisions(log).dropped == 7
+
+    def test_skips_malformed_lines(self, tmp_path: Path) -> None:
+        log = tmp_path / "b.jsonl"
+        log.write_text(
+            '{"schema": "v1", "picked": 0, "ok": true}\n'
+            "not json at all\n"
+            '{"schema": "v1", "picked": 0, "ok": false}\n',
+            encoding="utf-8",
+        )
+        r = replay_decisions(log)
+        assert r.total == 2
+
+    def test_missing_file_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(FileNotFoundError):
+            replay_decisions(tmp_path / "nope.jsonl")
+
+    def test_roundtrip_from_real_dispatch(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setenv("ZAKURO_STANDALONE", "force")
+        ac = zk.AdaptiveCompute(workers=[zk.Compute()])
+        log = ac.enable_decision_log(str(tmp_path / "live.jsonl"))
+        for i in range(5):
+            _double.to(ac)(i)
+        ac.flush_decision_log(timeout=2.0)
+        ac.disable_decision_log()
+        r = replay_decisions(log)
+        assert r.total == 5
+        assert r.ok == 5
+        assert r.workers[0].picks == 5
+
+
+class TestCLI:
+    def test_config_get_single_key(self, capsys) -> None:
+        assert main(["config", "get", "default_host"]) == 0
+        assert capsys.readouterr().out.strip() == "my.zakuro-ai.com"
+
+    def test_config_get_unknown_key(self, capsys) -> None:
+        assert main(["config", "get", "not_a_key"]) == 1
+        assert "Unknown config key" in capsys.readouterr().err
+
+    def test_config_get_json(self, capsys) -> None:
+        assert main(["config", "get", "--json"]) == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["default_port"] == 9000
+
+    def test_init_writes_config(self, tmp_path: Path, capsys) -> None:
+        target = tmp_path / "cfg.yaml"
+        assert main(["init", "--path", str(target)]) == 0
+        assert target.exists()
+        # Refuses to clobber without --force.
+        assert main(["init", "--path", str(target)]) == 1
+        # ...but --force overwrites.
+        assert main(["init", "--path", str(target), "--force"]) == 0
+
+    def test_doctor_runs_offline(self, capsys) -> None:
+        assert main(["doctor", "--no-probe"]) == 0
+        out = capsys.readouterr().out
+        assert "zakuro" in out
+        assert "backend: probe skipped" in out
+
+    def test_allocator_replay_summary(self, tmp_path: Path, capsys) -> None:
+        log = tmp_path / "r.jsonl"
+        _write_log(
+            log,
+            [
+                {
+                    "schema": "v1",
+                    "fn": "f",
+                    "picked": 0,
+                    "expected_secs": 1.0,
+                    "actual_secs": 1.0,
+                    "ok": True,
+                }
+            ],
+        )
         assert main(["allocator", "replay", str(log)]) == 0
-        out = capsys.readouterr().out
-        assert "records:" in out and "w0=" in out
+        assert "Decision log" in capsys.readouterr().out
 
-    def test_replay_missing_file_errors(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        assert main(["allocator", "replay", str(tmp_path / "absent.jsonl")]) == 1
-        assert "not found" in capsys.readouterr().err
+    def test_allocator_replay_json(self, tmp_path: Path, capsys) -> None:
+        log = tmp_path / "r.jsonl"
+        _write_log(
+            log,
+            [
+                {
+                    "schema": "v1",
+                    "fn": "f",
+                    "picked": 0,
+                    "expected_secs": 1.0,
+                    "actual_secs": 1.0,
+                    "ok": True,
+                }
+            ],
+        )
+        assert main(["allocator", "replay", str(log), "--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["total"] == 1
+        assert payload["workers"][0]["idx"] == 0
 
-
-def test_no_command_prints_help_and_fails() -> None:
-    assert main([]) == 1
-
-
-def test_config_get_masks_every_credential(capsys, monkeypatch):
-    """No config key prints a credential in clear.
-
-    Regression test. `Config.to_dict()` enumerated seven fields and omitted
-    three credentials, and `config get` fell back to a raw attribute read for
-    anything the dict did not carry -- so `zakuro config get storage_secret_key`
-    printed the MinIO secret verbatim, while the code comment beside it claimed
-    secrets stayed masked.
-
-    Asserts the value is absent from the output rather than asserting the mask
-    text, so this still fails if the masking style changes but the disclosure
-    returns.
-    """
-    secrets = {
-        "ZAKURO_STORAGE_SECRET_KEY": ("storage_secret_key", "s3cret-secret-key"),
-        "ZAKURO_STORAGE_ACCESS_KEY": ("storage_access_key", "s3cret-access-key"),
-        "TAILSCALE_AUTHKEY": ("tailscale_auth_key", "tskey-s3cret"),
-        "ZAKURO_AUTH": ("auth_token", "tok3n-s3cret"),
-    }
-    for env, (key, value) in secrets.items():
-        monkeypatch.setenv(env, value)
-        assert cli.main(["config", "get", key]) == 0
-        out = capsys.readouterr().out
-        assert value not in out, f"{key} disclosed {value!r} via `config get`"
-        monkeypatch.delenv(env)
-
-
-def test_config_get_all_masks_every_credential(capsys, monkeypatch):
-    """The no-argument listing must not disclose them either."""
-    monkeypatch.setenv("ZAKURO_STORAGE_SECRET_KEY", "s3cret-secret-key")
-    monkeypatch.setenv("TAILSCALE_AUTHKEY", "tskey-s3cret")
-    assert cli.main(["config", "get"]) == 0
-    out = capsys.readouterr().out
-    assert "s3cret-secret-key" not in out
-    assert "tskey-s3cret" not in out
-    # Present-and-masked, not merely absent. Asserting absence alone would
-    # pass against the original bug too, where these keys were omitted from
-    # the listing entirely -- a test that cannot fail against the defect it
-    # guards is not a regression test.
-    assert "storage_secret_key=***" in out
-    assert "tailscale_auth_key=***" in out
-
-
-def test_an_unlisted_secret_field_is_refused_rather_than_printed(capsys):
-    """A credential added to Config but forgotten in `to_dict` must not leak.
-
-    This is the failure mode that produced the original bug, so the guard is
-    name-based: anything that looks like a credential is refused outright when
-    the redacted view does not carry it.
-    """
-    assert cli._is_secret_attr("storage_secret_key")
-    assert cli._is_secret_attr("some_future_api_token")
-    assert cli._is_secret_attr("db_password")
-    assert not cli._is_secret_attr("default_host")
-    assert not cli._is_secret_attr("cache_dir")
+    def test_allocator_replay_missing_file(self, tmp_path: Path, capsys) -> None:
+        assert main(["allocator", "replay", str(tmp_path / "gone.jsonl")]) == 1

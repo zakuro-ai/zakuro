@@ -199,7 +199,7 @@ uv run python scripts/bench_all.py --log /tmp/zakuro-bench.json
 - [`docs/cli.md`](docs/cli.md) — `zakuro-worker` CLI reference
 - [`docs/PROTOCOL.md`](docs/PROTOCOL.md) — QUIC wire protocol (so new bindings can implement against it)
 - [`docs/zc-quic-patch/`](docs/zc-quic-patch/) — Rust broker-side QUIC caller, shipped at [zakuro-ai/zc#31](https://github.com/zakuro-ai/zc/pull/31)
-- Hosted docs (versioned via mkdocs + mike) are published from this repo to **<https://docs.zakuro.ai/>** on every tag; see [`mkdocs.yml`](mkdocs.yml).
+- Hosted docs (versioned via mkdocs + mike) are published from this repo to **<https://docs.zakuro-ai.com/>** on every tag; see [`mkdocs.yml`](mkdocs.yml).
 
 ## Related projects
 
@@ -263,7 +263,7 @@ cosign verify ghcr.io/zakuro-ai/zakuro-worker:X.Y.Z \
     --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-If verification fails on what appears to be a real release, **do not run the artefact** — report to `security@zakuro.ai`.
+If verification fails on what appears to be a real release, **do not run the artefact** — report to `security@zakuro-ai.com`.
 
 ## License
 

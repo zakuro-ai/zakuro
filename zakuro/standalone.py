@@ -33,7 +33,6 @@ def detect_backend(config: Config | None = None) -> str | None:
         2. Local broker at 127.0.0.1:9000
         3. Configured broker (e.g. my.zakuro-ai.com:9000) — only if zc CLI is
            installed, since the remote broker requires zc for auth/routing
-        4. Tailscale peer tagged zakuro-worker
 
     Returns:
         A URI string (``zakuro://...`` or ``zc://...``) pointing at the
@@ -57,11 +56,6 @@ def detect_backend(config: Config | None = None) -> str | None:
     if _has_zc_cli() and _tcp_reachable(config.default_host, config.default_port):
         return f"zc://{config.default_host}:{config.default_port}"
 
-    if config.tailscale_enabled:
-        peer = _discover_tailscale_worker()
-        if peer:
-            return f"zakuro://{peer}:{_LOCAL_WORKER_PORT}"
-
     return None
 
 
@@ -82,16 +76,6 @@ def _tcp_reachable(host: str, port: int) -> bool:
             return True
     except (OSError, socket.gaierror):
         return False
-
-
-def _discover_tailscale_worker() -> str | None:
-    """Re-use the existing Tailscale discovery and verify reachability."""
-    from zakuro.discovery import _discover_tailscale
-
-    ip = _discover_tailscale()
-    if ip and _tcp_reachable(ip, _LOCAL_WORKER_PORT):
-        return ip
-    return None
 
 
 # Env vars set from Compute.cpus/gpus during standalone execution. Respected by

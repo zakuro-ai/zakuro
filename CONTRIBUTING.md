@@ -78,12 +78,21 @@ If you're proposing a non-trivial change — new public API, new on-wire field, 
 
 ## Releasing
 
-Releases are automated via `release-please`. The `chore(release): vX.Y.Z [skip release]` commits are bot output — don't write them by hand.
+Releases are cut from a `release/vX.Y.Z` branch — there is no `release-please`. The single source of truth for the version is `__version__` in `zakuro/__init__.py`; the worker reports it on its `/info` and `/` endpoints, and the wheel reads it via Hatch (`[tool.hatch.version]`).
+
+The pipeline, in order:
+
+1. Push a `release/vX.Y.Z` branch. CI runs against it (`.github/workflows/ci.yml`).
+2. On CI success, **Release Build** (`release.yml`) builds, signs, and pushes the worker image and its SBOM.
+3. Dispatch **Publish Packages** (`publish.yml`, manual `workflow_dispatch`) to publish the wheel to PyPI (Trusted Publishing) and the `zakuro-wire` crate to crates.io.
+4. On publish success, **GitHub Release** (`github-release.yml`) stamps `__version__`, commits `chore(release): vX.Y.Z`, tags `vX.Y.Z`, and creates the GitHub Release with auto-generated notes.
+
+The `chore(release): vX.Y.Z` commits are bot output — don't write them by hand. Per-release notes are auto-generated from merged PRs; `CHANGELOG.md` is the human-curated rollup — add a one-line entry under `## [Unreleased]` in the same PR as any user-visible change.
 
 ## Questions
 
 - Open a GitHub Discussion for design questions or longer-form conversations.
 - Use issues for bugs and concrete feature asks.
-- For private questions email `dev@zakuro.ai`.
+- For private questions email `dev@zakuro-ai.com`.
 
 We're happy you're here. Send the patch.

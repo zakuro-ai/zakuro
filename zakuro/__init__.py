@@ -14,33 +14,39 @@ Example:
     >>> result = remote_fn()  # Runs on Zakuro cluster
 """
 
-__version__ = "0.2.23"
+__version__ = "0.2.24"
 __build__ = "2026-02-15T15:47:22+0000"
 
 # Stable subset — see `docs/stability.md`. `zakuro.public` is the preferred
 # import for applications that want a stability guarantee.
 from zakuro import public as public  # noqa: F401
-from zakuro.adaptive import AdaptiveCompute
+from zakuro.adaptive import AdaptiveCompute, DecisionReplay, replay_decisions
 from zakuro.compute import Compute
 from zakuro.config import Config
+from zakuro.dataset import Dataset, dataset
 from zakuro.fn import Fn, cls, fn
+from zakuro.model import ChatResult, Model, model
 from zakuro.processors.registry import available_processors
-from zakuro.replay import DecisionLogSummary, replay_decisions
 from zakuro.standalone import detect_backend, is_standalone
 from zakuro.worker.runner import Worker
 
 __all__ = [
     "AdaptiveCompute",
+    "DecisionReplay",
+    "replay_decisions",
     "Compute",
     "Config",
+    "Dataset",
+    "dataset",
     "Fn",
     "fn",
     "cls",
+    "Model",
+    "ChatResult",
+    "model",
     "available_processors",
     "detect_backend",
     "is_standalone",
     "Worker",
-    "replay_decisions",
-    "DecisionLogSummary",
     "__version__",
 ]

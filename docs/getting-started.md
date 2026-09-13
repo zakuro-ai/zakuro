@@ -268,7 +268,7 @@ curl -sSL https://raw.githubusercontent.com/zakuro-ai/zc/master/scripts/install.
 zc broker
 ```
 
-Workers register with the broker via Tailscale discovery or explicit `ZAKURO_PEERS`. Clients target the broker by URI:
+Workers register with the broker via mesh discovery or explicit `ZAKURO_PEERS`. Clients target the broker by URI:
 
 ```python
 compute = zk.Compute(uri="zc://broker.local:9000", cpus=4)
@@ -276,18 +276,21 @@ compute = zk.Compute(uri="zc://broker.local:9000", cpus=4)
 
 The broker picks the best worker using its routing strategy (`best_price`, `best_latency`, `round_robin`, etc.). Zakuro's `AdaptiveCompute` sits above the broker for additional client-side smarts; the two compose cleanly.
 
-### Step 6 — Tailscale + hosted broker (optional)
+### Step 6 — WireGuard mesh + hosted broker (optional)
 
-Zakuro's production mesh uses Tailscale for worker discovery and the hosted broker at `my.zakuro-ai.com` for billing:
+Zakuro's production mesh runs on WireGuard, with the hosted broker at
+`my.zakuro-ai.com` for billing. Each host holds a `zakuro0` interface with an
+address in `10.13.13.0/24`; `zc vpn` brings it up from a peer profile, which
+the dashboard issues per user.
 
 ```bash
-# Set up Tailscale on each host that will run a worker
-sudo tailscale up --authkey=tskey-auth-...
+# Bring up the mesh interface on each host that will run a worker
+zc vpn up
 
-# Start a worker — it'll advertise itself on the tailnet
+# Start a worker — it is reachable on the host's mesh address
 ZAKURO_WORKER_TAGS=gpu,a100 zakuro-worker --transport quic
 
-# On the client (also on the tailnet):
+# On the client (also on the mesh):
 compute = zk.Compute(uri="zc://my.zakuro-ai.com:9000")
 ```
 

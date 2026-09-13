@@ -11,6 +11,11 @@ services:
       - ZAKURO_HOST=0.0.0.0
       - ZAKURO_PORT=3960
       - ZAKURO_WORKERS=4
+      # LOCAL quickstart only: this worker has no auth/signed-wire/mTLS and
+      # publishes 3960 to the host. Accept the unauthenticated /execute surface
+      # explicitly. DO NOT use this on a shared or exposed host — production
+      # must set ZAKURO_AUTH_REQUIRED=1, or ZAKURO_WIRE=v1 + a key, or ZAKURO_CERT_DIR.
+      - ZAKURO_INSECURE_BIND=1
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3960/health"]
       interval: 30s
@@ -32,6 +37,11 @@ services:
       - ZAKURO_HOST=0.0.0.0
       - ZAKURO_PORT=3960
       - PYTHONPATH=/app
+      # LOCAL quickstart only: this worker has no auth/signed-wire/mTLS and
+      # publishes 3960 to the host. Accept the unauthenticated /execute surface
+      # explicitly. DO NOT use this on a shared or exposed host — production
+      # must set ZAKURO_AUTH_REQUIRED=1, or ZAKURO_WIRE=v1 + a key, or ZAKURO_CERT_DIR.
+      - ZAKURO_INSECURE_BIND=1
     command: >
       sh -c "pip install -e '.[worker]' && python -m zakuro.worker.server"
     profiles:

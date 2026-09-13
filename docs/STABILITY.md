@@ -30,7 +30,8 @@ Current stable surface (v0.3):
 | `detect_backend` | 0.2.2 | standalone fallback helper |
 | `is_standalone` | 0.2.2 | standalone fallback helper |
 | `replay_decisions` | 0.3 | parse an allocator decision log into a summary |
-| `DecisionLogSummary` | 0.3 | return type of `replay_decisions` |
+| `DecisionReplay` | 0.3 | return type of `replay_decisions` |
+| `WorkerReplayStats` | 0.3 | per-worker aggregate inside `DecisionReplay` |
 
 `AdaptiveCompute` gained three optional constructor parameters in 0.3 —
 `seed`, `max_dispatch_retries`, `eject_after_failures` — all additive and

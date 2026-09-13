@@ -1,6 +1,6 @@
 # Threat model — STRIDE + LINDDUN
 
-**Status:** Draft (2026-05). Maintainer: security@zakuro.ai. Refresh cadence: quarterly, or sooner when an RFC lands that materially shifts a trust boundary.
+**Status:** Draft (2026-05). Maintainer: security@zakuro-ai.com. Refresh cadence: quarterly, or sooner when an RFC lands that materially shifts a trust boundary.
 
 This document is the single shared mental model for what we are defending against in Zakuro. It is consulted at PR review (does this change cross a trust boundary?), at RFC time (does the proposed design address the existing threats?), and at audit time (what is in and out of scope?).
 
@@ -105,7 +105,7 @@ Out of scope:
 |---|---|---|
 | **L**inkability | Two requests from the same user can be tied across tenants | Per-tenant pseudonymous IDs; no global user ID on the wire |
 | **I**dentifiability | Logs contain PII (emails, IPs, file paths) | structlog PII redactor + Sentry `_redact_pii_in_string` (RFC 0003) |
-| **N**on-repudiation | A user cannot disclaim an action they did not take | Audit log retention bounded; users can request deletion via `dev@zakuro.ai` (GDPR Article 17) |
+| **N**on-repudiation | A user cannot disclaim an action they did not take | Audit log retention bounded; users can request deletion via `dev@zakuro-ai.com` (GDPR Article 17) |
 | **D**etectability | An attacker can detect whether a tenant is active | Single shared TLS handshake on the broker (no per-tenant SNI leak); broker does not echo tenant existence in 401 responses |
 | **D**isclosure of information | Workload state-dicts leak through telemetry | Telemetry covers control-plane only; data-plane payloads never go to Sentry / Prom labels |
 | **U**nawareness | User does not know what data Zakuro retains | Documented in `docs/privacy.md` (placeholder — to be written before any prod traffic from EU customers) |
@@ -134,7 +134,7 @@ We design for the following adversaries, in order of capability:
 
 - Every RFC must include a "Threats considered" section pointing back here.
 - Every PR that crosses a trust boundary in §2 must annotate which TB-N it touches and why the mitigation still holds.
-- Every quarter, security@zakuro.ai opens an issue titled "Threat model refresh — YYYY-QN" that re-walks §3 and §6 and updates this file. Closing that issue is gated on a maintainer sign-off.
+- Every quarter, security@zakuro-ai.com opens an issue titled "Threat model refresh — YYYY-QN" that re-walks §3 and §6 and updates this file. Closing that issue is gated on a maintainer sign-off.
 - A successful external pentest report (tracking [#143](https://github.com/zakuro-ai/zakuro/issues/143)) is appended to §6 as a dated annex.
 
 ## 8. References

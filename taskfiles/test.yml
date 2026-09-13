@@ -4,7 +4,21 @@ tasks:
   unit:
     desc: Run unit tests with pytest
     cmds:
-      - python -m pytest tests/ -v --cov=zakuro --cov-report=term-missing {{.CLI_ARGS}}
+      # --cov-report=xml emits coverage.xml for CI artifact upload / external
+      # tracking; the term-missing report stays for local visibility.
+      - python -m pytest tests/ -v --cov=zakuro --cov-report=term-missing --cov-report=xml {{.CLI_ARGS}}
+
+  coverage-check:
+    desc: Enforce the minimum coverage threshold against the last test run's data
+    # Reads the .coverage data file produced by `task test:unit` and fails if
+    # total line coverage drops below the floor. Kept as a separate step (not
+    # baked into pyproject addopts) so ad-hoc runs like `pytest -k foo` aren't
+    # forced to meet the project-wide threshold. (#234)
+    #
+    # Baseline at introduction was 69%; the floor is set a few points lower to
+    # absorb cross-version variance. Ratchet this upward as coverage improves.
+    cmds:
+      - python -m coverage report --fail-under=65
 
   fast:
     desc: Run tests without coverage

@@ -20,7 +20,6 @@ class TestConfig:
         assert config.default_host == "my.zakuro-ai.com"
         assert config.default_port == 9000
         assert config.auth_token is None
-        assert config.tailscale_enabled is True
 
     def test_env_override_host(self) -> None:
         """Test environment variable overrides host."""
@@ -69,15 +68,20 @@ class TestConfig:
         assert config.storage_access_key == "access"
         assert config.storage_secret_key == "secret"
 
-    def test_env_tailscale_authkey(self) -> None:
-        """Test TAILSCALE_AUTHKEY environment variable."""
-        with (
-            patch.dict(os.environ, {"TAILSCALE_AUTHKEY": "tskey-xxx"}, clear=True),
-            patch("pathlib.Path.exists", return_value=False),
-        ):
+    def test_config_carries_no_mesh_auth_fields(self) -> None:
+        """Config used to hold a mesh auth key and an enable flag, set from
+        the environment.
+
+        The mesh is WireGuard and there is no such credential to carry: a peer
+        profile comes from the dashboard, not from a Config attribute. These
+        assertions exist so the fields cannot quietly come back.
+        """
+        with patch("pathlib.Path.exists", return_value=False):
             config = Config.load()
 
-        assert config.tailscale_auth_key == "tskey-xxx"
+        assert not any(attr.endswith(("_auth_key", "_enabled")) for attr in vars(config)), (
+            f"unexpected mesh auth field on Config: {vars(config)}"
+        )
 
     def test_to_dict_masks_token(self) -> None:
         """Test that to_dict masks the auth token."""

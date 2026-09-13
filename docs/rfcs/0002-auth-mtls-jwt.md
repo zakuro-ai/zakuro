@@ -19,7 +19,7 @@ Today Zakuro authenticates with a single shared secret per worker (`ZAKURO_AUTH`
 
 **mTLS at the transport, JWT-with-scopes at the request.** Both required, neither alone is sufficient.
 
-- **mTLS layer** — every QUIC connection and every HTTP request between {client, broker, worker, dashboard} presents an X.509 client certificate. Certificates are issued by an internal CA managed by [cert-manager](https://cert-manager.io/) on the deployment cluster; SPIFFE-compatible SAN identities (`spiffe://zakuro.ai/ns/<tenant>/sa/<service>`) so the SVID model lands cleanly later.
+- **mTLS layer** — every QUIC connection and every HTTP request between {client, broker, worker, dashboard} presents an X.509 client certificate. Certificates are issued by an internal CA managed by [cert-manager](https://cert-manager.io/) on the deployment cluster; SPIFFE-compatible SAN identities (`spiffe://zakuro-ai.com/ns/<tenant>/sa/<service>`) so the SVID model lands cleanly later.
 - **JWT layer** — once mTLS verifies the peer, the request carries an `Authorization: Bearer <jwt>` header. The JWT is short-lived (15 min), signed by a per-cluster Ed25519 key, and carries `tenant-id`, `worker-id`, and a `scopes` claim (`exec:fn`, `exec:cls`, `admin:credits`, ...).
 - **Refusal semantics** — a worker that receives a connection without a valid client cert closes the QUIC stream before reading any bytes. A worker that receives a valid mTLS connection but a missing / expired / wrong-scope JWT returns 401 / QUIC error code 0x100 with no payload.
 

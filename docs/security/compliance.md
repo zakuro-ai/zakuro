@@ -1,6 +1,6 @@
 # Compliance control mapping — SOC 2 (TSC 2017) + ISO 27001:2022 Annex A
 
-**Status:** Draft (2026-05). Maintainer: security@zakuro.ai. Refresh cadence: quarterly, or sooner when a control implementation lands.
+**Status:** Draft (2026-05). Maintainer: security@zakuro-ai.com. Refresh cadence: quarterly, or sooner when a control implementation lands.
 
 This document maps Zakuro's implemented and planned controls to the relevant SOC 2 Trust Services Criteria and ISO 27001:2022 Annex A control numbers. It is **not** an attestation — Zakuro has not been audited yet — but it is the worksheet a third-party assessor would consult when scoping engagement. Each row identifies the artifact that an assessor would test (workflow file, code path, RFC, doc) so a customer asking "show me how you handle X" gets a direct pointer rather than a marketing page.
 
@@ -32,7 +32,7 @@ The 2017 TSC framework groups controls into Common Criteria (CC1–CC9) plus fou
 |---|---|---|---|
 | CC2.1 Obtains and uses relevant information | implemented | RFC process (`docs/rfcs/`) — every architectural decision has a written record | maintainers |
 | CC2.2 Communicates internally | implemented | GitHub Discussions + the merge-time review trail | maintainers |
-| CC2.3 Communicates with externals (incl. customers) | partial | `SECURITY.md` (`security@zakuro.ai` channel), GitHub Security Advisories. Customer status-page is a gap. | maintainers |
+| CC2.3 Communicates with externals (incl. customers) | partial | `SECURITY.md` (`security@zakuro-ai.com` channel), GitHub Security Advisories. Customer status-page is a gap. | maintainers |
 
 ### CC3 — Risk assessment
 
@@ -131,7 +131,7 @@ Pointer rather than full table — implementation is the same set of artefacts a
 
 - **A.6.1–A.6.4** (screening, T&Cs, awareness, disciplinary) — handled at the org level outside the codebase scope. Maintainers sign GitHub's CLA-equivalent on first contribution.
 - **A.6.5–A.6.7** (responsibilities on termination, confidentiality) — same.
-- **A.6.8** (information security event reporting) — `SECURITY.md` `security@zakuro.ai` channel.
+- **A.6.8** (information security event reporting) — `SECURITY.md` `security@zakuro-ai.com` channel.
 
 ### A.7 Physical controls (14 controls)
 

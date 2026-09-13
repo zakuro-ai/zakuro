@@ -1,0 +1,42 @@
+# The worker images build the wheel from source via `COPY . .` in a builder
+# stage (see docker/Dockerfile*). Keep that build context lean and reproducible:
+# exclude VCS, build artifacts, caches, and any host-built wheel so a stale
+# dist/ can never leak into the image. (#232)
+
+# Version control
+.git
+.gitignore
+
+# Python build artifacts & caches
+dist/
+build/
+*.egg-info
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Rust build artifacts (crates/zakuro-wire)
+target/
+
+# Docs build output
+site/
+docs/_build/
+
+# Editor / OS cruft
+.DS_Store
+*.log
+.idea/
+.vscode/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
