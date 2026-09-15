@@ -1295,8 +1295,26 @@
 <td>0.2.2</td>
 <td>standalone fallback helper</td>
 </tr>
+<tr>
+<td><code>replay_decisions</code></td>
+<td>0.2.24</td>
+<td>parse an allocator decision log into a summary</td>
+</tr>
+<tr>
+<td><code>DecisionReplay</code></td>
+<td>0.2.24</td>
+<td>return type of <code>replay_decisions</code></td>
+</tr>
 </tbody>
 </table>
+<p><code>AdaptiveCompute</code> gained three optional constructor parameters in 0.2.24 —
+<code>seed</code>, <code>max_dispatch_retries</code>, <code>eject_after_failures</code> — all additive and
+defaulting to the prior behaviour. <code>DecisionReplay.workers</code> maps each worker
+index to a <code>WorkerReplayStats</code>; that type is reachable through
+<code>DecisionReplay</code> but is not itself exported from <code>zakuro.public</code>. The
+<code>zakuro</code> console script (<code>init</code>, <code>doctor</code>, <code>config get</code>, <code>allocator replay</code>)
+is a tool, not an importable API, so it is versioned with the package but
+not listed in this table.</p>
 <h2 id="zakuro-non-public-everything-else"><code>zakuro.*</code> (non-<code>public</code>) — everything else<a class="headerlink" href="#zakuro-non-public-everything-else" title="Permanent link">&para;</a></h2>
 <p>Still supported, still useful, but subject to refactor without deprecation:</p>
 <ul>
