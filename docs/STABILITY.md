@@ -29,15 +29,17 @@ Current stable surface (v0.3):
 | `Config` | 0.2.0 | configuration object |
 | `detect_backend` | 0.2.2 | standalone fallback helper |
 | `is_standalone` | 0.2.2 | standalone fallback helper |
-| `replay_decisions` | 0.3 | parse an allocator decision log into a summary |
-| `DecisionReplay` | 0.3 | return type of `replay_decisions` |
-| `WorkerReplayStats` | 0.3 | per-worker aggregate inside `DecisionReplay` |
+| `replay_decisions` | 0.2.24 | parse an allocator decision log into a summary |
+| `DecisionReplay` | 0.2.24 | return type of `replay_decisions` |
 
-`AdaptiveCompute` gained three optional constructor parameters in 0.3 —
+`AdaptiveCompute` gained three optional constructor parameters in 0.2.24 —
 `seed`, `max_dispatch_retries`, `eject_after_failures` — all additive and
-defaulting to the prior behaviour. The `zakuro` console script (`init`,
-`doctor`, `config get`, `allocator replay`) is a tool, not an importable
-API, so it is versioned with the package but not listed in this table.
+defaulting to the prior behaviour. `DecisionReplay.workers` maps each worker
+index to a `WorkerReplayStats`; that type is reachable through
+`DecisionReplay` but is not itself exported from `zakuro.public`. The
+`zakuro` console script (`init`, `doctor`, `config get`, `allocator replay`)
+is a tool, not an importable API, so it is versioned with the package but
+not listed in this table.
 
 ## `zakuro.*` (non-`public`) — everything else
 
