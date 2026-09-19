@@ -25,7 +25,6 @@ from zakuro.compute import Compute
 from zakuro.config import Config
 from zakuro.dataset import Dataset, dataset
 from zakuro.fn import Fn, cls, fn
-from zakuro.mesh import NodeInfo, nodes, resolve_node
 from zakuro.model import ChatResult, Model, model
 from zakuro.processors.registry import available_processors
 from zakuro.standalone import detect_backend, is_standalone
@@ -41,9 +40,6 @@ __all__ = [
     "dataset",
     "Fn",
     "fn",
-    "nodes",
-    "NodeInfo",
-    "resolve_node",
     "cls",
     "Model",
     "ChatResult",
