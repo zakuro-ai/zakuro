@@ -35,6 +35,7 @@ import socket
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 __all__ = ["NodeInfo", "nodes", "resolve_node", "api_key", "mesh_proxy_url"]
 
@@ -139,7 +140,7 @@ class NodeInfo:
         return f"{self.name} ({self.fingerprint[:12]}, zc {self.zc_version})"
 
 
-def _get_json(url: str, timeout: float, headers: dict | None = None):
+def _get_json(url: str, timeout: float, headers: dict | None = None) -> Any:
     import httpx
 
     host = url.split("//", 1)[-1].split(":")[0]
