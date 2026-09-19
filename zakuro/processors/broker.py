@@ -14,6 +14,14 @@ if TYPE_CHECKING:
     from zakuro.compute import Compute
 
 
+#: What to ask for when a `Compute` names no memory, which is the default.
+#: `Compute.memory_bytes()` raises on None by design -- it will not invent a
+#: number for a caller who asked for a specific one -- but a request with no
+#: memory constraint is the normal case and must not be an error. 100 MiB is
+#: what zc's own bench sends for a routing-overhead job.
+DEFAULT_MEMORY_BYTES = 100 * 1024 * 1024
+
+
 class BrokerProcessor(Processor):
     """Broker-based processor that routes through zc broker.
 
@@ -56,9 +64,14 @@ class BrokerProcessor(Processor):
 
         import os
 
-        # Read API key from ZAKURO_API_KEY (or legacy ZAKURO_AUTH)
-        key_from_env = os.environ.get("ZAKURO_API_KEY") or os.environ.get("ZAKURO_AUTH")
-        self._api_key: str | None = key_from_env
+        # The account key: environment first, then the credentials file
+        # `zc login` wrote. Reading the file is what lets `import zakuro` work
+        # in a plain shell -- without it the broker sees an anonymous caller,
+        # and on a billing-enabled fleet every request to a priced worker is
+        # refused or stalls, which reads as a dead mesh.
+        from zakuro.mesh import api_key as _load_api_key
+
+        self._api_key: str | None = _load_api_key()
 
         # Determine user_id:
         # 1. processor_options["user_id"] if set
@@ -90,9 +103,15 @@ class BrokerProcessor(Processor):
         else:
             headers["X-Zakuro-User"] = self._user_id
 
+        # A mesh address is reachable only through the sidecar's CONNECT
+        # proxy; loopback must NOT go through it, or talking to your own
+        # broker means leaving the host and coming back.
+        from zakuro.mesh import proxy_for
+
         self._client = httpx.Client(
             base_url=broker_url,
             headers=headers,
+            proxy=proxy_for(str(self._config.host)),
             timeout=httpx.Timeout(
                 connect=10.0,
                 read=300.0,  # 5 min for long computations
@@ -149,7 +168,11 @@ class BrokerProcessor(Processor):
         opts = self._compute.processor_options or {}
         requirements: dict[str, Any] = {
             "cpus": self._compute.cpus,
-            "memory_bytes": self._compute.memory_bytes(),
+            "memory_bytes": (
+                self._compute.memory_bytes()
+                if self._compute.memory is not None
+                else DEFAULT_MEMORY_BYTES
+            ),
             "gpus": self._compute.gpus,
             "estimated_duration_secs": opts.get("estimated_duration_secs", 1.0),
         }

@@ -10,6 +10,20 @@ if TYPE_CHECKING:
     pass
 
 
+def _is_node_uri(uri: str) -> bool:
+    """Whether `uri` names a mesh node rather than a host.
+
+    `zc://node-<16 hex>` is a node fingerprint; `zc://host:9000` is an address.
+    Matched on the shape of the fingerprint so a machine that happens to be
+    *called* "node-something" is not mistaken for one.
+    """
+    rest = uri.split("://", 1)[-1].rstrip("/")
+    if not rest.startswith("node-"):
+        return False
+    fp = rest[len("node-") :].split(":")[0]
+    return len(fp) == 16 and all(c in "0123456789abcdef" for c in fp)
+
+
 @dataclass
 class Compute:
     """
@@ -63,6 +77,10 @@ class Compute:
     # inspect a Compute without performing network I/O (e.g. in tests).
     verify: bool = True
 
+    # Set when `uri` addressed a node (`zc://node-<fp>`): the node it resolved
+    # to, kept so a caller can check where work actually landed.
+    _node: Any = None
+
     # Optional price hint, in USD per hour (or any consistent unit — the
     # allocator only ever uses ratios). When ``AdaptiveCompute`` is built
     # with ``cost_coefficient > 0``, workers with higher price are
@@ -103,6 +121,26 @@ class Compute:
         no backend is reachable.
         """
         if self.uri is not None:
+            # `zc://node-<fingerprint>` names a NODE, not a host. Resolve it to
+            # that node's own broker before anything tries to treat the
+            # fingerprint as a DNS name (which is what used to happen, and the
+            # error blamed DNS for a perfectly valid node id).
+            if _is_node_uri(self.uri):
+                from zakuro.mesh import resolve_node
+
+                node = resolve_node(self.uri)
+                host, _, port = node.endpoint.partition(":")
+                self.host = host
+                self.port = int(port or 9000)
+                self._node = node
+                # Rewrite the URI to the concrete endpoint as well. Everything
+                # downstream (processor selection, ProcessorConfig.from_uri)
+                # re-parses `uri`, and a fingerprint left in the authority is
+                # read as a hostname -- which failed as a DNS error naming the
+                # node id, blaming the user's perfectly valid input.
+                self.uri = f"zc://{host}:{self.port}"
+                return
+
             # Parse URI to extract host/port for backward compatibility
             from zakuro.processors.base import ProcessorConfig
 
@@ -125,6 +163,10 @@ class Compute:
         import socket
 
         if self.host is None or self.port is None:
+            return
+        # A node URI resolved by answering /health -- probing again would only
+        # ask the same question a second time.
+        if getattr(self, "_node", None) is not None:
             return
         if self.scheme == "quic":
             try:
