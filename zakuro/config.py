@@ -25,11 +25,12 @@ class Config:
     Example:
         >>> config = Config.load()
         >>> print(config.default_host)
-        '127.0.0.1'
+        'localhost'
     """
 
-    # Broker settings (default to production)
-    default_host: str = "my.zakuro-ai.com"
+    # Broker settings (local broker; there is no public broker -- remote
+    # inference goes through the hub, see ``hub_url``)
+    default_host: str = "localhost"
     default_port: int = 9000
 
     # Authentication
@@ -40,6 +41,10 @@ class Config:
     storage_access_key: str = ""
     storage_secret_key: str = ""
     storage_secure: bool = False
+
+    # Tailscale (deprecated, ignored: worker discovery is zc-first, ZAK-0015)
+    tailscale_enabled: bool = True
+    tailscale_auth_key: str | None = None
 
     # Hub settings
     hub_url: str = "https://hub.zakuro-ai.com"
@@ -74,6 +79,7 @@ class Config:
             "port": "default_port",
             "auth": "auth_token",
             "storage": None,  # Nested
+            "tailscale": None,  # Nested
             "hub": None,  # Nested
         }
 
@@ -83,14 +89,17 @@ class Config:
                     attr = f"storage_{sk}"
                     if hasattr(config, attr):
                         setattr(config, attr, sv)
+            elif key == "tailscale" and isinstance(value, dict):
+                for tk, tv in value.items():
+                    attr = f"tailscale_{tk}"
+                    if hasattr(config, attr):
+                        setattr(config, attr, tv)
             elif key == "hub" and isinstance(value, dict):
                 if "url" in value:
                     config.hub_url = value["url"]
                 if "cache_dir" in value:
                     config.cache_dir = value["cache_dir"]
-            elif key in key_map and key_map[key]:
-                mapped = key_map[key]
-                assert mapped is not None
+            elif key in key_map and (mapped := key_map[key]):
                 setattr(config, mapped, value)
             elif hasattr(config, key):
                 setattr(config, key, value)
@@ -100,7 +109,7 @@ class Config:
     @classmethod
     def _load_env(cls, config: Config) -> Config:
         """Load from environment variables."""
-        env_map: dict[str, str | tuple[str, Callable[[str], Any]]] = {
+        env_map: dict[str, str | tuple[str, Callable[[Any], Any]]] = {
             "ZAKURO_HOST": "default_host",
             "ZAKURO_PORT": ("default_port", int),
             "ZAKURO_AUTH": "auth_token",
@@ -110,6 +119,8 @@ class Config:
             "ZAKURO_STORAGE_SECURE": ("storage_secure", lambda x: x.lower() == "true"),
             "ZAKURO_HUB_URL": "hub_url",
             "ZAKURO_CACHE_DIR": "cache_dir",
+            "TAILSCALE_AUTHKEY": "tailscale_auth_key",
+            "TAILSCALE_ENABLED": ("tailscale_enabled", lambda x: x.lower() == "true"),
         }
 
         for env_var, target in env_map.items():
@@ -130,9 +141,59 @@ class Config:
             "default_port": self.default_port,
             "auth_token": "***" if self.auth_token else None,
             "storage_host": self.storage_host,
+            "tailscale_enabled": self.tailscale_enabled,
             "hub_url": self.hub_url,
             "cache_dir": self.cache_dir,
         }
 
     def __repr__(self) -> str:
         return f"Config(host='{self.default_host}', port={self.default_port})"
+
+
+USER_CONFIG_PATH: Path = Path.home() / ".zakuro" / "config.yaml"
+
+
+def load_user_config(path: Path | None = None) -> Config:
+    """Load only ``~/.zakuro/config.yaml`` (no env, no project-local file).
+
+    Returns a default ``Config`` when the file does not exist. Unlike
+    ``Config.load()``, this never consults environment variables — the wizard
+    needs the on-disk state as the single source of truth.
+    """
+    target = path if path is not None else USER_CONFIG_PATH
+    config = Config()
+    if target.exists():
+        with open(target, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        config = Config._merge(config, data)
+    return config
+
+
+def write_user_config(config: Config, path: Path | None = None) -> Path:
+    """Write ``config`` to ``~/.zakuro/config.yaml`` with mode 0600.
+
+    Creates the parent directory if missing. If the target already exists, it
+    is moved to ``<target>.bak`` before the new contents are written. Returns
+    the path that was written.
+    """
+    target = path if path is not None else USER_CONFIG_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    if target.exists():
+        backup = target.with_suffix(target.suffix + ".bak")
+        target.replace(backup)
+
+    payload = {
+        "default_host": config.default_host,
+        "default_port": config.default_port,
+        "auth_token": config.auth_token,
+        "tailscale_enabled": config.tailscale_enabled,
+    }
+    # Drop only fields that were never set (None). False is intentionally kept
+    # so disabling tailscale persists.
+    payload = {k: v for k, v in payload.items() if v is not None}
+
+    with open(target, "w", encoding="utf-8") as f:
+        yaml.safe_dump(payload, f, sort_keys=True)
+    os.chmod(target, 0o600)
+    return target

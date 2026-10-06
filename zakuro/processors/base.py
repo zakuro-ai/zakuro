@@ -174,6 +174,28 @@ class Processor(ABC):
         """
         ...
 
+    def execute_payload(self, payload: bytes, extra_headers: dict[str, str] | None = None) -> bytes:
+        """Send a pre-serialized cloudpickle request to the worker and return
+        the raw cloudpickle response bytes.
+
+        The response is a cloudpickle of either a result *or* an exception
+        object; the caller deserialises and raises if it is an exception. This
+        is the low-level transport used by stateful ``@cls`` proxies
+        (``create_instance`` / ``call_method``). Backends that do not run a
+        stateful Zakuro worker protocol do not implement it.
+
+        Args:
+            payload: a cloudpickle-serialized request dict (with an ``action``).
+            extra_headers: optional per-request headers (e.g. instance affinity).
+
+        Returns:
+            Raw cloudpickle response bytes.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support stateful @cls proxies "
+            "(create_instance/call_method)."
+        )
+
     def __enter__(self) -> Processor:
         """Enter context manager and connect."""
         self.connect()

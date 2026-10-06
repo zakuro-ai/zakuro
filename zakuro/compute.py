@@ -10,6 +10,98 @@ if TYPE_CHECKING:
     pass
 
 
+#: Schemes that address a framework or a worker directly, bypassing zc.
+_DIRECT_SCHEMES = ("spark", "ray", "dask", "tcp", "quic", "zakuro", "http", "https")
+
+
+def _is_loopback_authority(authority: str) -> bool:
+    host = authority.split("@")[-1].rsplit(":", 1)[0].strip("[]")
+    return host in ("127.0.0.1", "localhost", "::1", "")
+
+
+def _looks_like_ip(authority: str) -> bool:
+    import ipaddress
+
+    host = authority.split("@")[-1].rsplit(":", 1)[0].strip("[]")
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
+def reject_direct_addressing(uri: str) -> None:
+    """Refuse a URI that reaches past zc.
+
+    Work must enter the mesh through a broker: that is where it is authorised,
+    routed, billed and attributed to the node that ran it. A `spark://` or
+    `ray://` URI dials a cluster port from the client, so the job is unbilled,
+    the node that did the work is unpaid, and the cluster has to publish a port
+    to the world for it to be possible at all. The clusters bind loopback and
+    only brokers transit the mesh, so those URIs cannot work off-host anyway --
+    this turns a confusing connection error into a statement of the rule.
+
+    Addressing another node by raw IP is refused for the same reason and one
+    more: an address is not an identity. `zc://node-<fingerprint>` names a node
+    in a way that survives it moving, and is what the roster authorises.
+
+    Loopback is allowed: talking to your OWN broker is not addressing a node,
+    and it is how a container reaches the broker beside it.
+
+    Set ``ZAKURO_ALLOW_DIRECT=1`` to bypass this -- for a single-machine dev
+    loop with no broker, and nothing else.
+    """
+    import os
+
+    if os.environ.get("ZAKURO_ALLOW_DIRECT") == "1":
+        return
+    if "://" not in uri:
+        return
+    scheme, authority = uri.split("://", 1)
+    scheme = scheme.lower()
+    authority = authority.rstrip("/")
+
+    # Loopback is allowed for ANY scheme: a cluster or worker on 127.0.0.1 is
+    # this machine's own, nothing else can reach it, and driving it from inside
+    # the node is exactly how a job that arrived through zc is meant to run.
+    # The rule is about reaching ACROSS the mesh, not about local transports.
+    if _is_loopback_authority(authority):
+        return
+
+    if scheme in _DIRECT_SCHEMES:
+        raise ValueError(
+            f"{uri!r} addresses a {scheme} endpoint directly. Work has to go "
+            "through a broker to be routed, billed and attributed, and the "
+            "clusters are not reachable off-host in any case. Use "
+            "zk.Compute(uri=node.uri) for a node from zk.nodes(), or "
+            "ZAKURO_ALLOW_DIRECT=1 for a local dev loop."
+        )
+    if (
+        scheme in ("zc", "broker")
+        and _looks_like_ip(authority)
+        and not _is_loopback_authority(authority)
+    ):
+        raise ValueError(
+            f"{uri!r} addresses a node by IP. An address is not an identity: "
+            "use zc://node-<fingerprint>, which survives the node moving and "
+            "is what the roster authorises. zk.nodes() lists them."
+        )
+
+
+def _is_node_uri(uri: str) -> bool:
+    """Whether `uri` names a mesh node rather than a host.
+
+    `zc://node-<16 hex>` is a node fingerprint; `zc://host:9000` is an address.
+    Matched on the shape of the fingerprint so a machine that happens to be
+    *called* "node-something" is not mistaken for one.
+    """
+    rest = uri.split("://", 1)[-1].rstrip("/")
+    if not rest.startswith("node-"):
+        return False
+    fp = rest[len("node-") :].split(":")[0]
+    return len(fp) == 16 and all(c in "0123456789abcdef" for c in fp)
+
+
 @dataclass
 class Compute:
     """
@@ -19,10 +111,10 @@ class Compute:
         >>> compute = Compute(uri="ray://head:10001", cpus=2)
         >>> compute = Compute(uri="dask://scheduler:8786", cpus=4)
         >>> compute = Compute(uri="spark://master:7077", memory="8Gi")
-        >>> compute = Compute(uri="zc://my.zakuro-ai.com:9000")  # Production broker
+        >>> compute = Compute(uri="zc://localhost:9000")  # Local broker
 
     Or traditional host/port (defaults to zc:// broker scheme):
-        >>> compute = Compute(host="my.zakuro-ai.com", port=9000, cpus=2)
+        >>> compute = Compute(host="localhost", port=9000, cpus=2)
 
     URI Schemes:
         - zc:// - Broker-based routing (default, recommended)
@@ -62,6 +154,10 @@ class Compute:
     # Probe the backend at construction when uri is explicit. Set to False to
     # inspect a Compute without performing network I/O (e.g. in tests).
     verify: bool = True
+
+    # Set when `uri` addressed a node (`zc://node-<fp>`): the node it resolved
+    # to, kept so a caller can check where work actually landed.
+    _node: Any = None
 
     # Optional price hint, in USD per hour (or any consistent unit — the
     # allocator only ever uses ratios). When ``AdaptiveCompute`` is built
@@ -103,6 +199,28 @@ class Compute:
         no backend is reachable.
         """
         if self.uri is not None:
+            reject_direct_addressing(self.uri)
+            # `zc://node-<fingerprint>` names a NODE, not a host. Resolve it to
+            # that node's own broker before anything tries to treat the
+            # fingerprint as a DNS name (which is what used to happen, and the
+            # error blamed DNS for a perfectly valid node id).
+            if _is_node_uri(self.uri):
+                from zakuro.mesh import NodeInfo, resolve_node
+
+                # A NodeInfo already carries its endpoint, so the common case
+                # -- looping over `nodes()` -- needs no lookup at all.
+                node = self._node if isinstance(self._node, NodeInfo) else resolve_node(self.uri)
+                host, _, port = node.endpoint.partition(":")
+                self.host = host
+                self.port = int(port or 9000)
+                self._node = node
+                # Rewrite the URI to the concrete endpoint as well. Everything
+                # downstream (processor selection, ProcessorConfig.from_uri)
+                # re-parses `uri`, and a fingerprint left in the authority is
+                # read as a hostname.
+                self.uri = f"zc://{host}:{self.port}"
+                return
+
             # Parse URI to extract host/port for backward compatibility
             from zakuro.processors.base import ProcessorConfig
 
@@ -126,6 +244,10 @@ class Compute:
 
         if self.host is None or self.port is None:
             return
+        # A node URI resolved by answering /health -- probing again would only
+        # ask the same question a second time.
+        if getattr(self, "_node", None) is not None:
+            return
         if self.scheme == "quic":
             try:
                 socket.getaddrinfo(self.host, self.port, type=socket.SOCK_DGRAM)
@@ -144,12 +266,6 @@ class Compute:
                 "Start the worker / cluster, fix the URI, or pass verify=False "
                 "to skip this check."
             ) from exc
-
-    def _discover_worker(self) -> str:
-        """Discover worker via DNS or fallback to localhost."""
-        from zakuro.discovery import discover_worker
-
-        return discover_worker()
 
     @property
     def scheme(self) -> str:

@@ -2,22 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import json
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 
-from zakuro.observability import init_sentry
+from zakuro.wire.keys import wrap_payload
 
 if TYPE_CHECKING:
     from zakuro.compute import Compute
     from zakuro.config import Config
-
-
-# Idempotent in practice: sentry_sdk.init is safe to call repeatedly and
-# returns the same hub. We trigger it lazily at first client construction
-# so client-side imports of zakuro stay free of Sentry side-effects until
-# something actually talks to a worker.
-_SENTRY_INITIALISED = False
 
 
 class ZakuroClient:
@@ -40,10 +34,6 @@ class ZakuroClient:
         compute: Compute,
         config: Config | None = None,
     ) -> None:
-        global _SENTRY_INITIALISED
-        if not _SENTRY_INITIALISED:
-            init_sentry("client")
-            _SENTRY_INITIALISED = True
         self._compute = compute
         self._config = config
         self._client: httpx.Client | None = None
@@ -61,8 +51,20 @@ class ZakuroClient:
     def client(self) -> httpx.Client:
         """Lazy-initialize HTTP client."""
         if self._client is None:
+            from zakuro.client_tls import client_ssl_context
+            from zakuro.mesh import proxy_for
+
+            # Opt-in mTLS (ZAKURO_CLIENT_CERT_DIR); None keeps httpx defaults.
+            ssl_ctx = client_ssl_context()
+            verify_kw: dict[str, Any] = {} if ssl_ctx is None else {"verify": ssl_ctx}
             self._client = httpx.Client(
                 base_url=self._compute.endpoint,
+                # A mesh address is reachable only through the sidecar's
+                # CONNECT proxy; loopback must not go through it. Without this
+                # a class instantiated on a mesh node timed out on connect,
+                # while the same node worked fine for `@zk.fn` (which goes
+                # through BrokerProcessor, where the proxy was already wired).
+                proxy=proxy_for(str(self._compute.host or "")),
                 timeout=httpx.Timeout(
                     connect=10.0,
                     read=300.0,  # 5 min for long computations
@@ -70,15 +72,38 @@ class ZakuroClient:
                     pool=10.0,
                 ),
                 headers=self._auth_headers(),
+                **verify_kw,
             )
         return self._client
 
     def _auth_headers(self) -> dict[str, str]:
-        """Build authentication headers if configured."""
+        """Build authentication headers if configured.
+
+        Falls back to the credentials file `zc login` writes, so a remote
+        class works from a plain shell for the same reason `@zk.fn` does --
+        an anonymous caller is refused or stalled on a billing-enabled fleet.
+        """
+        from zakuro.mesh import api_key
+
         headers: dict[str, str] = {}
-        if self.config.auth_token:
-            headers["Authorization"] = f"Bearer {self.config.auth_token}"
+        token = self.config.auth_token or api_key()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         return headers
+
+    def _requirements(self) -> dict[str, Any]:
+        """The Compute spec, in the shape the broker routes on."""
+        from zakuro.processors.broker import DEFAULT_MEMORY_BYTES
+
+        compute = self._compute
+        return {
+            "cpus": compute.cpus,
+            "memory_bytes": (
+                compute.memory_bytes() if compute.memory is not None else DEFAULT_MEMORY_BYTES
+            ),
+            "gpus": compute.gpus,
+            "estimated_duration_secs": 1.0,
+        }
 
     def execute(self, payload: bytes, extra_headers: dict[str, str] | None = None) -> bytes:
         """
@@ -95,12 +120,18 @@ class ZakuroClient:
             httpx.HTTPStatusError: If worker returns error status
             httpx.ConnectError: If worker is unreachable
         """
-        headers = {"Content-Type": "application/octet-stream"}
+        headers = {
+            "Content-Type": "application/octet-stream",
+            # What the Compute asked for. Without this the broker routes on
+            # its defaults, so `Compute(gpus=1)` was silently ignored on the
+            # class path and the instance could land on a CPU-only worker.
+            "X-Zakuro-Requirements": json.dumps(self._requirements()),
+        }
         if extra_headers:
             headers.update(extra_headers)
         response = self.client.post(
             "/execute",
-            content=payload,
+            content=wrap_payload(payload),
             headers=headers,
         )
         response.raise_for_status()
@@ -118,8 +149,7 @@ class ZakuroClient:
         """Get worker information."""
         response = self.client.get("/info")
         response.raise_for_status()
-        info: dict = response.json()
-        return info
+        return cast("dict[Any, Any]", response.json())
 
     def close(self) -> None:
         """Close HTTP client."""

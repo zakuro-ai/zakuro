@@ -13,7 +13,7 @@ Usage::
     adaptive = zk.AdaptiveCompute(
         workers=[
             zk.Compute(uri="quic://mac:4433"),
-            zk.Compute(uri="quic://x399:4434"),
+            zk.Compute(uri="quic://gpu-box:4434"),
         ],
         # β₁ / β₂ mirror Adam's moment-EMA decay rates.
         beta1=0.9,
@@ -48,107 +48,15 @@ import contextlib
 import json
 import math
 import os
-import queue
 import random
 import threading
 import time
-from collections.abc import Iterable, Iterator
-from dataclasses import dataclass, field
+from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from zakuro.compute import Compute
-
-
-# Phase 6.1 (NF1): per-dispatch decision-log record schema. Kept stable
-# across minor versions — replay tooling (zc allocator replay) is bound
-# to these field names. Schema version bumps go in DECISION_LOG_SCHEMA.
-DECISION_LOG_SCHEMA = "v1"
-
-# Background-writer queue depth. When the queue is full, the *oldest*
-# record is dropped and the dropped-count is incremented in the next
-# emitted record. Defaults to ~30 minutes of records at 100 RPS.
-_DECISION_LOG_QUEUE_MAX = 200_000
-
-
-class _DecisionLogWriter:
-    """Background-thread JSONL writer for AdaptiveCompute decisions.
-
-    Designed so the hot dispatch path never blocks on disk I/O. The
-    public surface is :meth:`put` (non-blocking enqueue) and
-    :meth:`close` (drain + stop). Use via :meth:`AdaptiveCompute.enable_decision_log`.
-    """
-
-    def __init__(self, path: Path, *, queue_max: int = _DECISION_LOG_QUEUE_MAX) -> None:
-        self.path = path
-        self._queue: queue.Queue[str | None] = queue.Queue(maxsize=queue_max)
-        self._dropped = 0
-        self._drop_lock = threading.Lock()
-        self._thread: threading.Thread = threading.Thread(
-            target=self._run, name="zakuro-allocator-log", daemon=True
-        )
-        self._thread.start()
-
-    def put(self, record: dict[str, Any]) -> None:
-        """Enqueue a record. Never blocks; oldest record is dropped on overflow."""
-        # Account for any drops since the last emission so consumers can
-        # detect under-sampling in their analysis.
-        with self._drop_lock:
-            if self._dropped:
-                record = {**record, "dropped_since_last": self._dropped}
-                self._dropped = 0
-        line = json.dumps(record, default=str)
-        try:
-            self._queue.put_nowait(line)
-        except queue.Full:
-            # Drop the oldest line to make room. Best-effort — under
-            # severe contention some records may still be lost.
-            with contextlib.suppress(queue.Empty):
-                self._queue.get_nowait()
-            with self._drop_lock:
-                self._dropped += 1
-            with contextlib.suppress(queue.Full):
-                self._queue.put_nowait(line)
-
-    def close(self, timeout: float = 5.0) -> None:
-        """Drain the queue + stop the background thread."""
-        self._queue.put(None)
-        self._thread.join(timeout=timeout)
-
-    def flush(self, timeout: float = 2.0) -> None:
-        """Block until the background queue is empty.
-
-        Useful for tests + tools that read the JSONL file immediately
-        after a batch of dispatches. The hot path never calls this.
-        """
-        deadline = time.monotonic() + timeout
-        while not self._queue.empty():
-            if time.monotonic() > deadline:
-                return
-            time.sleep(0.005)
-
-    def _run(self) -> None:
-        # One open() for the lifetime of the writer — re-open on errors
-        # so a transient OSError (e.g. disk-full) doesn't permanently
-        # silence the log. Records are flushed per-line; tail -f works.
-        while True:
-            try:
-                with open(self.path, "a", encoding="utf-8") as fp:
-                    while True:
-                        item = self._queue.get()
-                        if item is None:
-                            return
-                        try:
-                            fp.write(item + "\n")
-                            fp.flush()
-                        except OSError:
-                            # File-handle gone wrong — close + reopen.
-                            break
-            except OSError:
-                # Couldn't even open the file. Sleep briefly + retry; the
-                # dispatch path keeps queueing in the meantime.
-                time.sleep(1.0)
 
 
 def _identity(x: Any) -> Any:
@@ -202,12 +110,8 @@ class _WorkerStats:
         "last_latency",
         "health_strikes",
         "suspended",
-        # Consecutive-failure eject state (#222). ``consecutive_failures``
-        # counts dispatch exceptions since the last success; ``ejected``
-        # latches ``True`` once it crosses ``eject_after_failures`` and — unlike
-        # ``suspended`` — is permanent (a health probe does not rehabilitate it).
-        "consecutive_failures",
-        "ejected",
+        # Consecutive dispatch failures (Phase 1.6 / F4.2). Reset on success.
+        "dispatch_strikes",
         # Drift-detection state (Phase 1.2).
         "m_slow",
         "drift_factor",
@@ -224,9 +128,8 @@ class _WorkerStats:
         self.last_latency: float | None = None
         self.health_strikes: int = 0
         self.suspended: bool = False
-        # Eject state (#222). Reset to 0 on any successful dispatch.
-        self.consecutive_failures: int = 0
-        self.ejected: bool = False
+        # Consecutive failed dispatches; resets to 0 on any successful dispatch.
+        self.dispatch_strikes: int = 0
         # Longer-horizon EMA used as the "baseline" that drift is measured
         # against. 1.0 = healthy; > 1.0 = deprioritised proportionally.
         self.m_slow: float = 0.0
@@ -265,8 +168,6 @@ class _WorkerStats:
             "last_latency": self.last_latency,
             "health_strikes": self.health_strikes,
             "suspended": self.suspended,
-            "consecutive_failures": self.consecutive_failures,
-            "ejected": self.ejected,
             "bandwidth_bps": self.bandwidth_bps,
         }
 
@@ -295,87 +196,6 @@ class AdaptiveCompute:
     backpressure_threshold:
         ``is_backpressured`` returns ``True`` when *every* worker's
         expected time-to-serve exceeds this many seconds.
-
-    cost_coefficient:
-        Price-aware routing knob (Phase 4.3, #173). At ``0`` (default) the
-        allocator ignores ``Compute.price_per_hour`` entirely. Positive
-        values scale each worker's expected time by
-        ``1 + cost_coefficient × price``, so more-expensive workers fall
-        further down the picker's queue. Higher values trade speed for
-        spend; ``0.5`` is a reasonable starting point. See
-        ``tests/test_adaptive.py::TestPriceAware`` for measured behaviour.
-
-    local_region, local_rack:
-        Topology preference (Phase 4.2, #172). When set, the allocator
-        softly demotes workers in a *different* region (and, within a
-        matching region, a different rack). The bandwidth map (#171) is
-        the source of truth for actual transfer cost; topology hints are
-        a tie-breaker — they never overrule a faster remote worker on
-        latency. Defaults are read from ``ZAKURO_REGION`` / ``ZAKURO_RACK``
-        env vars when ``None``.
-    region_penalty, rack_penalty:
-        Multipliers (≥ 1.0) applied to cross-region and cross-rack
-        workers respectively. Both default to small (1.10 / 1.03) so a
-        materially faster remote worker still wins — see
-        ``tests/test_adaptive.py::TestTopologyHints::test_faster_remote_still_wins``.
-
-    seed:
-        Optional integer seed for the soft (softmax) picker's RNG (#222).
-        ``None`` (default) uses a fresh, non-reproducible RNG. Set an int
-        for deterministic pick sequences in tests + debugging; a dedicated
-        ``random.Random`` instance is used so seeding never perturbs the
-        global RNG. No effect when ``softmax_temperature == 0`` (greedy).
-    max_dispatch_retries:
-        Number of *extra* workers :meth:`dispatch` will fail over to after a
-        worker raises (#222). ``0`` (default) preserves the original
-        behaviour — the exception propagates immediately. With ``N`` > 0 the
-        allocator re-picks a different worker up to ``N`` more times before
-        re-raising the last exception; each already-tried worker is excluded
-        from the retry pick, so it never spins on a single dead worker.
-    eject_after_failures:
-        When set, a worker that accumulates this many *consecutive* dispatch
-        failures is permanently removed from rotation (#222). A single
-        success resets the counter. Unlike health-probe ``suspended`` state,
-        an eject does not self-heal — re-admit with :meth:`add_worker`.
-        ``None`` (default) disables ejection.
-
-    Bandwidth awareness (Phase 4.1, #171) is enabled per call via the
-    ``payload_bytes`` argument to :meth:`pick`: if non-zero and the
-    worker has a bandwidth estimate (seeded during warmup or set by the
-    caller), the picker adds ``payload_bytes / bandwidth_bps`` to each
-    worker's expected time. Critical for large state-dict dispatches.
-
-    Examples
-    --------
-
-    Price-aware (Phase 4.3)::
-
-        ac = zk.AdaptiveCompute(
-            workers=[
-                zk.Compute(uri="quic://onprem:4433", price_per_hour=0.10),
-                zk.Compute(uri="quic://cloud:4433", price_per_hour=1.40),
-            ],
-            cost_coefficient=0.5,  # 0 = speed-only; 1.0 ≈ cost-only
-        )
-
-    Topology hints (Phase 4.2)::
-
-        ac = zk.AdaptiveCompute(
-            workers=[
-                zk.Compute(uri="quic://a.us-west:4433", region="us-west"),
-                zk.Compute(uri="quic://b.eu-west:4433", region="eu-west"),
-            ],
-            local_region="us-west",
-        )
-
-    Bandwidth-aware dispatch (Phase 4.1)::
-
-        # During warmup, AdaptiveCompute probes each worker with a
-        # large payload and seeds bandwidth_bps. After that, pass the
-        # payload size on each dispatch so the picker weights transfer
-        # time alongside latency:
-        ac.warmup(bandwidth_probe_bytes=8_000_000)
-        ac.pick(payload_bytes=len(state_dict_bytes))
     """
 
     def __init__(
@@ -403,10 +223,6 @@ class AdaptiveCompute:
         self._workers: list[Compute] = list(workers)
         if not self._workers:
             raise ValueError("AdaptiveCompute requires at least one worker.")
-        if max_dispatch_retries < 0:
-            raise ValueError("max_dispatch_retries must be >= 0")
-        if eject_after_failures is not None and eject_after_failures < 1:
-            raise ValueError("eject_after_failures must be >= 1 (or None to disable)")
         if not (0.0 <= beta1 < 1.0) or not (0.0 <= beta2 < 1.0):
             raise ValueError("beta1, beta2 must be in [0, 1).")
         if not (0.0 <= beta_slow < 1.0):
@@ -445,22 +261,24 @@ class AdaptiveCompute:
         self._tau = float(softmax_temperature)
         self._initial_latency = float(initial_latency)
         self._backpressure = float(backpressure_threshold)
-
-        # Deterministic softmax sampling (#222). ``seed=None`` uses a fresh,
-        # unseeded RNG (non-reproducible); an int seed makes the probabilistic
-        # picker reproducible for tests + debugging. A dedicated Random
-        # instance keeps AdaptiveCompute from perturbing the global RNG.
-        self._seed = seed
-        self._rng = random.Random(seed)
-        # Fault-tolerant dispatch (#222). ``max_dispatch_retries`` re-picks a
-        # *different* worker (round-robin over the failed set) after a dispatch
-        # raises; ``eject_after_failures`` permanently removes a worker from
-        # rotation once it accumulates that many consecutive failures.
+        # F4.2 — dispatch-failure resilience. ``max_dispatch_retries`` extra
+        # attempts on *other* workers after a dispatch raises (0 = propagate
+        # the first failure, the historical behaviour). ``eject_after_failures``
+        # suspends a worker after that many *consecutive* dispatch failures so
+        # the picker routes around it; ``None`` disables auto-suspension.
+        if max_dispatch_retries < 0:
+            raise ValueError("max_dispatch_retries must be >= 0")
+        if eject_after_failures is not None and eject_after_failures < 1:
+            raise ValueError("eject_after_failures must be >= 1 or None")
         self._max_dispatch_retries = int(max_dispatch_retries)
         self._eject_after_failures = eject_after_failures
 
         self._stats = [_WorkerStats() for _ in self._workers]
         self._lock = threading.Lock()
+        # NF2 — deterministic mode. An instance-local RNG (seeded or not) drives
+        # softmax exploration so reproducibility never depends on, nor perturbs,
+        # the global ``random`` state. ``seed=None`` is still non-deterministic.
+        self._rng = random.Random(seed)
 
         # Health probing lifecycle (Phase 1.1).
         self._probe_thread: threading.Thread | None = None
@@ -469,11 +287,11 @@ class AdaptiveCompute:
         self._probe_timeout: float = 2.0
         self._max_strikes: int = 3
 
-        # Decision log (Phase 6.1, #176). Background-thread JSONL writer.
-        # ``None`` means disabled — the hot path checks ``self._log_writer``
-        # once and skips the snapshot if disabled.
-        self._log_writer: _DecisionLogWriter | None = None
+        # Decision log (Phase 6.1). Append one JSON object per dispatch with
+        # the allocator's prediction and the observed outcome. Users can
+        # replay this offline to audit decisions / debug weird routing.
         self._log_path: Path | None = None
+        self._log_lock: threading.Lock = threading.Lock()
 
     # .................................................................. API
 
@@ -522,36 +340,20 @@ class AdaptiveCompute:
     # ........................................................ decision log
 
     def enable_decision_log(self, path: str | None = None) -> Path:
-        """Turn on per-dispatch logging to a JSONL file (NF1, #176).
+        """Turn on per-dispatch logging to a JSONL file.
 
-        Each dispatch appends one line. Stable schema (frozen at
-        :data:`DECISION_LOG_SCHEMA`)::
+        Each dispatch appends one line:
 
-            {
-              "schema":         "v1",
-              "t":              <unix seconds, float>,
-              "fn":             "<fn name>",
-              "picked":         <chosen worker idx>,
-              "expected_secs":  <allocator estimate for picked>,
-              "actual_secs":    <observed latency>,
-              "ok":             <true | false>,
-              "error":          <repr(exc) | null>,
-              "queue_depth":    [<int per worker>, ...],
-              "ema_latency_ms": [<float per worker>, ...],
-              "drift_factor":   <float, picked worker's drift>,
-              "dropped_since_last": <int, optional — only present after a drop>
-            }
-
-        Writes are non-blocking: a background thread drains a bounded
-        queue. If the queue overflows, the oldest record is dropped and
-        the next emitted record carries a ``dropped_since_last`` count
-        so post-hoc tooling can detect undersampling.
+            {"t": <unix>, "fn": "<fn_name>", "picked": <idx>,
+             "expected_secs": <allocator's estimate>,
+             "actual_secs": <observed latency>,
+             "ok": <bool>, "queue_before": <int>,
+             "drift_factor": <float>}
 
         Default path is ``$HOME/.zakuro/allocator.jsonl`` (or
         ``$ZAKURO_DECISION_LOG`` if set). Directory is created on demand.
 
-        Calling :func:`enable_decision_log` twice rotates the writer to
-        the new path; the old one drains + closes first.
+        Call with ``path=None`` to disable.
         """
         if path is None:
             env = os.environ.get("ZAKURO_DECISION_LOG")
@@ -562,38 +364,23 @@ class AdaptiveCompute:
                 path = str(Path(home) / ".zakuro" / "allocator.jsonl")
         log_path = Path(path)
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        # Rotate: close any prior writer before replacing it.
-        if self._log_writer is not None:
-            self._log_writer.close()
-        self._log_writer = _DecisionLogWriter(log_path)
         self._log_path = log_path
         return log_path
 
     def disable_decision_log(self) -> None:
-        if self._log_writer is not None:
-            self._log_writer.close()
-        self._log_writer = None
         self._log_path = None
 
-    def flush_decision_log(self, timeout: float = 2.0) -> None:
-        """Block until the background writer has drained every enqueued record.
-
-        Useful in tests + replay-tool wrappers that want to read the JSONL
-        file immediately after a batch of dispatches. The hot dispatch
-        path never calls this.
-        """
-        if self._log_writer is not None:
-            self._log_writer.flush(timeout=timeout)
-
     def _log_decision(self, row: dict[str, Any]) -> None:
-        """Best-effort enqueue — never raises, never blocks the dispatch path."""
-        if self._log_writer is None:
+        """Best-effort append — never raises, never blocks the dispatch path."""
+        if self._log_path is None:
             return
-        # Stamp the schema version on every record so replay tools can
-        # detect a future change without parsing the payload.
-        # pragma: no cover — observability never breaks the hot path
-        with contextlib.suppress(Exception):
-            self._log_writer.put({"schema": DECISION_LOG_SCHEMA, **row})
+        try:
+            line = json.dumps(row, default=str) + "\n"
+            with self._log_lock, open(self._log_path, "a", encoding="utf-8") as fp:
+                fp.write(line)
+        except Exception:
+            # Observability must never break the hot path.
+            pass
 
     # ........................................................ node lifecycle
 
@@ -698,6 +485,11 @@ class AdaptiveCompute:
         for orig_idx, compute in snapshot:
             observed: list[float] = []
             err: str | None = None
+
+            # Dry-run call to warm up connection/imports/OS caches (discarded).
+            with contextlib.suppress(Exception):
+                probe.to(compute)(_WARMUP_TOKEN)
+
             started = time.perf_counter()
             for _ in range(rounds):
                 remaining = timeout - (time.perf_counter() - started)
@@ -841,19 +633,6 @@ class AdaptiveCompute:
 
         Safe to call multiple times; only one probe thread runs per
         ``AdaptiveCompute`` instance.
-
-        The probe thread is a daemon, so it will not keep the process alive on
-        its own — but you should still stop it explicitly to release the
-        worker connections it holds. Pair it with ``stop_health_probes`` in a
-        ``try/finally`` so the loop is torn down even if the body raises:
-
-        .. code-block:: python
-
-            ac.start_health_probes(interval=5.0, max_strikes=3)
-            try:
-                run_workload(ac)
-            finally:
-                ac.stop_health_probes()
         """
         if interval <= 0:
             raise ValueError("interval must be positive")
@@ -930,7 +709,8 @@ class AdaptiveCompute:
 
     def _probe_loop(self) -> None:
         while not self._probe_stop.is_set():
-            with contextlib.suppress(Exception):  # defensive — loop must never die on a user error
+            # Defensive — the probe loop must never die on a user error.
+            with contextlib.suppress(Exception):
                 self.probe_once()
             # Use Event.wait so stop is immediate.
             self._probe_stop.wait(self._probe_interval)
@@ -947,7 +727,7 @@ class AdaptiveCompute:
                 from zakuro.processors.quic import QuicProcessor
 
                 config = ProcessorConfig(
-                    scheme="quic", host=cast(str, compute.host), port=compute.port
+                    scheme="quic", host=compute.host or "localhost", port=compute.port
                 )
                 processor = QuicProcessor(config, compute)
                 processor.connect()
@@ -998,29 +778,28 @@ class AdaptiveCompute:
     ) -> Any:
         """Pick a worker, execute the function, record the latency.
 
-        When ``max_dispatch_retries == 0`` (default) any exception raised by the
-        worker is propagated unchanged, after the worker's failure counter and
-        queue depth are updated. When retries are configured (#222), a failed
-        dispatch re-picks a *different* worker (up to ``max_dispatch_retries``
-        extra attempts) before the last exception is re-raised; a worker that
-        accumulates ``eject_after_failures`` consecutive failures is
-        permanently removed from rotation.
+        On failure the worker's failure counters are updated; if
+        ``max_dispatch_retries > 0`` the call is retried on another worker,
+        and if ``eject_after_failures`` is set a worker that fails that many
+        times in a row is suspended (routed around). When all attempts are
+        exhausted the last exception is re-raised unchanged.
         """
         fn_name = getattr(getattr(fn, "_func", fn), "__name__", "<fn>")
+        attempts = 1 + self._max_dispatch_retries
         tried: set[int] = set()
         last_exc: BaseException | None = None
-        # attempts = 1 initial + max_dispatch_retries retries.
-        for _ in range(self._max_dispatch_retries + 1):
+
+        for attempt in range(attempts):
             with self._lock:
+                eligible = [i for i in range(len(self._stats)) if i not in tried]
+                if not eligible:
+                    break  # no fresh worker left to retry on
                 idx = self._pick_locked(exclude=tried)
-                # No fresh worker left to try — every eligible worker has
-                # already failed this call (or the pool is exhausted).
-                if idx in tried:
-                    break
                 self._stats[idx].queue += 1
-                expected = self._expected_times_locked(exclude=tried)[idx]
+                expected = self._expected_times_locked()[idx]
                 queue_before = self._stats[idx].queue
                 drift_factor = self._stats[idx].drift_factor
+            tried.add(idx)
             compute = self._workers[idx]
             t0 = time.perf_counter()
             ok = False
@@ -1033,17 +812,16 @@ class AdaptiveCompute:
             except Exception as exc:
                 last_exc = exc
                 error = repr(exc)
-                tried.add(idx)
                 with self._lock:
                     s = self._stats[idx]
                     s.failures += 1
-                    s.consecutive_failures += 1
+                    s.dispatch_strikes += 1
                     if (
                         self._eject_after_failures is not None
-                        and s.consecutive_failures >= self._eject_after_failures
+                        and s.dispatch_strikes >= self._eject_after_failures
                     ):
-                        s.ejected = True
-                # Fall through to the finally block, then loop for a retry.
+                        s.suspended = True
+                # Don't raise here — the loop decides whether to retry.
             finally:
                 latency = time.perf_counter() - t0
                 with self._lock:
@@ -1051,54 +829,50 @@ class AdaptiveCompute:
                     s.queue = max(0, s.queue - 1)
                     self._update_ema(s, latency)
                     if ok:
-                        # A clean dispatch clears the eject counter.
-                        s.consecutive_failures = 0
-                    # Snapshot under-lock so the record sees a consistent
-                    # fleet view across queue depths + EMAs.
-                    if self._log_writer is not None:
-                        queue_depth = [w.queue for w in self._stats]
-                        ema_latency_ms = [w.m_hat(self._beta1) * 1000.0 for w in self._stats]
-                    else:
-                        queue_depth = []
-                        ema_latency_ms = []
+                        s.dispatch_strikes = 0
                 # Cheap, optional, never-raises observability hook.
-                if self._log_writer is not None:
+                if self._log_path is not None:
                     self._log_decision(
                         {
                             "t": time.time(),
                             "fn": fn_name,
                             "picked": idx,
+                            "attempt": attempt,
                             "expected_secs": expected,
                             "actual_secs": latency,
                             "ok": ok,
                             "queue_before": queue_before,
-                            "queue_depth": queue_depth,
-                            "ema_latency_ms": ema_latency_ms,
                             "drift_factor": drift_factor,
                             "error": error,
                         }
                     )
 
-        # Every attempt failed. Re-raise the last worker exception.
-        assert last_exc is not None  # loop always runs ≥ 1 attempt
-        raise last_exc
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("AdaptiveCompute.dispatch: no eligible worker to dispatch to.")
 
     # ........................................................... internals
 
-    def _pick_locked(self, payload_bytes: int = 0, exclude: set[int] | None = None) -> int:
-        expected = self._expected_times_locked(payload_bytes=payload_bytes, exclude=exclude)
+    def _pick_locked(
+        self,
+        payload_bytes: int = 0,
+        exclude: frozenset[int] | set[int] | tuple[int, ...] = (),
+    ) -> int:
+        expected = self._expected_times_locked(payload_bytes=payload_bytes)
+        if exclude:
+            expected = [float("inf") if i in exclude else e for i, e in enumerate(expected)]
         if self._tau <= 0.0:
             # Argmin with stable tie-breaking — prefer the earlier worker.
             return min(range(len(expected)), key=lambda i: (expected[i], i))
         # Soft (probabilistic) allocation: logits = -time/τ.
         logits = [-t / self._tau for t in expected]
         m = max(logits)
-        weights = [math.exp(v - m) for v in logits]
-        total = sum(weights)
-        if total <= 0.0 or not math.isfinite(total):
-            # Every candidate is excluded/at infinity — fall back to argmin so
-            # the caller (dispatch) can detect the exhausted set deterministically.
+        if not math.isfinite(m):
+            # Every candidate is effectively infinite (all suspended/excluded);
+            # fall back to deterministic argmin instead of sampling NaNs.
             return min(range(len(expected)), key=lambda i: (expected[i], i))
+        weights = [math.exp(logit - m) for logit in logits]
+        total = sum(weights)
         r = self._rng.random() * total
         acc = 0.0
         for i, w in enumerate(weights):
@@ -1110,21 +884,13 @@ class AdaptiveCompute:
     def _expected_times_locked(
         self,
         payload_bytes: int = 0,
-        exclude: set[int] | None = None,
     ) -> list[float]:
         out = []
         for i, s in enumerate(self._stats):
-            if exclude is not None and i in exclude:
-                # Caller-excluded (e.g. already-failed this dispatch, #222).
-                out.append(float("inf"))
-                continue
-            if s.suspended or s.ejected:
+            if s.suspended:
                 # Suspended workers get sent to infinity so the picker routes
                 # around them — but they stay in the pool, so a successful
                 # probe can rehabilitate them with one flip of `suspended`.
-                # Ejected workers (#222) are also sent to infinity, but their
-                # exclusion is permanent — only add_worker/re-admission brings
-                # them back.
                 out.append(float("inf"))
                 continue
             m = s.m_hat(self._beta1)
@@ -1221,202 +987,4 @@ class AdaptiveCompute:
             self.stop_health_probes(timeout=0.5)
 
 
-@dataclass
-class WorkerReplayStats:
-    """Per-worker aggregate from a decision-log replay (#222)."""
-
-    idx: int
-    picks: int = 0
-    ok: int = 0
-    failed: int = 0
-    # Sum of observed latencies for OK dispatches — used to derive the mean.
-    _actual_sum: float = 0.0
-    _actual_n: int = 0
-
-    @property
-    def failure_rate(self) -> float:
-        return self.failed / self.picks if self.picks else 0.0
-
-    @property
-    def mean_actual_secs(self) -> float | None:
-        return self._actual_sum / self._actual_n if self._actual_n else None
-
-
-@dataclass
-class DecisionReplay:
-    """Structured summary of an allocator decision log (#222, NF1).
-
-    Produced by :func:`replay_decisions`. Aggregates a JSONL decision log
-    (written by :meth:`AdaptiveCompute.enable_decision_log`) into per-worker
-    pick/failure counts and an allocator calibration estimate, without
-    holding every record in memory unless ``keep_records=True``.
-    """
-
-    path: str
-    schema: str | None = None
-    total: int = 0
-    ok: int = 0
-    failed: int = 0
-    dropped: int = 0
-    workers: dict[int, WorkerReplayStats] = field(default_factory=dict)
-    fn_counts: dict[str, int] = field(default_factory=dict)
-    t_start: float | None = None
-    t_end: float | None = None
-    # Running sums for the calibration estimate (expected vs actual seconds).
-    _expected_sum: float = 0.0
-    _actual_sum: float = 0.0
-    _abs_error_sum: float = 0.0
-    _calib_n: int = 0
-    records: list[dict[str, Any]] = field(default_factory=list)
-
-    @property
-    def mean_expected_secs(self) -> float | None:
-        return self._expected_sum / self._calib_n if self._calib_n else None
-
-    @property
-    def mean_actual_secs(self) -> float | None:
-        return self._actual_sum / self._calib_n if self._calib_n else None
-
-    @property
-    def calibration_error_secs(self) -> float | None:
-        """Mean absolute error between the allocator estimate and reality."""
-        return self._abs_error_sum / self._calib_n if self._calib_n else None
-
-    @property
-    def duration_secs(self) -> float | None:
-        if self.t_start is None or self.t_end is None:
-            return None
-        return self.t_end - self.t_start
-
-    def summary(self) -> str:
-        """Human-readable multi-line summary for ``zakuro allocator replay``."""
-        lines = [
-            f"Decision log: {self.path}",
-            f"  schema={self.schema}  records={self.total}  "
-            f"ok={self.ok}  failed={self.failed}  dropped={self.dropped}",
-        ]
-        dur = self.duration_secs
-        if dur is not None:
-            lines.append(f"  span={dur:.1f}s")
-        me, ma, ce = (
-            self.mean_expected_secs,
-            self.mean_actual_secs,
-            self.calibration_error_secs,
-        )
-        if ce is not None and me is not None and ma is not None:
-            lines.append(
-                f"  calibration: expected={me:.4f}s  actual={ma:.4f}s  mean_abs_error={ce:.4f}s"
-            )
-        lines.append("  workers:")
-        for idx in sorted(self.workers):
-            w = self.workers[idx]
-            ma_w = w.mean_actual_secs
-            ma_str = f"{ma_w:.4f}s" if ma_w is not None else "n/a"
-            lines.append(
-                f"    [{idx}] picks={w.picks}  ok={w.ok}  failed={w.failed}  "
-                f"fail_rate={w.failure_rate:.1%}  mean_actual={ma_str}"
-            )
-        if self.fn_counts:
-            fns = ", ".join(f"{k}×{v}" for k, v in sorted(self.fn_counts.items()))
-            lines.append(f"  fns: {fns}")
-        return "\n".join(lines)
-
-
-def _iter_decision_records(path: Path) -> Iterator[dict[str, Any]]:
-    """Yield parsed JSON objects from a decision-log JSONL file.
-
-    Malformed lines are skipped rather than aborting the whole replay — a log
-    that was truncated mid-write (process killed) should still summarise.
-    """
-    with open(path, encoding="utf-8") as fp:
-        for line in fp:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(obj, dict):
-                yield obj
-
-
-def replay_decisions(path: str | Path, *, keep_records: bool = False) -> DecisionReplay:
-    """Replay an allocator decision log into a :class:`DecisionReplay` summary.
-
-    ``path`` is a JSONL file previously written by
-    :meth:`AdaptiveCompute.enable_decision_log`. The returned object exposes
-    per-worker pick/failure counts and an allocator-calibration estimate
-    (mean absolute error between the predicted ``expected_secs`` and the
-    observed ``actual_secs``).
-
-    Set ``keep_records=True`` to also retain every parsed record on
-    ``DecisionReplay.records`` (off by default — logs can hold hundreds of
-    thousands of lines).
-
-    Raises :class:`FileNotFoundError` if the log does not exist.
-    """
-    log_path = Path(path)
-    if not log_path.exists():
-        raise FileNotFoundError(f"decision log not found: {log_path}")
-
-    replay = DecisionReplay(path=str(log_path))
-    for rec in _iter_decision_records(log_path):
-        replay.total += 1
-        if replay.schema is None:
-            replay.schema = rec.get("schema")
-        if keep_records:
-            replay.records.append(rec)
-
-        t = rec.get("t")
-        if isinstance(t, (int, float)):
-            replay.t_start = t if replay.t_start is None else min(replay.t_start, t)
-            replay.t_end = t if replay.t_end is None else max(replay.t_end, t)
-
-        dropped = rec.get("dropped_since_last")
-        if isinstance(dropped, int):
-            replay.dropped += dropped
-
-        fn_name = rec.get("fn")
-        if isinstance(fn_name, str):
-            replay.fn_counts[fn_name] = replay.fn_counts.get(fn_name, 0) + 1
-
-        ok = bool(rec.get("ok"))
-        replay.ok += int(ok)
-        replay.failed += int(not ok)
-
-        idx = rec.get("picked")
-        if isinstance(idx, int):
-            w = replay.workers.get(idx)
-            if w is None:
-                w = replay.workers[idx] = WorkerReplayStats(idx=idx)
-            w.picks += 1
-            w.ok += int(ok)
-            w.failed += int(not ok)
-
-        raw_expected = rec.get("expected_secs")
-        raw_actual = rec.get("actual_secs")
-        actual: float | None = (
-            float(raw_actual)
-            if isinstance(raw_actual, (int, float)) and math.isfinite(raw_actual)
-            else None
-        )
-        expected: float | None = (
-            float(raw_expected)
-            if isinstance(raw_expected, (int, float)) and math.isfinite(raw_expected)
-            else None
-        )
-        if ok and isinstance(idx, int) and actual is not None:
-            w = replay.workers[idx]
-            w._actual_sum += actual
-            w._actual_n += 1
-        if ok and expected is not None and actual is not None:
-            replay._expected_sum += expected
-            replay._actual_sum += actual
-            replay._abs_error_sum += abs(actual - expected)
-            replay._calib_n += 1
-
-    return replay
-
-
-__all__ = ["AdaptiveCompute", "DecisionReplay", "WorkerReplayStats", "replay_decisions"]
+__all__ = ["AdaptiveCompute"]

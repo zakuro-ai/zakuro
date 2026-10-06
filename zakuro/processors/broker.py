@@ -14,6 +14,14 @@ if TYPE_CHECKING:
     from zakuro.compute import Compute
 
 
+#: What to ask for when a `Compute` names no memory, which is the default.
+#: `Compute.memory_bytes()` raises on None by design -- it will not invent a
+#: number for a caller who asked for a specific one -- but a request with no
+#: memory constraint is the normal case and must not be an error. 100 MiB is
+#: what zc's own bench sends for a routing-overhead job.
+DEFAULT_MEMORY_BYTES = 100 * 1024 * 1024
+
+
 class BrokerProcessor(Processor):
     """Broker-based processor that routes through zc broker.
 
@@ -28,7 +36,7 @@ class BrokerProcessor(Processor):
         - broker://host:port
 
     Example:
-        >>> config = ProcessorConfig.from_uri("zc://my.zakuro-ai.com:9000")
+        >>> config = ProcessorConfig.from_uri("zc://localhost:9000")
         >>> processor = BrokerProcessor(config, compute)
         >>> with processor:
         ...     result = processor.execute(func_bytes, args, kwargs)
@@ -56,9 +64,14 @@ class BrokerProcessor(Processor):
 
         import os
 
-        # Read API key from ZAKURO_API_KEY (or legacy ZAKURO_AUTH)
-        key_from_env = os.environ.get("ZAKURO_API_KEY") or os.environ.get("ZAKURO_AUTH")
-        self._api_key: str | None = key_from_env
+        # The account key: environment first, then the credentials file
+        # `zc login` wrote. Reading the file is what lets `import zakuro` work
+        # in a plain shell -- without it the broker sees an anonymous caller,
+        # and on a billing-enabled fleet every request to a priced worker is
+        # refused or stalls, which reads as a dead mesh.
+        from zakuro.mesh import api_key as _load_api_key
+
+        self._api_key: str | None = _load_api_key()
 
         # Determine user_id:
         # 1. processor_options["user_id"] if set
@@ -86,13 +99,22 @@ class BrokerProcessor(Processor):
         # Set default headers: prefer Bearer auth, fallback to X-Zakuro-User
         headers = {}
         if self._api_key:
+            from zakuro.security import ensure_secure_for_key
+
+            ensure_secure_for_key(broker_url)
             headers["Authorization"] = f"Bearer {self._api_key}"
         else:
             headers["X-Zakuro-User"] = self._user_id
 
+        # A mesh address is reachable only through the sidecar's CONNECT
+        # proxy; loopback must NOT go through it, or talking to your own
+        # broker means leaving the host and coming back.
+        from zakuro.mesh import proxy_for
+
         self._client = httpx.Client(
             base_url=broker_url,
             headers=headers,
+            proxy=proxy_for(str(self._config.host)),
             timeout=httpx.Timeout(
                 connect=10.0,
                 read=300.0,  # 5 min for long computations
@@ -108,6 +130,79 @@ class BrokerProcessor(Processor):
             self._client.close()
             self._client = None
         self._connected = False
+
+    def _requirements(self) -> dict[str, Any]:
+        """The Compute spec, in the shape the broker routes on.
+
+        Shared by the stateless `execute` path and the stateful `@cls` one, so
+        an instance is placed against the same spec its caller asked for --
+        `Compute(gpus=1)` must mean the same thing for a class as a function.
+        """
+        opts = self._compute.processor_options or {}
+        requirements: dict[str, Any] = {
+            "cpus": self._compute.cpus,
+            "memory_bytes": (
+                self._compute.memory_bytes()
+                if self._compute.memory is not None
+                else DEFAULT_MEMORY_BYTES
+            ),
+            "gpus": self._compute.gpus,
+            "estimated_duration_secs": opts.get("estimated_duration_secs", 1.0),
+        }
+        if "budget_credits" in opts:
+            requirements["budget_credits"] = float(opts["budget_credits"])
+        if "strategy" in opts:
+            requirements["strategy"] = opts["strategy"]
+        if "remote_only" in opts:
+            requirements["remote_only"] = bool(opts["remote_only"])
+        if "worker_type" in opts:
+            requirements["worker_type"] = opts["worker_type"]
+        # Pin execution to a specific mesh worker/node by zc:// address (or bare
+        # name). The broker normalizes the scheme and routes the offer to the
+        # owning node, rejecting it elsewhere. Absent = normal strategy routing.
+        if opts.get("target_worker"):
+            requirements["target_worker"] = str(opts["target_worker"])
+        if opts.get("target_node"):
+            requirements["target_node"] = str(opts["target_node"])
+        return requirements
+
+    def execute_payload(self, payload: bytes, extra_headers: dict[str, str] | None = None) -> bytes:
+        """Send a pre-serialized request through the broker, for `@cls`.
+
+        The broker already speaks instance affinity: it reads
+        `X-Zakuro-Instance-Action` / `X-Zakuro-Instance-Id`, pins the
+        instance id to the worker that created it, and routes later
+        `call_method` calls back to that same worker. Only the SDK side was
+        missing, so `@zk.cls` over a broker raised NotImplementedError while
+        the same class worked over a direct HTTP worker.
+
+        Returns raw cloudpickle bytes -- a result or an exception -- which the
+        proxy deserialises and raises.
+        """
+        if not self._connected or self._client is None:
+            raise RuntimeError("Processor not connected. Use as context manager.")
+
+        headers = {
+            "Content-Type": "application/octet-stream",
+            "X-Zakuro-Requirements": json.dumps(self._requirements()),
+        }
+        if extra_headers:
+            headers.update(extra_headers)
+
+        response = self._client.post("/execute", content=payload, headers=headers)
+        # Same mapping as `execute`: these three say something a caller can
+        # act on, and the raw status does not.
+        if response.status_code == 402:
+            raise RuntimeError("Insufficient credits for compute request")
+        if response.status_code == 429:
+            raise RuntimeError("Rate limit exceeded")
+        if response.status_code == 503:
+            raise RuntimeError(
+                "No worker matched this Compute (check gpus/cpus/memory against "
+                "`zakuro.nodes()`), or the node refused the request"
+            )
+        response.raise_for_status()
+        return bytes(response.content)
 
     def execute(self, func_bytes: bytes, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
         """Execute function via broker.
@@ -146,21 +241,7 @@ class BrokerProcessor(Processor):
         )
 
         # Build requirements header from compute spec + processor_options overrides
-        opts = self._compute.processor_options or {}
-        requirements: dict[str, Any] = {
-            "cpus": self._compute.cpus,
-            "memory_bytes": self._compute.memory_bytes(),
-            "gpus": self._compute.gpus,
-            "estimated_duration_secs": opts.get("estimated_duration_secs", 1.0),
-        }
-        if "budget_credits" in opts:
-            requirements["budget_credits"] = float(opts["budget_credits"])
-        if "strategy" in opts:
-            requirements["strategy"] = opts["strategy"]
-        if "remote_only" in opts:
-            requirements["remote_only"] = bool(opts["remote_only"])
-        if "worker_type" in opts:
-            requirements["worker_type"] = opts["worker_type"]
+        requirements = self._requirements()
 
         # Execute via broker (auth headers are set on the client)
         response = self._client.post(

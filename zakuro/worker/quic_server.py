@@ -35,25 +35,19 @@ except ImportError as exc:  # pragma: no cover
     ) from exc
 
 from zakuro import __version__
+from zakuro.auth.frame import STAT_UNAUTHORIZED, FrameAuthError, authorize_frame
+from zakuro.worker.envelope import EnvelopeRejectedError, unwrap_payload
+from zakuro.worker.posture import max_payload_bytes, validate_auth_config, validate_wire_config
 
 logger = logging.getLogger(__name__)
 
 OP_EXECUTE = 1
 OP_INFO = 2
 OP_HEALTH = 3
-# Streaming chunk for a multi-chunk dispatch (RFC 0001 amendment, #175).
-# Each frame carries one ChunkFrame; the worker reassembles in order via
-# zakuro.wire.streaming.ChunkReassembler and treats the concatenated bytes
-# as a v0.2 EnvelopeV2 once last=True arrives.
-OP_EXECUTE_CHUNK = 4
 
 STAT_OK = 0
 STAT_USER_ERROR = 1
 STAT_PROTOCOL_ERROR = 2
-# A chunk was accepted but more chunks are expected before the stream
-# can be assembled. The caller continues sending chunks; only when the
-# final chunk arrives does the worker emit OK + the execution body.
-STAT_CHUNK_ACK = 3
 
 ALPN = ["zk-worker"]
 DEFAULT_PORT = 4433
@@ -65,40 +59,74 @@ _KEY_PATH = _CERT_DIR / "quic_worker_key.pem"
 def _execute_payload(payload: bytes) -> tuple[int, bytes]:
     """Run an EXECUTE payload and return ``(status, response_bytes)``.
 
-    Wire format depends on ``ZAKURO_WIRE``:
-
-    * ``v1`` — the payload is a postcard envelope. Decoded + HMAC-verified
-      via :func:`zakuro.worker.envelope.unwrap_payload`; the inner blob
-      is the cloudpickle dict to execute.
-    * unset — legacy path: the payload is the cloudpickle dict directly.
-
-    Differentiates protocol errors (``stat=2``: malformed envelope OR
-    malformed cloudpickle) from user errors (``stat=1``: function raised).
-    Must run on a worker thread.
+    Honours the request ``action`` (``execute`` / ``create_instance`` /
+    ``call_method``) so stateful ``@cls`` proxies work over QUIC exactly as
+    over HTTP, sharing the worker's in-process instance store. Differentiates
+    protocol errors (``stat=2``: malformed request) from user errors
+    (``stat=1``: the call raised). Must run on a worker thread.
     """
-    # zakuro.worker.envelope.unwrap_payload is the single chokepoint that
-    # decides whether to gate this request through postcard+HMAC or pass
-    # the raw bytes through unchanged (legacy mode).
-    from zakuro.wire import WireError as _WireError
-    from zakuro.worker.envelope import unwrap_payload
+    from zakuro.worker import executor as _executor
 
     try:
-        inner_payload, _envelope = unwrap_payload(payload)
-    except _WireError as exc:
-        return STAT_PROTOCOL_ERROR, f"envelope rejected: {exc!r}".encode()
-
+        payload = unwrap_payload(payload)  # ZAKURO_WIRE=v1: verify HMAC before any unpickling
+    except EnvelopeRejectedError:
+        return STAT_PROTOCOL_ERROR, b"unauthorized: invalid or unsigned envelope"
     try:
-        data = cloudpickle.loads(inner_payload)
+        data = cloudpickle.loads(payload)
     except Exception as exc:
         return STAT_PROTOCOL_ERROR, f"malformed cloudpickle: {exc!r}".encode()
+    if not isinstance(data, dict):
+        return STAT_PROTOCOL_ERROR, b"malformed request: expected a dict payload"
+
+    action = data.get("action", "execute")
     try:
-        func = data["func"]
-        args = data.get("args", ())
-        kwargs = data.get("kwargs", {})
-    except Exception as exc:
-        return STAT_PROTOCOL_ERROR, f"malformed request dict: {exc!r}".encode()
+        if action == "execute" or "func" in data:
+            func = data["func"]
+            args = data.get("args", ())
+            kwargs = data.get("kwargs", {})
+
+            def _run() -> Any:
+                return func(*args, **kwargs)
+
+        elif action == "create_instance":
+            klass = data["klass"]
+            args = data.get("args", ())
+            kwargs = data.get("kwargs", {})
+            client_id = data.get("instance_id")
+
+            def _run() -> Any:
+                _executor._ensure_capacity(client_id)
+                instance = klass(*args, **kwargs)
+                if client_id:
+                    return {"instance_id": _executor._put_instance(client_id, instance)}
+                return {"instance_id": _executor._store_instance(instance)}
+
+        elif action == "release_instance":
+            release_id = data["instance_id"]
+
+            def _run() -> Any:
+                _executor._cleanup_instance(release_id)
+                return {"released": True}
+
+        elif action == "call_method":
+            instance_id = data["instance_id"]
+            method_name = data["method"]
+            args = data.get("args", ())
+            kwargs = data.get("kwargs", {})
+
+            def _run() -> Any:
+                instance = _executor._get_instance(instance_id)
+                return getattr(instance, method_name)(*args, **kwargs)
+
+        else:
+            return STAT_PROTOCOL_ERROR, f"unknown action: {action!r}".encode()
+    except KeyError as exc:
+        return STAT_PROTOCOL_ERROR, f"malformed request dict: missing key {exc}".encode()
+
     try:
-        result = func(*args, **kwargs)
+        result = _run()
+    except _executor.InstanceStoreFullError as exc:
+        return STAT_PROTOCOL_ERROR, str(exc).encode()
     except Exception as exc:
         return STAT_USER_ERROR, cloudpickle.dumps(exc)
     return STAT_OK, cloudpickle.dumps(result)
@@ -138,6 +166,10 @@ def _frame(status: int, payload: bytes) -> bytes:
     return bytes([status]) + len(payload).to_bytes(4, "big") + payload
 
 
+class PayloadTooLargeError(Exception):
+    """A frame's declared length exceeds the inbound payload cap."""
+
+
 class _StreamBuffer:
     """Per-stream framing state: accumulates bytes until a full request is in."""
 
@@ -155,7 +187,13 @@ class _StreamBuffer:
             if len(self.buf) < 5:
                 return None
             self.op = self.buf[0]
-            self.expected = int.from_bytes(self.buf[1:5], "big")
+            declared = int.from_bytes(self.buf[1:5], "big")
+            limit = max_payload_bytes()
+            if declared > limit:
+                # Reject on the declared prefix, before buffering any payload.
+                self.buf.clear()
+                raise PayloadTooLargeError(f"declared payload {declared} exceeds cap {limit}")
+            self.expected = declared
             del self.buf[:5]
         assert self.expected is not None
         if len(self.buf) < self.expected:
@@ -168,41 +206,46 @@ class _StreamBuffer:
 class WorkerQuicProtocol(QuicConnectionProtocol):
     """One instance per accepted QUIC connection.
 
-    QUIC streams are independent; the *framing* layer (this protocol)
-    treats each stream as carrying exactly one request/response pair.
-
-    Multi-chunk dispatches (#175 Phase 3) span multiple QUIC streams
-    that share a single logical ``ChunkFrame.stream_id``. The per-
-    connection :class:`ChunkReassembler` accumulates them; the *final*
-    chunk's QUIC stream is the one that carries the execution result.
+    Streams are independent; each carries exactly one request/response pair.
     """
 
     def __init__(self, *args: Any, executor: ThreadPoolExecutor, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._executor = executor
         self._streams: dict[int, _StreamBuffer] = {}
-        # Lazy import: zakuro.wire.streaming pulls in serde_bytes types that
-        # are not needed for v0.1 traffic. Importing here keeps the
-        # module-load cost honest for v0.1-only deployments.
-        from zakuro.wire.streaming import ChunkReassembler
-
-        self._reassembler = ChunkReassembler()
 
     def quic_event_received(self, event: Any) -> None:
         if isinstance(event, StreamDataReceived):
             sb = self._streams.setdefault(event.stream_id, _StreamBuffer())
-            frame = sb.feed(event.data)
+            try:
+                frame = sb.feed(event.data)
+            except PayloadTooLargeError as exc:
+                self._streams.pop(event.stream_id, None)
+                self._quic.send_stream_data(
+                    event.stream_id,
+                    _frame(STAT_PROTOCOL_ERROR, str(exc).encode()),
+                    end_stream=True,
+                )
+                self.transmit()
+                return
             if frame is not None:
                 self._streams.pop(event.stream_id, None)
-                asyncio.ensure_future(self._handle_request(event.stream_id, frame[0], frame[1]))
+                try:
+                    op, payload = authorize_frame(frame[0], frame[1])
+                except FrameAuthError:
+                    # Refuse before anything is deserialized or executed.
+                    self._quic.send_stream_data(
+                        event.stream_id, _frame(STAT_UNAUTHORIZED, b""), end_stream=True
+                    )
+                    self.transmit()
+                    return
+                asyncio.ensure_future(self._handle_request(event.stream_id, op, payload))
 
     async def _handle_request(self, stream_id: int, op: int, payload: bytes) -> None:
         try:
             if op == OP_EXECUTE:
                 loop = asyncio.get_event_loop()
                 status, body = await loop.run_in_executor(self._executor, _execute_payload, payload)
-            elif op == OP_EXECUTE_CHUNK:
-                status, body = await self._handle_chunk(payload)
             elif op == OP_INFO:
                 status, body = STAT_OK, _info_payload()
             elif op == OP_HEALTH:
@@ -218,47 +261,6 @@ class WorkerQuicProtocol(QuicConnectionProtocol):
 
         self._quic.send_stream_data(stream_id, _frame(status, body), end_stream=True)
         self.transmit()
-
-    async def _handle_chunk(self, payload: bytes) -> tuple[int, bytes]:
-        """Decode a ChunkFrame, feed the reassembler, dispatch on last=True.
-
-        Returns:
-            ``(STAT_CHUNK_ACK, b"")`` while more chunks are expected.
-            ``(STAT_OK, body)`` on the final chunk after execution finishes.
-            ``(STAT_PROTOCOL_ERROR, reason)`` on malformed / out-of-order
-            chunks or on rejected reassembled envelopes.
-        """
-        # Deferred imports for the same reason as the reassembler in __init__.
-        from zakuro.wire import (
-            WireError,
-            decode_chunk_frame,
-            decode_envelope_v2,
-        )
-        from zakuro.wire.streaming import StreamingError
-
-        try:
-            chunk = decode_chunk_frame(payload)
-        except WireError as exc:
-            return STAT_PROTOCOL_ERROR, f"malformed chunk: {exc!r}".encode()
-
-        try:
-            assembled = self._reassembler.feed(chunk)
-        except StreamingError as exc:
-            return STAT_PROTOCOL_ERROR, f"chunk rejected: {exc!r}".encode()
-
-        if assembled is None:
-            # Intermediate chunk — ack only, no execution yet.
-            return STAT_CHUNK_ACK, b""
-
-        # Final chunk: assembled bytes are a postcard EnvelopeV2. Decode +
-        # forward the callable to the executor exactly like v0.1.
-        try:
-            envelope_v2 = decode_envelope_v2(assembled)
-        except WireError as exc:
-            return STAT_PROTOCOL_ERROR, f"reassembled envelope malformed: {exc!r}".encode()
-
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(self._executor, _execute_payload, envelope_v2.callable)
 
 
 def _ensure_certificate() -> tuple[Path, Path]:
@@ -307,26 +309,31 @@ async def _run_server(
     executor: ThreadPoolExecutor,
     ready: asyncio.Event | None,
 ) -> None:
-    # mTLS rollout (#115 Phase 2): when ZAKURO_CERT_DIR is set, build the
-    # QuicConfiguration via the shared zakuro.transport.tls helper so
-    # client certs are required + the ALPN bumps to zk-worker-v2 (matching
-    # the wire-format bump in RFC 0001). When unset, fall through to the
-    # self-signed dev cert that previous releases used.
-    if os.environ.get("ZAKURO_CERT_DIR", "").strip():
-        from zakuro.transport import build_aioquic_server_configuration, load_server_tls
+    validate_auth_config()
+    validate_wire_config()
+    config = QuicConfiguration(
+        alpn_protocols=ALPN,
+        is_client=False,
+        max_datagram_frame_size=65536,
+    )
+    from zakuro.worker.tls import (
+        apply_quic_mtls,
+        load_server_tls,
+        mtls_enabled,
+        require_quic_client_cert,
+    )
 
-        config = build_aioquic_server_configuration(load_server_tls())
-        config.max_datagram_frame_size = 65536
+    mtls_material = load_server_tls() if mtls_enabled() else None
+    if mtls_material is not None:
+        # ZAKURO_CERT_DIR: serve the configured cert and require client certs.
+        apply_quic_mtls(config, mtls_material)
     else:
         cert_path, key_path = _ensure_certificate()
-        config = QuicConfiguration(
-            alpn_protocols=ALPN,
-            is_client=False,
-            max_datagram_frame_size=65536,
-        )
         config.load_cert_chain(str(cert_path), str(key_path))
 
     def _factory(*args: Any, **kwargs: Any) -> WorkerQuicProtocol:
+        if mtls_material is not None:
+            require_quic_client_cert(args[0], mtls_material)
         return WorkerQuicProtocol(*args, executor=executor, **kwargs)
 
     server = await serve(
@@ -381,17 +388,7 @@ def main() -> None:
     if args.worker_name:
         os.environ["ZAKURO_WORKER_NAME"] = args.worker_name
     logging.basicConfig(level=logging.INFO)
-    from zakuro.worker.posture import (
-        InsecureBindError,
-        StartupConfigError,
-        resolve_listener,
-    )
-
-    try:
-        host = resolve_listener(args.host, args.port)
-    except (InsecureBindError, StartupConfigError) as exc:
-        raise SystemExit(str(exc)) from exc
-    run_quic_worker(host=host, port=args.port)
+    run_quic_worker(host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

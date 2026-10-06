@@ -32,6 +32,9 @@ class Fn(Generic[R]):
         self._compute: Any | None = None  # Compute or AdaptiveCompute
         self._serialized: bytes | None = None
         functools.update_wrapper(self, func)
+        #: Credits the last remote call was charged, per the broker's own
+        #: reply. None until a billed call has been made.
+        self.last_cost: float | None = None
 
     def to(self, compute: Any) -> Fn[R]:
         """Attach a compute target.
@@ -88,13 +91,25 @@ class Fn(Generic[R]):
                 with applied_resource_limits(self._compute):
                     return self._func(*args, **kwargs)
             self._compute.uri = uri
+            # Assigning `uri` after construction does not re-run
+            # `__post_init__`, so host/port would stay None and `.endpoint`
+            # would return the "zc://in-process" placeholder -- which httpx
+            # rejects as an unsupported protocol. Resolve it explicitly.
+            self._compute._resolve_uri()
 
         from zakuro.processors.registry import get_processor
 
         func_bytes = cloudpickle.dumps(self._func)
         processor = get_processor(uri, self._compute)
         with processor:
-            return cast(R, processor.execute(func_bytes, args, kwargs))
+            result = cast(R, processor.execute(func_bytes, args, kwargs))
+        # What the broker charged for that call, so a caller can see it
+        # without reaching into a processor it never held. `None` when the
+        # transport does not bill (a direct worker, or in-process). Zero is a
+        # real answer and means the work was free -- correct on your own
+        # hardware, and a problem on anyone else's.
+        self.last_cost = getattr(processor, "last_cost", None)
+        return result
 
     # Retained as an alias for any external callers that hooked into the
     # pre-adaptive name.

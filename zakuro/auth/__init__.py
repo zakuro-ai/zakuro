@@ -1,17 +1,12 @@
-"""Authentication and authorisation surface for Zakuro (#116, RFC 0002).
+"""Caller authentication for the Zakuro worker (ADR 0013, ``ZAKURO_AUTH_REQUIRED``).
 
-This package implements the request-side of the runtime's auth model:
+Opt-in JWT bearer auth: the broker issues Ed25519-signed tokens, the worker
+only verifies them. Off unless ``ZAKURO_AUTH_REQUIRED`` is truthy. Requires the
+``[worker]`` extra (PyJWT with the ``crypto`` extra).
 
-- :func:`verify_jwt` — parse + verify an Ed25519-signed JWT issued by the
-  broker, returning :class:`Claims` on success.
-- :func:`derive_payload_hmac_key` — HKDF-derive the per-tenant key the
-  worker uses to verify postcard-envelope HMACs (#117).
-- :func:`require_jwt_scope` — FastAPI dependency that gates a handler on
-  a specific JWT scope.
-
-The transport-level mTLS layer lives in :mod:`zakuro.transport` (#115).
-This package assumes mTLS has already verified the peer; JWTs add the
-per-request authorisation on top.
+- :func:`verify_jwt` / :func:`authorize_token` -- verify a token (and scope).
+- :func:`require_jwt_scope` -- FastAPI dependency gating an HTTP handler.
+- :mod:`zakuro.auth.frame` -- the equivalent guard for QUIC frames.
 """
 
 from zakuro.auth.jwt import (
@@ -20,7 +15,7 @@ from zakuro.auth.jwt import (
     JwtExpiredError,
     JwtScopeError,
     JwtSignatureError,
-    derive_payload_hmac_key,
+    authorize_token,
     verify_jwt,
 )
 from zakuro.auth.middleware import require_jwt_scope
@@ -31,7 +26,7 @@ __all__ = [
     "JwtExpiredError",
     "JwtScopeError",
     "JwtSignatureError",
-    "derive_payload_hmac_key",
+    "authorize_token",
     "require_jwt_scope",
     "verify_jwt",
 ]
