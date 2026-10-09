@@ -98,16 +98,22 @@ def test_cli_no_ssl_kwargs_when_cert_dir_unset(
 def test_cli_fails_closed_when_cert_dir_missing_files(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Pointing ZAKURO_CERT_DIR at an empty dir → load_server_tls raises → CLI bails before uvicorn.run."""
+    """Pointing ZAKURO_CERT_DIR at an empty dir → the CLI exits naming the missing file, before uvicorn.run.
+
+    Released zakuro loads worker TLS in ``zakuro.worker.tls`` and turns an
+    incomplete cert dir into ``sys.exit(<reason>)``, the same fail-closed exit
+    the CLI uses for an insecure bind.
+    """
     monkeypatch.setenv("ZAKURO_CERT_DIR", str(tmp_path))
     monkeypatch.setattr("sys.argv", ["zakuro-worker", "--transport", "http", "--port", "0"])
 
-    from zakuro.transport import TlsNotConfiguredError
     from zakuro.worker.cli import main
 
-    with patch("uvicorn.run") as run, pytest.raises(TlsNotConfiguredError):
+    with patch("uvicorn.run") as run, pytest.raises(SystemExit) as exc_info:
         main()
     run.assert_not_called()
+    assert "ZAKURO_CERT_DIR" in str(exc_info.value.code)
+    assert "tls.crt" in str(exc_info.value.code)
 
 
 # ---- HTTP transport (zakuro.worker.server) ----------------------------------
