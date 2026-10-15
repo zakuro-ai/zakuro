@@ -22,5 +22,5 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE SCHEMA IF NOT EXISTS ledger;
 CREATE SCHEMA IF NOT EXISTS workers;
 
-COMMENT ON SCHEMA ledger  IS 'Credit ledger tables, managed by broker migrations.';
+COMMENT ON SCHEMA ledger  IS 'Money ledger tables, managed by broker migrations.';
 COMMENT ON SCHEMA workers IS 'Worker registry tables, managed by broker migrations.';

@@ -20,7 +20,7 @@ implement several issues, or an issue may produce several RFCs).
 | 0002 | Authentication: mTLS everywhere + JWT scopes | #115, #116 | Accepted (CA paragraph amended by 0004) |
 | 0003 | Observability stack: hybrid Prom + OTel + structlog | #123, #124, #125 | Accepted |
 | 0004 | Deployment model: P2P over QUIC, no Kubernetes | #131, #132 (won't fix) | Accepted |
-| 0005 | Credit ledger: double-entry accountable | #135 | Accepted |
+| 0005 | Ledger: double-entry accountable (unit superseded by ADR 0027: amounts are yen) | #135 | Accepted |
 | 0006 | Batch dispatch: async iterator API | #137 | Accepted |
 | 0007 | Tenant isolation: Docker + ephemeral single-tenant workers | #136 | Accepted |
 | 0008 | Mesh gossip: SWIM over QUIC, postcard messages | #138 | Accepted |

@@ -42,10 +42,10 @@ curl -s -X POST "$BROKER_URL/workers" \
       "gpus_available": 0
     },
     "pricing": {
-      "cpu_price": 0.001,
-      "memory_price": 0.0001,
-      "gpu_price": 0.01,
-      "min_charge": 0.0001
+      "cpu_price": 0.15,
+      "memory_price": 0.015,
+      "gpu_price": 1.5,
+      "min_charge": 0.015
     }
   }' | python3 -m json.tool
 echo ""
@@ -55,9 +55,9 @@ echo "3. Listing workers..."
 curl -s "$BROKER_URL/workers" | python3 -m json.tool
 echo ""
 
-# 4. Check credits
-echo "4. Checking credits for $USER_ID..."
-curl -s "$BROKER_URL/credits/$USER_ID" | python3 -m json.tool
+# 4. Check balance
+echo "4. Checking balance for $USER_ID..."
+curl -s "$BROKER_URL/balance/$USER_ID" | python3 -m json.tool
 echo ""
 
 # 5. Estimate price
@@ -72,19 +72,19 @@ curl -s -X POST "$BROKER_URL/price" \
   }' | python3 -m json.tool
 echo ""
 
-# 6. Add credits
-echo "6. Adding 50 credits..."
-curl -s -X POST "$BROKER_URL/credits/$USER_ID/add" \
+# 6. Add money
+echo "6. Adding ¥7,500..."
+curl -s -X POST "$BROKER_URL/balance/$USER_ID/add" \
   -H "Content-Type: application/json" \
   -d '{
-    "amount": 50.0,
+    "amount": 7500.0,
     "description": "Demo top-up"
   }' | python3 -m json.tool
 echo ""
 
-# 7. Check updated credits
-echo "7. Checking updated credits..."
-curl -s "$BROKER_URL/credits/$USER_ID" | python3 -m json.tool
+# 7. Check updated balance
+echo "7. Checking updated balance..."
+curl -s "$BROKER_URL/balance/$USER_ID" | python3 -m json.tool
 echo ""
 
 echo "========================================"

@@ -102,6 +102,13 @@ You **do not** need `[worker]` just to call into a running worker — `import za
 
 `zc` is the Rust broker + CLI at [zakuro-ai/zc](https://github.com/zakuro-ai/zc). It's useful for multi-node meshes but not required for a single-process or small-cluster setup.
 
+> **Breaking (next release): money, not credits.** Zakuro credits (zkcr) are gone; every
+> amount is real money in yen (1 old credit = ¥150). Broker-facing names changed with no
+> aliases: `BrokerProcessor.get_credits()`/`add_credits()` → `get_balance()`/`add_balance()`
+> (`/balance/{user}`), `processor_options["budget_credits"]` → `["budget"]`,
+> `X-Zakuro-Credits-Remaining` → `X-Zakuro-Balance`, `ChatResult.charged_zkcr` → `.charged`.
+> Upgrade the SDK together with `zc`. See [CHANGELOG](CHANGELOG.md).
+
 ```bash
 # macOS / Linux one-liner — installs to /usr/local/bin
 curl -sSL https://raw.githubusercontent.com/zakuro-ai/zc/master/scripts/install.sh | bash
@@ -204,7 +211,7 @@ uv run python scripts/bench_all.py --log /tmp/zakuro-bench.json
 ## Related projects
 
 - [**sakura**](https://github.com/zakuro-ai/sakura) — ML framework integrations (PyTorch Lightning, HuggingFace Trainer, TensorFlow/Keras) that use Zakuro under the hood to hide eval latency behind training
-- [**zc**](https://github.com/zakuro-ai/zc) — Rust broker with QUIC transport, credit-based billing, P2P mesh
+- [**zc**](https://github.com/zakuro-ai/zc) — Rust broker with QUIC transport, metered billing in yen, P2P mesh
 
 ## Development
 

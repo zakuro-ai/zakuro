@@ -15,6 +15,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — BREAKING: money, not credits (ADR 0027)
+
+Zakuro credits (zkcr) are removed from every Zakuro project. Every balance,
+price, charge and budget is real money in yen (decimal, up to 6 fractional
+digits). 1 old credit = ¥150; all defaults are multiplied by 150. This is a
+flag-day change: no backward-compatible aliases. Upgrade together with `zc`.
+
+- `BrokerProcessor.get_credits()` → `get_balance()`, `add_credits(amount)` →
+  `add_balance(amount)` (amount in yen); broker routes `/credits/{user}[/add]` →
+  `/balance/{user}[/add]`.
+- Response header `X-Zakuro-Credits-Remaining` → `X-Zakuro-Balance`
+  (`X-Zakuro-Cost` is unchanged, now in yen). HTTP 402 now reads
+  "Insufficient balance".
+- `processor_options["budget_credits"]` → `processor_options["budget"]` (yen),
+  sent as `budget` in `X-Zakuro-Requirements`.
+- `ChatResult.charged_zkcr` → `ChatResult.charged`; `/infer` responses carry
+  `charged`.
+- Worker defaults: `ZAKURO_PRICE_PER_HOUR` 3.6 → 540 (¥540/h),
+  `ZAKURO_MIN_CHARGE` 0.001 → 0.15 (¥0.15).
+- `Compute.price_per_hour` is documented in yen/h; the suggested
+  `AdaptiveCompute(cost_coefficient=…)` starting point is now `0.0033`
+  (was `0.5` per USD-ish unit).
+- Docker: `docker/init-credits.sh` → `docker/init-balance.sh`; seed amounts,
+  worker prices and the `users.balance` column (was `credits_balance`) are in
+  yen. JWT scope example `admin:credits` → `admin:balance`.
+
 ## [0.2.24] - 2026-09-07
 
 ### Added

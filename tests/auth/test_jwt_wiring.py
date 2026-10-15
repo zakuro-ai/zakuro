@@ -122,8 +122,8 @@ def test_execute_strict_wrong_scope_returns_401(
     monkeypatch.setenv("ZAKURO_AUTH_REQUIRED", "1")
     monkeypatch.setenv("ZAKURO_JWT_PUBLIC_KEY_PEM", public_pem.decode())
     monkeypatch.setenv("ZAKURO_WORKER_ID", "worker-1")
-    # Token has admin:credits but /execute wants exec:fn
-    token = _issue(private_pem, scopes=["admin:credits"])
+    # Token has admin:balance but /execute wants exec:fn
+    token = _issue(private_pem, scopes=["admin:balance"])
     with _client() as c:
         r = c.post(
             "/execute",

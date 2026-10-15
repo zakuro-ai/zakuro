@@ -15,7 +15,7 @@
 #   docker compose -f docker/docker-compose.bench.yml logs -f
 
 services:
-  # PostgreSQL for credit ledger
+  # PostgreSQL for money ledger
   postgres:
     image: postgres:16-alpine
     environment:
@@ -68,8 +68,8 @@ services:
       dockerfile: docker/Dockerfile
     environment:
       ZAKURO_WORKER_TYPE: benchmark
-      ZAKURO_CPU_PRICE: "0.001"
-      ZAKURO_MEMORY_PRICE: "0.0001"
+      ZAKURO_CPU_PRICE: "0.15"
+      ZAKURO_MEMORY_PRICE: "0.015"
       PYTHONUNBUFFERED: "1"
       # Simulated realistic workload (100-500ms)
       ZAKURO_TASK_DELAY: "0.2"  # 200ms average

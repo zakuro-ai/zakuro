@@ -63,8 +63,8 @@ class Compute:
     # inspect a Compute without performing network I/O (e.g. in tests).
     verify: bool = True
 
-    # Optional price hint, in USD per hour (or any consistent unit — the
-    # allocator only ever uses ratios). When ``AdaptiveCompute`` is built
+    # Optional price hint, in yen per hour (the platform currency; any
+    # consistent unit works, but ``cost_coefficient`` is tuned for yen). When ``AdaptiveCompute`` is built
     # with ``cost_coefficient > 0``, workers with higher price are
     # deprioritised proportionally to (price * predicted_time).
     price_per_hour: float | None = None

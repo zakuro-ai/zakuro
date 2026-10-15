@@ -67,19 +67,19 @@ wait_for_services() {
     return 1
 }
 
-# Function to seed credits
-seed_credits() {
-    echo -e "${YELLOW}Seeding credits for bench-user...${NC}"
+# Function to seed balances
+seed_balance() {
+    echo -e "${YELLOW}Seeding balance for bench-user...${NC}"
 
     docker compose -f docker/docker-compose.bench.yml exec -T postgres psql -U zakuro -d zakuro_bench <<EOF
--- Ensure user exists and has credits
-INSERT INTO users (zakuro_user_id, email, credits_balance)
-VALUES ('bench-user', 'bench@zakuro.local', 10000.00)
+-- Ensure user exists and has a balance
+INSERT INTO users (zakuro_user_id, email, balance)
+VALUES ('bench-user', 'bench@zakuro.local', 1500000.00)
 ON CONFLICT (zakuro_user_id) DO UPDATE
-SET credits_balance = 10000.00;
+SET balance = 1500000.00;
 EOF
 
-    echo -e "${GREEN}✓ Credits seeded${NC}"
+    echo -e "${GREEN}✓ Balance seeded${NC}"
 }
 
 # Function to get worker count
@@ -194,8 +194,8 @@ test_nodes() {
         return 1
     fi
 
-    # Seed credits
-    seed_credits
+    # Seed balances
+    seed_balance
 
     # Give services time to discover each other
     echo -e "${YELLOW}Waiting for P2P discovery...${NC}"

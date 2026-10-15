@@ -9,7 +9,7 @@ Shared **postcard** wire format for the [Zakuro](https://github.com/zakuro-ai/za
 This crate is the single source of truth for the byte-level shape of every dispatch payload that travels between:
 
 - the **Zakuro worker** (Python, [`zakuro-ai/zakuro`](https://github.com/zakuro-ai/zakuro)) — runs `@zk.fn`-decorated callables;
-- the **zc broker** (Rust, [`zakuro-ai/zc`](https://github.com/zakuro-ai/zc)) — routes dispatches and meters credits.
+- the **zc broker** (Rust, [`zakuro-ai/zc`](https://github.com/zakuro-ai/zc)) — routes dispatches and meters usage (billed in yen).
 
 Putting the schema in its own crate, rather than duplicating struct definitions in each repo, makes the contract mechanically enforceable: both consumers depend on the same crate version via Cargo's resolver, and any wire-incompatible change forces a coordinated version bump.
 

@@ -59,8 +59,8 @@ The worker consults these at startup or inside request handlers. All are optiona
 | `ZAKURO_WORKER_NAME` | `/info`, execution env | Human-readable worker name; falls back to `worker-<hostname>`. |
 | `ZAKURO_WORKER_TYPE` | `/info` | Label used by the broker for routing. Default `"zakuro"`. |
 | `ZAKURO_WORKER_TAGS` | `/info` | Comma-separated tags advertised in `/info.tags`. |
-| `ZAKURO_PRICE_PER_HOUR` | `/info.pricing` | Advertised hourly price, used by the broker's billing logic. Default `3.6`. |
-| `ZAKURO_MIN_CHARGE` | `/info.pricing` | Minimum per-job charge. Default `0.001`. |
+| `ZAKURO_PRICE_PER_HOUR` | `/info.pricing` | Advertised hourly price in yen, used by the broker's billing logic. Default `540` (¥540/h). |
+| `ZAKURO_MIN_CHARGE` | `/info.pricing` | Minimum per-job charge in yen. Default `0.15`. |
 
 All environment variables seen by the worker process are available inside dispatched functions — the worker does not filter `os.environ`.
 
@@ -98,8 +98,8 @@ Once running, the worker exposes the following endpoints. The only one a Zakuro 
     "storage_gb": 241
   },
   "pricing": {
-    "price_per_hour": 3.6,
-    "min_charge": 0.001
+    "price_per_hour": 540.0,
+    "min_charge": 0.15
   },
   "tags": []
 }

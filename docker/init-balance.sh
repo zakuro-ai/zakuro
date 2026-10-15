@@ -1,5 +1,5 @@
 #!/bin/bash
-# Initialize credits for test users
+# Seed yen balances for test users
 #
 # This script runs once after the broker is ready, creating initial
 # wallet balances for all test user accounts.
@@ -17,35 +17,35 @@ until curl -sf "$BROKER_URL/health" > /dev/null 2>&1; do
 done
 echo "Broker is ready!"
 
-# List of test users and their initial credits
+# Test users and their initial balance (yen)
 declare -A USERS=(
-    ["demo"]=5.0
-    ["user-1"]=5.0
-    ["user-2"]=5.0
-    ["user-3"]=5.0
-    ["user-4"]=5.0
-    ["user-5"]=5.0
-    ["bench-user"]=100.0
-    ["test"]=10.0
+    ["demo"]=750.0
+    ["user-1"]=750.0
+    ["user-2"]=750.0
+    ["user-3"]=750.0
+    ["user-4"]=750.0
+    ["user-5"]=750.0
+    ["bench-user"]=15000.0
+    ["test"]=1500.0
 )
 
 echo ""
-echo "Initializing credits..."
+echo "Initializing balances..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 for user in "${!USERS[@]}"; do
-    credits="${USERS[$user]}"
+    amount="${USERS[$user]}"
 
     response=$(curl -sf \
         -X POST \
         -H "Content-Type: application/json" \
         -H "X-Api-Key: $MASTER_KEY" \
-        -d "{\"amount\": $credits, \"description\": \"Initial wallet credit\"}" \
-        "$BROKER_URL/credits/$user/add" 2>/dev/null || echo '{"error": "failed"}')
+        -d "{\"amount\": $amount, \"description\": \"Initial balance\"}" \
+        "$BROKER_URL/balance/$user/add" 2>/dev/null || echo '{"error": "failed"}')
 
     if echo "$response" | grep -q '"status":"ok"'; then
         balance=$(echo "$response" | sed -n 's/.*"new_balance":\([0-9.]*\).*/\1/p')
-        printf "  %-15s  +%6.2f credits  (balance: %s)\n" "$user" "$credits" "$balance"
+        printf "  %-15s  +¥%8.2f  (balance: %s)\n" "$user" "$amount" "$balance"
     else
         echo "  $user  FAILED: $response"
     fi
@@ -53,7 +53,7 @@ done
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "Credit initialization complete!"
+echo "Balance initialization complete!"
 echo ""
 
 # Show worker pricing summary
@@ -67,7 +67,7 @@ if command -v python3 &> /dev/null; then
 import json, sys
 data = json.load(sys.stdin)
 for w in data.get('workers', []):
-    print(f\"  {w['name']:20} {w['status']:8} {w['cpus_available']:.0f} CPUs  \${w['price_per_cpu_sec']:.4f}/cpu-sec\")
+    print(f\"  {w['name']:20} {w['status']:8} {w['cpus_available']:.0f} CPUs  ¥{w['price_per_cpu_sec']:.4f}/cpu-sec\")
 " 2>/dev/null || echo "  (Could not parse worker list)"
 else
     echo "  (python3 not available for parsing)"
