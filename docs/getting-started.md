@@ -258,7 +258,7 @@ Training never blocks on eval; the callback hands the state_dict to the eval wor
 
 ### Step 5 — the broker (optional, for multi-tenant / many workers)
 
-If you're running ≥ 4 workers across machines, or want credit-based billing / multi-tenant routing, add the **`zc`** broker:
+If you're running ≥ 4 workers across machines, or want metered billing (in yen) / multi-tenant routing, add the **`zc`** broker:
 
 ```bash
 # install zc (Rust binary)

@@ -195,7 +195,7 @@ The worker operator owns the hardware. They can — by design — read RAM, log 
 What this RFC **does** guarantee:
 
 - **Code execution integrity.** The tenant's job runs the code the tenant sent, not a tampered version (signed envelope from RFC 0001).
-- **Billing accuracy.** The broker tracks job count + duration; the operator cannot claim credit for work not performed (the tenant signs ACKs of completion).
+- **Billing accuracy.** The broker tracks job count + duration; the operator cannot bill for work not performed (the tenant signs ACKs of completion).
 - **Tenant-tenant non-interference.** No other tenant ran on this worker during this lease.
 
 What it does **not** guarantee:

@@ -3,8 +3,8 @@ version: '3.8'
 # Zakuro Multi-Node Test Environment
 #
 # This creates:
-# - 1 PostgreSQL database (shared credit ledger)
-# - 1 broker node (routes requests, manages credits)
+# - 1 PostgreSQL database (shared money ledger)
+# - 1 broker node (routes requests, manages balances)
 # - 5 worker nodes with varying resources and pricing
 #
 # Usage:
@@ -31,7 +31,7 @@ x-worker-common: &worker-common
 
 services:
   # ============================================================
-  # PostgreSQL - Credit ledger and user storage
+  # PostgreSQL - Money ledger and user storage
   # ============================================================
   postgres:
     image: postgres:16-alpine
@@ -96,13 +96,13 @@ services:
       retries: 3
 
   # ============================================================
-  # Init - Credit initialization (runs once)
+  # Init - Balance initialization (runs once)
   # ============================================================
   init:
     image: curlimages/curl:latest
     container_name: zakuro-init
     volumes:
-      - ./init-credits.sh:/init-credits.sh:ro
+      - ./init-balance.sh:/init-balance.sh:ro
     environment:
       ZAKURO_BROKER_URL: http://broker:9000
       ZAKURO_MASTER_KEY: ${ZAKURO_MASTER_KEY:-master-key-change-me}
@@ -115,7 +115,7 @@ services:
     command:
       - |
         apk add --no-cache bash python3
-        bash /init-credits.sh
+        bash /init-balance.sh
     restart: "no"
 
   # ============================================================
@@ -132,9 +132,9 @@ services:
       ZAKURO_WORKER_ID: worker-1
       ZAKURO_WORKER_NAME: worker-budget-1
       ZAKURO_WORKER_TYPE: budget
-      ZAKURO_CPU_PRICE: "0.0005"
-      ZAKURO_MEMORY_PRICE: "0.00005"
-      ZAKURO_GPU_PRICE: "0.005"
+      ZAKURO_CPU_PRICE: "0.075"
+      ZAKURO_MEMORY_PRICE: "0.0075"
+      ZAKURO_GPU_PRICE: "0.75"
     deploy:
       resources:
         limits:
@@ -158,9 +158,9 @@ services:
       ZAKURO_WORKER_ID: worker-2
       ZAKURO_WORKER_NAME: worker-budget-2
       ZAKURO_WORKER_TYPE: budget
-      ZAKURO_CPU_PRICE: "0.0006"
-      ZAKURO_MEMORY_PRICE: "0.00006"
-      ZAKURO_GPU_PRICE: "0.006"
+      ZAKURO_CPU_PRICE: "0.09"
+      ZAKURO_MEMORY_PRICE: "0.009"
+      ZAKURO_GPU_PRICE: "0.9"
     deploy:
       resources:
         limits:
@@ -184,9 +184,9 @@ services:
       ZAKURO_WORKER_ID: worker-3
       ZAKURO_WORKER_NAME: worker-standard-1
       ZAKURO_WORKER_TYPE: standard
-      ZAKURO_CPU_PRICE: "0.001"
-      ZAKURO_MEMORY_PRICE: "0.0001"
-      ZAKURO_GPU_PRICE: "0.01"
+      ZAKURO_CPU_PRICE: "0.15"
+      ZAKURO_MEMORY_PRICE: "0.015"
+      ZAKURO_GPU_PRICE: "1.5"
     deploy:
       resources:
         limits:
@@ -210,9 +210,9 @@ services:
       ZAKURO_WORKER_ID: worker-4
       ZAKURO_WORKER_NAME: worker-perf-1
       ZAKURO_WORKER_TYPE: performance
-      ZAKURO_CPU_PRICE: "0.002"
-      ZAKURO_MEMORY_PRICE: "0.0002"
-      ZAKURO_GPU_PRICE: "0.02"
+      ZAKURO_CPU_PRICE: "0.3"
+      ZAKURO_MEMORY_PRICE: "0.03"
+      ZAKURO_GPU_PRICE: "3"
     deploy:
       resources:
         limits:
@@ -236,9 +236,9 @@ services:
       ZAKURO_WORKER_ID: worker-5
       ZAKURO_WORKER_NAME: worker-premium-1
       ZAKURO_WORKER_TYPE: premium
-      ZAKURO_CPU_PRICE: "0.005"
-      ZAKURO_MEMORY_PRICE: "0.0005"
-      ZAKURO_GPU_PRICE: "0.05"
+      ZAKURO_CPU_PRICE: "0.75"
+      ZAKURO_MEMORY_PRICE: "0.075"
+      ZAKURO_GPU_PRICE: "7.5"
     deploy:
       resources:
         limits:

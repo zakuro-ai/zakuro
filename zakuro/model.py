@@ -49,7 +49,7 @@ class ChatResult:
 
     content: str
     usage: dict = field(default_factory=dict)
-    charged_zkcr: float = 0.0
+    charged: float = 0.0
     provider: str = ""
 
 
@@ -172,7 +172,7 @@ class Model:
         return ChatResult(
             content=data.get("content", ""),
             usage=data.get("usage", {}),
-            charged_zkcr=data.get("charged_zkcr", 0.0),
+            charged=data.get("charged", 0.0),
             provider=data.get("provider", ""),
         )
 

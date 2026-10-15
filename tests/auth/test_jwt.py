@@ -69,7 +69,7 @@ def test_verify_jwt_happy_path(signing_keys: Any) -> None:
     assert isinstance(claims, Claims)
     assert claims.tenant_id == "tenant-acme"
     assert claims.has_scope("exec:fn")
-    assert not claims.has_scope("admin:credits")
+    assert not claims.has_scope("admin:balance")
 
 
 def test_verify_jwt_rejects_expired_token(signing_keys: Any) -> None:

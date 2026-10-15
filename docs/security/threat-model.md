@@ -74,8 +74,8 @@ Out of scope:
 | **T** | In-flight envelope altered between client and worker | postcard envelope HMAC (RFC 0001); HKDF-derived per-tenant key | Low |
 | **R** | Broker denies routing a job after a worker failed | Postgres double-entry ledger (RFC 0005) is the system of record | Low |
 | **I** | Tenant A's job metadata leaks to tenant B via shared logs | per-tenant log filtering (RFC 0003 §Tenant tag); ledger queries scoped by `tenant_id` | Medium — operator sees all tenants by design |
-| **D** | One tenant exhausts the broker's worker pool | Per-tenant credit ledger + quota gate in the broker | Medium — quota is best-effort under burst |
-| **E** | Broker bug allows a tenant to call `admin:credits` scope | JWT scope check on every handler; fuzz the scope-parsing path | Low |
+| **D** | One tenant exhausts the broker's worker pool | per-tenant balance ledger + quota gate in the broker | Medium — quota is best-effort under burst |
+| **E** | Broker bug allows a tenant to call `admin:balance` scope | JWT scope check on every handler; fuzz the scope-parsing path | Low |
 
 ### 3.3 Worker (`zakuro.worker.*`)
 
@@ -115,7 +115,7 @@ Out of scope:
 
 We design for the following adversaries, in order of capability:
 
-1. **Curious peer** — another tenant on the same broker. **Goal:** read another tenant's job metadata or output. **Defence:** mTLS + JWT scopes, per-tenant credit ledger, no shared state.
+1. **Curious peer** — another tenant on the same broker. **Goal:** read another tenant's job metadata or output. **Defence:** mTLS + JWT scopes, per-tenant balance ledger, no shared state.
 2. **Compromised worker** — an attacker has remote code execution inside a worker (e.g. via a workload-side bug). **Goal:** pivot to a sibling worker or escalate to the broker. **Defence:** ephemeral worker leases (RFC 0007), short-lived JWTs, no long-lived secrets in worker memory, gVisor sandbox.
 3. **Network attacker** — controls the link between client/broker/worker. **Goal:** read or modify in-flight jobs. **Defence:** mTLS at QUIC, postcard HMAC, JWT integrity.
 4. **Malicious operator** — runs the worker host. **Goal:** read tenant data the worker is processing. **Defence:** **none in v1.** Confidential computing (SEV-SNP / TDX) is the only mitigation and is explicitly out-of-scope for v1; documented as a known limitation in [RFC 0007](../rfcs/0007-tenant-isolation.md).

@@ -302,7 +302,7 @@ class AdaptiveCompute:
         values scale each worker's expected time by
         ``1 + cost_coefficient × price``, so more-expensive workers fall
         further down the picker's queue. Higher values trade speed for
-        spend; ``0.5`` is a reasonable starting point. See
+        spend; with prices in yen/h, ``0.0033`` is a reasonable starting point. See
         ``tests/test_adaptive.py::TestPriceAware`` for measured behaviour.
 
     local_region, local_rack:
@@ -352,10 +352,10 @@ class AdaptiveCompute:
 
         ac = zk.AdaptiveCompute(
             workers=[
-                zk.Compute(uri="quic://onprem:4433", price_per_hour=0.10),
-                zk.Compute(uri="quic://cloud:4433", price_per_hour=1.40),
+                zk.Compute(uri="quic://onprem:4433", price_per_hour=15.0),
+                zk.Compute(uri="quic://cloud:4433", price_per_hour=210.0),
             ],
-            cost_coefficient=0.5,  # 0 = speed-only; 1.0 ≈ cost-only
+            cost_coefficient=0.0033,  # per yen/h; 0 = speed-only
         )
 
     Topology hints (Phase 4.2)::
@@ -909,8 +909,8 @@ class AdaptiveCompute:
                     if s.suspended:
                         s.suspended = False
                     # A good probe is also an observation: fold it into the EMA
-                    # so that workers picking up after a transient stall are
-                    # credited for being fast again.
+                    # so that workers picking up after a transient stall get
+                    # recognised as fast again.
                     if latency is not None:
                         self._update_ema(s, latency)
                 else:

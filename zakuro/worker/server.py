@@ -308,8 +308,8 @@ async def info(
             "storage_gb": storage_gb_available,
         },
         "pricing": {
-            "price_per_hour": float(os.environ.get("ZAKURO_PRICE_PER_HOUR", "3.6")),
-            "min_charge": float(os.environ.get("ZAKURO_MIN_CHARGE", "0.001")),
+            "price_per_hour": float(os.environ.get("ZAKURO_PRICE_PER_HOUR", "540")),
+            "min_charge": float(os.environ.get("ZAKURO_MIN_CHARGE", "0.15")),
         },
         "tags": os.environ.get("ZAKURO_WORKER_TAGS", "").split(",")
         if os.environ.get("ZAKURO_WORKER_TAGS")
