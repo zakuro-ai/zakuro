@@ -20,7 +20,7 @@ def build_auth_app() -> FastAPI:
     app = FastAPI()
 
     exec_dep = require_jwt_scope("exec:fn")
-    admin_dep = require_jwt_scope("admin:credits")
+    admin_dep = require_jwt_scope("admin:balance")
 
     @app.post("/execute")
     async def execute(claims=Depends(exec_dep)):  # type: ignore[no-untyped-def]  # noqa: B008

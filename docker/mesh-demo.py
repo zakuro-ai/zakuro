@@ -94,12 +94,12 @@ def main():
     print(f"  Workers available: {workers['total']}")
     for w in workers.get("workers", []):
         print(f"    - {w['name']:25} type={w['worker_type']:10} "
-              f"cpu=${w['price_per_cpu_sec']:.4f}/s  status={w['status']}")
+              f"cpu=¥{w['price_per_cpu_sec']:.4f}/s  status={w['status']}")
     print()
 
-    # Check credits
-    creds = requests.get(f"{BROKER_URL}/credits/{USER_ID}", timeout=5).json()
-    print(f"  Credits before: {creds.get('balance', 0):.4f}")
+    # Check balance
+    creds = requests.get(f"{BROKER_URL}/balance/{USER_ID}", timeout=5).json()
+    print(f"  Balance before: ¥{creds.get('balance', 0):.4f}")
     print()
 
     # Run tasks with different strategies
@@ -130,10 +130,10 @@ def main():
     if result is not None:
         print(f"  {'best_price':22} matrix(150)  {result:<12} {cost:>12} {duration:>8}ms")
 
-    # Check credits after
+    # Check balance after
     print()
-    creds = requests.get(f"{BROKER_URL}/credits/{USER_ID}", timeout=5).json()
-    print(f"  Credits after:  {creds.get('balance', 0):.4f}")
+    creds = requests.get(f"{BROKER_URL}/balance/{USER_ID}", timeout=5).json()
+    print(f"  Balance after:  ¥{creds.get('balance', 0):.4f}")
     print(f"\n{'='*60}\n")
 
 

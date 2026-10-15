@@ -6,7 +6,7 @@
 //! * the **Zakuro worker** (Python, this repo), which runs `@zk.fn`-decorated
 //!   callables and emits results;
 //! * the **zc broker** (Rust, <https://github.com/zakuro-ai/zc>), which
-//!   routes dispatches between clients and workers and meters credits.
+//!   routes dispatches between clients and workers and meters usage (billed in yen).
 //!
 //! Putting the schema in its own crate (rather than duplicating the struct
 //! definitions in each repo) makes the wire contract mechanically
@@ -115,7 +115,7 @@ pub struct ResourceLimits {
 /// the worker that will execute the job.
 ///
 /// The `callable` and `args` byte blobs are opaque to the broker: it
-/// only routes by `tenant_id` + `job_id` and meters credits by the
+/// only routes by `tenant_id` + `job_id` and meters usage (billed in yen) by the
 /// resulting [`Result.duration_ms`]. The worker is responsible for
 /// verifying `hmac` before deserialising `callable` — see the comment
 /// on the `hmac` field.

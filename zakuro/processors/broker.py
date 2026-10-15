@@ -19,7 +19,7 @@ class BrokerProcessor(Processor):
 
     The broker handles:
     - Worker selection based on price-per-compute
-    - Credit management and billing
+    - Balance management and billing (amounts in yen)
     - Load balancing across multiple backends
     - Backend abstraction (Ray, Dask, Spark, HTTP)
 
@@ -113,10 +113,10 @@ class BrokerProcessor(Processor):
         """Execute function via broker.
 
         The broker will:
-        1. Check user credits
+        1. Check user balance
         2. Select optimal worker based on price/resources
         3. Forward request to worker
-        4. Charge credits based on actual usage
+        4. Charge the balance (yen) based on actual usage
         5. Return result
 
         Args:
@@ -128,7 +128,7 @@ class BrokerProcessor(Processor):
             Deserialized result from worker
 
         Raises:
-            RuntimeError: If not connected or insufficient credits
+            RuntimeError: If not connected or insufficient balance
         """
         if not self._connected or self._client is None:
             raise RuntimeError("Processor not connected. Use as context manager.")
@@ -153,8 +153,8 @@ class BrokerProcessor(Processor):
             "gpus": self._compute.gpus,
             "estimated_duration_secs": opts.get("estimated_duration_secs", 1.0),
         }
-        if "budget_credits" in opts:
-            requirements["budget_credits"] = float(opts["budget_credits"])
+        if "budget" in opts:
+            requirements["budget"] = float(opts["budget"])
         if "strategy" in opts:
             requirements["strategy"] = opts["strategy"]
         if "remote_only" in opts:
@@ -174,7 +174,7 @@ class BrokerProcessor(Processor):
 
         # Check for errors
         if response.status_code == 402:
-            raise RuntimeError("Insufficient credits for compute request")
+            raise RuntimeError("Insufficient balance for compute request")
         if response.status_code == 429:
             raise RuntimeError("Rate limit exceeded")
         if response.status_code == 503:
@@ -184,7 +184,7 @@ class BrokerProcessor(Processor):
 
         # Extract cost info from headers
         cost = response.headers.get("X-Zakuro-Cost", "0")
-        remaining = response.headers.get("X-Zakuro-Credits-Remaining", "0")
+        remaining = response.headers.get("X-Zakuro-Balance", "0")
         try:
             self.last_cost = float(cost)
         except (ValueError, TypeError):
@@ -202,8 +202,8 @@ class BrokerProcessor(Processor):
 
         return result
 
-    def get_credits(self) -> dict[str, Any]:
-        """Get current credit balance.
+    def get_balance(self) -> dict[str, Any]:
+        """Get current balance (yen).
 
         Returns:
             Dict with user_id, balance, total_spent, rate_limit
@@ -211,15 +211,15 @@ class BrokerProcessor(Processor):
         if not self._connected or self._client is None:
             raise RuntimeError("Processor not connected.")
 
-        response = self._client.get(f"/credits/{self._user_id}")
+        response = self._client.get(f"/balance/{self._user_id}")
         response.raise_for_status()
         return cast("dict[str, Any]", response.json())
 
-    def add_credits(self, amount: float, description: str = "API deposit") -> dict[str, Any]:
-        """Add credits to account.
+    def add_balance(self, amount: float, description: str = "API deposit") -> dict[str, Any]:
+        """Add money (yen) to the account balance.
 
         Args:
-            amount: Credits to add
+            amount: Amount to add, in yen
             description: Transaction description
 
         Returns:
@@ -229,7 +229,7 @@ class BrokerProcessor(Processor):
             raise RuntimeError("Processor not connected.")
 
         response = self._client.post(
-            f"/credits/{self._user_id}/add",
+            f"/balance/{self._user_id}/add",
             json={"amount": amount, "description": description},
         )
         response.raise_for_status()

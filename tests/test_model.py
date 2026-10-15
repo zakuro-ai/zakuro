@@ -33,7 +33,7 @@ def test_chat_posts_to_infer_and_returns_chat_result(monkeypatch):
                 "content": "hello there",
                 "usage": {"prompt_tokens": 3, "completion_tokens": 5, "total_tokens": 8},
                 "provider": "worker-abc",
-                "charged_zkcr": 0.0042,
+                "charged": 0.63,
             },
         )
 
@@ -53,7 +53,7 @@ def test_chat_posts_to_infer_and_returns_chat_result(monkeypatch):
     assert result.content == "hello there"
     assert result.usage == {"prompt_tokens": 3, "completion_tokens": 5, "total_tokens": 8}
     assert result.provider == "worker-abc"
-    assert result.charged_zkcr == 0.0042
+    assert result.charged == 0.63
 
 
 @pytest.mark.parametrize(

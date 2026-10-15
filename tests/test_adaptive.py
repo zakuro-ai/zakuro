@@ -331,8 +331,8 @@ class TestHealthProbe:
 
 class TestPriceAware:
     def test_zero_coef_ignores_price(self) -> None:
-        a = Compute(host="a.local", verify=False, price_per_hour=10.0)
-        b = Compute(host="b.local", verify=False, price_per_hour=0.1)
+        a = Compute(host="a.local", verify=False, price_per_hour=1500.0)
+        b = Compute(host="b.local", verify=False, price_per_hour=15.0)
         ac = AdaptiveCompute(workers=[a, b], cost_coefficient=0.0)
         for _ in range(30):
             ac._update_ema(ac._stats[0], 0.01)
@@ -342,11 +342,11 @@ class TestPriceAware:
         assert all(p == 0 for p in picks)
 
     def test_positive_coef_prefers_cheaper(self) -> None:
-        expensive = Compute(host="a.local", verify=False, price_per_hour=10.0)
-        cheap = Compute(host="b.local", verify=False, price_per_hour=0.1)
+        expensive = Compute(host="a.local", verify=False, price_per_hour=1500.0)
+        cheap = Compute(host="b.local", verify=False, price_per_hour=15.0)
         ac = AdaptiveCompute(
             workers=[expensive, cheap],
-            cost_coefficient=0.5,
+            cost_coefficient=0.0033,
             softmax_temperature=0.0,
         )
         for _ in range(30):

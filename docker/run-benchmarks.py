@@ -73,15 +73,15 @@ def wait_for_postgres():
     print(f"{Colors.RED}✗ PostgreSQL timeout{Colors.NC}")
     return False
 
-def seed_credits():
-    """Seed credits for test users"""
-    print(f"{Colors.YELLOW}Seeding credits...{Colors.NC}")
+def seed_balance():
+    """Seed balances for test users"""
+    print(f"{Colors.YELLOW}Seeding balances...{Colors.NC}")
 
     sql = """
-    INSERT INTO users (zakuro_user_id, email, credits_balance)
-    VALUES ('bench-user', 'bench@zakuro.local', 100000.00)
+    INSERT INTO users (zakuro_user_id, email, balance)
+    VALUES ('bench-user', 'bench@zakuro.local', 15000000.00)
     ON CONFLICT (zakuro_user_id) DO UPDATE
-    SET credits_balance = 100000.00;
+    SET balance = 15000000.00;
     """
 
     code, _ = run_command([
@@ -92,10 +92,10 @@ def seed_credits():
     ], capture=True)
 
     if code == 0:
-        print(f"{Colors.GREEN}✓ Credits seeded{Colors.NC}")
+        print(f"{Colors.GREEN}✓ Balance seeded{Colors.NC}")
         return True
     else:
-        print(f"{Colors.RED}✗ Failed to seed credits{Colors.NC}")
+        print(f"{Colors.RED}✗ Failed to seed balances{Colors.NC}")
         return False
 
 def get_worker_count() -> int:
@@ -164,9 +164,9 @@ def run_benchmark(nodes: int) -> dict:
         print(f"{Colors.RED}✗ Timeout waiting for brokers{Colors.NC}")
         return {"error": "Broker timeout"}
 
-    # Seed credits
-    if not seed_credits():
-        return {"error": "Credit seeding failed"}
+    # Seed balances
+    if not seed_balance():
+        return {"error": "Balance seeding failed"}
 
     # Wait for worker discovery
     print(f"{Colors.YELLOW}Waiting for worker discovery...{Colors.NC}")

@@ -46,15 +46,15 @@ for i in {1..60}; do
     sleep 1
 done
 
-# Seed credits
-echo "→ Seeding credits..."
+# Seed balances
+echo "→ Seeding balances..."
 docker compose -f docker/docker-compose.bench.yml exec -T postgres psql -U zakuro -d zakuro <<EOF
-INSERT INTO users (zakuro_user_id, email, credits_balance)
-VALUES ('bench-user', 'bench@zakuro.local', 10000.00)
+INSERT INTO users (zakuro_user_id, email, balance)
+VALUES ('bench-user', 'bench@zakuro.local', 1500000.00)
 ON CONFLICT (zakuro_user_id) DO UPDATE
-SET credits_balance = 10000.00;
+SET balance = 1500000.00;
 EOF
-echo "✓ Credits seeded"
+echo "✓ Balance seeded"
 
 # Wait for worker registration
 echo "→ Waiting for worker registration..."

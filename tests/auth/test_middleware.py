@@ -88,7 +88,7 @@ def test_rejects_token_missing_required_scope(
     monkeypatch.setenv("ZAKURO_AUTH_REQUIRED", "1")
     monkeypatch.setenv("ZAKURO_JWT_PUBLIC_KEY_PEM", public_pem.decode())
     monkeypatch.setenv("ZAKURO_WORKER_ID", "worker-1")
-    # Token has exec:fn but the /admin handler wants admin:credits
+    # Token has exec:fn but the /admin handler wants admin:balance
     token = _issue(private_pem, scopes=["exec:fn"])
     r = TestClient(_build_app()).get("/admin", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 401
