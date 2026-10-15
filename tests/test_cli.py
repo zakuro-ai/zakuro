@@ -113,7 +113,7 @@ class TestReplayDecisions:
 class TestCLI:
     def test_config_get_single_key(self, capsys) -> None:
         assert main(["config", "get", "default_host"]) == 0
-        assert capsys.readouterr().out.strip() == "my.zakuro-ai.com"
+        assert capsys.readouterr().out.strip() == "localhost"
 
     def test_config_get_unknown_key(self, capsys) -> None:
         assert main(["config", "get", "not_a_key"]) == 1

@@ -25,11 +25,12 @@ class Config:
     Example:
         >>> config = Config.load()
         >>> print(config.default_host)
-        '127.0.0.1'
+        'localhost'
     """
 
-    # Broker settings (default to production)
-    default_host: str = "my.zakuro-ai.com"
+    # Broker settings (local broker; there is no public broker -- remote
+    # inference goes through the hub, see ``hub_url``)
+    default_host: str = "localhost"
     default_port: int = 9000
 
     # Authentication

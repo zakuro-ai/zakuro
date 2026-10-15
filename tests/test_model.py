@@ -111,7 +111,7 @@ def test_api_key_argument_sent_as_bearer(monkeypatch):
 
     monkeypatch.setattr(httpx, "post", fake_post)
     monkeypatch.delenv("ZAKURO_API_KEY", raising=False)
-    zk.model(VALID_UUID, broker="http://b:9000", api_key="zk_1_secret").chat(
+    zk.model(VALID_UUID, broker="http://127.0.0.1:9000", api_key="zk_1_secret").chat(
         [{"role": "user", "content": "hi"}]
     )
     assert captured["headers"] == {"Authorization": "Bearer zk_1_secret"}
@@ -126,8 +126,28 @@ def test_api_key_env_fallback(monkeypatch):
 
     monkeypatch.setattr(httpx, "post", fake_post)
     monkeypatch.setenv("ZAKURO_API_KEY", "zk_2_envkey")
-    zk.model(VALID_UUID, broker="http://b:9000").chat([{"role": "user", "content": "hi"}])
+    zk.model(VALID_UUID, broker="http://127.0.0.1:9000").chat([{"role": "user", "content": "hi"}])
     assert captured["headers"] == {"Authorization": "Bearer zk_2_envkey"}
+
+
+@pytest.mark.parametrize("api_key_from", ["argument", "env"])
+def test_api_key_refused_over_plain_http_to_remote_broker(monkeypatch, api_key_from):
+    # ZAK-0017: the account key is never sent over plain http to a remote
+    # (non-loopback, non-mesh) host unless ZAKURO_ALLOW_INSECURE_HTTP opts in.
+    security = pytest.importorskip("zakuro.security")
+    sent = []
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: sent.append(k))
+    monkeypatch.delenv("ZAKURO_ALLOW_INSECURE_HTTP", raising=False)
+    kwargs = {}
+    if api_key_from == "argument":
+        monkeypatch.delenv("ZAKURO_API_KEY", raising=False)
+        kwargs["api_key"] = "zk_1_secret"
+    else:
+        monkeypatch.setenv("ZAKURO_API_KEY", "zk_2_envkey")
+    m = zk.model(VALID_UUID, broker="http://b:9000", **kwargs)
+    with pytest.raises(security.InsecureTransportError, match="ZAKURO_ALLOW_INSECURE_HTTP"):
+        m.chat([{"role": "user", "content": "hi"}])
+    assert sent == []
 
 
 def test_no_api_key_sends_no_auth_header(monkeypatch):
