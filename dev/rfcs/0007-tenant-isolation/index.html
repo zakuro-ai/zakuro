@@ -1407,7 +1407,7 @@
 <p>What this RFC <strong>does</strong> guarantee:</p>
 <ul>
 <li><strong>Code execution integrity.</strong> The tenant's job runs the code the tenant sent, not a tampered version (signed envelope from RFC 0001).</li>
-<li><strong>Billing accuracy.</strong> The broker tracks job count + duration; the operator cannot claim credit for work not performed (the tenant signs ACKs of completion).</li>
+<li><strong>Billing accuracy.</strong> The broker tracks job count + duration; the operator cannot bill for work not performed (the tenant signs ACKs of completion).</li>
 <li><strong>Tenant-tenant non-interference.</strong> No other tenant ran on this worker during this lease.</li>
 </ul>
 <p>What it does <strong>not</strong> guarantee:</p>

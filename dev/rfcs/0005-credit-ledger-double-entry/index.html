@@ -1082,6 +1082,14 @@
 <li><strong>Closes:</strong> <a href="https://github.com/zakuro-ai/zakuro/issues/135">#135</a></li>
 <li><strong>Depends on:</strong> RFC 0004 (deployment substrate), RFC 0002 (auth: tenant identity comes from JWT claims)</li>
 </ul>
+<blockquote>
+<p><strong>Superseded in part by ADR 0027 "Money, not credits" (2026-10-15, zak-marketplace).</strong>
+Zakuro no longer has credits (zkcr): every amount below is now real money in
+yen (<code>NUMERIC(20,6)</code>, 1 old credit = ¥150), <code>credits_balance</code> is <code>balance</code>,
+and <code>admin:credits</code> is <code>admin:balance</code>. The double-entry design stands. This
+RFC is kept as written for the record; "debit"/"credit" in the entry examples
+are the accounting directions, not the old currency.</p>
+</blockquote>
 <h2 id="context">Context<a class="headerlink" href="#context" title="Permanent link">&para;</a></h2>
 <p>The runtime tracks credits per tenant — every dispatch costs CPU/memory/GPU-seconds at a per-worker price, and the broker collects from a tenant's wallet. Today the ledger is a single-entry Postgres table (<code>credits_balance</code>) updated in place; that's auditable only in the trivial sense and impossible to reconcile after a partition or a crash.</p>
 <p>The user picked <strong>double-entry</strong> over single-entry+audit-log in the May 2026 question round. Reasons:</p>

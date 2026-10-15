@@ -1765,7 +1765,7 @@
 </code></pre></div>
 <p>Training never blocks on eval; the callback hands the state_dict to the eval worker and reaps the result when it's ready. If the eval machine can't keep up, backpressure kicks in and training proceeds without that epoch's metric.</p>
 <h3 id="step-5-the-broker-optional-for-multi-tenant-many-workers">Step 5 — the broker (optional, for multi-tenant / many workers)<a class="headerlink" href="#step-5-the-broker-optional-for-multi-tenant-many-workers" title="Permanent link">&para;</a></h3>
-<p>If you're running ≥ 4 workers across machines, or want credit-based billing / multi-tenant routing, add the <strong><code>zc</code></strong> broker:</p>
+<p>If you're running ≥ 4 workers across machines, or want metered billing (in yen) / multi-tenant routing, add the <strong><code>zc</code></strong> broker:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1"># install zc (Rust binary)</span>
 <a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>curl<span class="w"> </span>-sSL<span class="w"> </span>https://raw.githubusercontent.com/zakuro-ai/zc/master/scripts/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>bash
 <a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>

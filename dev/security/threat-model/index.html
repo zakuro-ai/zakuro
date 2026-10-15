@@ -1490,12 +1490,12 @@
 <tr>
 <td><strong>D</strong></td>
 <td>One tenant exhausts the broker's worker pool</td>
-<td>Per-tenant credit ledger + quota gate in the broker</td>
+<td>per-tenant balance ledger + quota gate in the broker</td>
 <td>Medium — quota is best-effort under burst</td>
 </tr>
 <tr>
 <td><strong>E</strong></td>
-<td>Broker bug allows a tenant to call <code>admin:credits</code> scope</td>
+<td>Broker bug allows a tenant to call <code>admin:balance</code> scope</td>
 <td>JWT scope check on every handler; fuzz the scope-parsing path</td>
 <td>Low</td>
 </tr>
@@ -1649,7 +1649,7 @@
 <h2 id="5-adversary-model">5. Adversary model<a class="headerlink" href="#5-adversary-model" title="Permanent link">&para;</a></h2>
 <p>We design for the following adversaries, in order of capability:</p>
 <ol>
-<li><strong>Curious peer</strong> — another tenant on the same broker. <strong>Goal:</strong> read another tenant's job metadata or output. <strong>Defence:</strong> mTLS + JWT scopes, per-tenant credit ledger, no shared state.</li>
+<li><strong>Curious peer</strong> — another tenant on the same broker. <strong>Goal:</strong> read another tenant's job metadata or output. <strong>Defence:</strong> mTLS + JWT scopes, per-tenant balance ledger, no shared state.</li>
 <li><strong>Compromised worker</strong> — an attacker has remote code execution inside a worker (e.g. via a workload-side bug). <strong>Goal:</strong> pivot to a sibling worker or escalate to the broker. <strong>Defence:</strong> ephemeral worker leases (RFC 0007), short-lived JWTs, no long-lived secrets in worker memory, gVisor sandbox.</li>
 <li><strong>Network attacker</strong> — controls the link between client/broker/worker. <strong>Goal:</strong> read or modify in-flight jobs. <strong>Defence:</strong> mTLS at QUIC, postcard HMAC, JWT integrity.</li>
 <li><strong>Malicious operator</strong> — runs the worker host. <strong>Goal:</strong> read tenant data the worker is processing. <strong>Defence:</strong> <strong>none in v1.</strong> Confidential computing (SEV-SNP / TDX) is the only mitigation and is explicitly out-of-scope for v1; documented as a known limitation in <a href="../../rfcs/0007-tenant-isolation/">RFC 0007</a>.</li>
