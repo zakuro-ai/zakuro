@@ -154,9 +154,13 @@ def main() -> None:
     ssl_kwargs: SSLKwargs = {}
     if os.environ.get("ZAKURO_CERT_DIR", "").strip():
         # Defer the import: zakuro.transport pulls in cryptography.
-        from zakuro.transport import load_server_tls
+        from zakuro.transport import TlsNotConfiguredError, load_server_tls
 
-        material = load_server_tls()
+        try:
+            material = load_server_tls()
+        except TlsNotConfiguredError as exc:
+            # Fail closed, like an insecure bind: never fall back to plaintext.
+            sys.exit(f"ZAKURO_CERT_DIR={os.environ['ZAKURO_CERT_DIR']}: {exc}")
         ssl_kwargs = {
             "ssl_certfile": str(material.cert_path),
             "ssl_keyfile": str(material.key_path),
