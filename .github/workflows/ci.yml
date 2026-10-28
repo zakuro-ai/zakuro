@@ -14,7 +14,7 @@ concurrency:
 permissions:
   contents: read
   security-events: write
-  actions: read
+  actions: write  # a failed job cancels the rest of the run
 
 jobs:
   lint-and-test:
@@ -57,6 +57,10 @@ jobs:
           name: coverage-xml
           path: coverage.xml
           if-no-files-found: error
+      # Last step on purpose, after this job's own uploads: see the action.
+      - name: Cancel the rest of the run
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-failure
 
   typecheck:
     runs-on: ubuntu-latest
@@ -79,6 +83,10 @@ jobs:
         run: uv pip install -e ".[dev,worker,observability]" --system
       - name: Run type checking
         run: task ci:typecheck
+      # Last step on purpose, after this job's own uploads: see the action.
+      - name: Cancel the rest of the run
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-failure
 
   rust:
     runs-on: ubuntu-latest
@@ -97,6 +105,10 @@ jobs:
         run: cargo test --all-features
         env:
           RUSTFLAGS: -D warnings
+      # Last step on purpose, after this job's own uploads: see the action.
+      - name: Cancel the rest of the run
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-failure
 
   notice:
     runs-on: ubuntu-latest
@@ -119,7 +131,13 @@ jobs:
         run: uv pip install -e ".[dev]" --system
       - name: Check NOTICE file
         run: task notice:check
+      # Last step on purpose, after this job's own uploads: see the action.
+      - name: Cancel the rest of the run
+        if: failure()
+        uses: ./.github/actions/cancel-run-on-failure
 
+  # security and vulnerability-scan are advisory (continue-on-error), so they
+  # carry no cancel step: their red must not cancel the gating jobs.
   security:
     runs-on: ubuntu-latest
     continue-on-error: true
