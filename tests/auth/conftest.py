@@ -1,33 +1,60 @@
-"""FastAPI test app shared across the auth-middleware tests.
-
-The ``Depends(...)`` markers are passed as default-value rather than
-via ``Annotated[..., Depends(...)]`` because nesting the function-style
-build inside another function defeats FastAPI's annotation
-introspection in some Python/FastAPI version combinations — the Depends
-metadata in ``Annotated[].__metadata__`` is silently dropped, the
-parameter becomes a regular query-string field, and every endpoint
-returns 422.
-"""
+"""Shared fixtures for the JWT auth tests (ADR 0013, #84)."""
 
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI
+import time
+from typing import Any
 
-from zakuro.auth import require_jwt_scope
+import pytest
+
+jwt = pytest.importorskip("jwt")
+pytest.importorskip("cryptography")
+
+from cryptography.hazmat.primitives import serialization  # noqa: E402
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402
 
 
-def build_auth_app() -> FastAPI:
-    app = FastAPI()
+@pytest.fixture
+def signing_keys() -> tuple[bytes, bytes]:
+    private = Ed25519PrivateKey.generate()
+    private_pem = private.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    public_pem = private.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    return private_pem, public_pem
 
-    exec_dep = require_jwt_scope("exec:fn")
-    admin_dep = require_jwt_scope("admin:balance")
 
-    @app.post("/execute")
-    async def execute(claims=Depends(exec_dep)):  # type: ignore[no-untyped-def]  # noqa: B008
-        return {"tenant": claims.tenant_id}
+def issue_token(
+    private_pem: bytes,
+    *,
+    scopes: list[str],
+    worker_id: str = "worker-1",
+    exp_delta: int = 900,
+    aud: str = "zakuro-worker",
+) -> str:
+    now = int(time.time())
+    claims: dict[str, Any] = {
+        "aud": aud,
+        "exp": now + exp_delta,
+        "nbf": now,
+        "jti": "j-1",
+        "tenant_id": "tenant-acme",
+        "worker_id": worker_id,
+        "scopes": scopes,
+    }
+    return str(jwt.encode(claims, private_pem, algorithm="EdDSA"))
 
-    @app.get("/admin")
-    async def admin(claims=Depends(admin_dep)):  # type: ignore[no-untyped-def]  # noqa: B008
-        return {"tenant": claims.tenant_id}
 
-    return app
+@pytest.fixture
+def auth_env(monkeypatch: pytest.MonkeyPatch, signing_keys: tuple[bytes, bytes]) -> bytes:
+    """Turn auth on with a known key; returns the private PEM for issuing tokens."""
+    private_pem, public_pem = signing_keys
+    monkeypatch.setenv("ZAKURO_AUTH_REQUIRED", "1")
+    monkeypatch.setenv("ZAKURO_JWT_PUBLIC_KEY_PEM", public_pem.decode())
+    monkeypatch.setenv("ZAKURO_WORKER_ID", "worker-1")
+    return private_pem

@@ -56,6 +56,26 @@ def test_quic_worker_many_calls_one_connection() -> None:
         assert [square.to(compute)(i) for i in range(10)] == [i * i for i in range(10)]
 
 
+def test_quic_worker_stateful_cls() -> None:
+    """@cls stateful instances (create_instance + call_method) work over QUIC,
+    not only HTTP — the QUIC server must honour the request ``action`` field
+    and RemoteProxy must dispatch over the worker's own transport."""
+    with zk.Worker.spawn(transport="quic") as worker:
+
+        @zk.cls
+        class Counter:
+            def __init__(self, start: int = 0) -> None:
+                self.value = start
+
+            def increment(self, by: int = 1) -> int:
+                self.value += by
+                return self.value
+
+        counter = Counter.to(worker.compute(verify=False))(start=10)
+        assert counter.increment() == 11
+        assert counter.increment(by=5) == 16
+
+
 def test_quic_execute_retries_on_transient_connection_error() -> None:
     """When the in-flight request fails with ConnectionError, the processor
     should tear down + reconnect + retry once before propagating."""

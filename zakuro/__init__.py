@@ -14,8 +14,8 @@ Example:
     >>> result = remote_fn()  # Runs on Zakuro cluster
 """
 
-__version__ = "0.2.24"
-__build__ = "2026-02-15T15:47:22+0000"
+__version__ = "0.2.27"
+__build__ = "2026-10-04T00:00:00+0000"
 
 # Stable subset — see `docs/stability.md`. `zakuro.public` is the preferred
 # import for applications that want a stability guarantee.
@@ -25,9 +25,12 @@ from zakuro.compute import Compute
 from zakuro.config import Config
 from zakuro.dataset import Dataset, dataset
 from zakuro.fn import Fn, cls, fn
-from zakuro.model import ChatResult, Model, model
+from zakuro.mesh import NodeInfo, nodes, resolve_node
+from zakuro.model import ChatResult, Model, TranscriptResult, model
 from zakuro.processors.registry import available_processors
+from zakuro.reconcile import Charge, Reconciliation
 from zakuro.standalone import detect_backend, is_standalone
+from zakuro.task import Job, JobResult, Plan, PlanStep, Task
 from zakuro.worker.runner import Worker
 
 __all__ = [
@@ -36,14 +39,25 @@ __all__ = [
     "replay_decisions",
     "Compute",
     "Config",
-    "Dataset",
-    "dataset",
     "Fn",
     "fn",
+    "Dataset",
+    "dataset",
+    "nodes",
+    "Task",
+    "Reconciliation",
+    "Charge",
+    "Job",
+    "JobResult",
+    "Plan",
+    "PlanStep",
+    "NodeInfo",
+    "resolve_node",
     "cls",
-    "Model",
     "ChatResult",
+    "Model",
     "model",
+    "TranscriptResult",
     "available_processors",
     "detect_backend",
     "is_standalone",

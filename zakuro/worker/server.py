@@ -12,7 +12,7 @@ import cloudpickle
 try:
     from fastapi import FastAPI, HTTPException, Request, Response
     from fastapi.responses import JSONResponse
-except ImportError as exc:
+except ImportError as exc:  # pragma: no cover - requires the [worker] extra to be absent
     raise ImportError(
         "Running the Zakuro worker requires the `[worker]` extra "
         "(fastapi, uvicorn, psutil). Install it with "
@@ -25,7 +25,7 @@ import contextlib
 from fastapi import Depends
 
 from zakuro import __version__
-from zakuro.auth import Claims, require_jwt_scope
+from zakuro.auth.middleware import require_jwt_scope
 from zakuro.observability import (
     init_logging,
     init_metrics,
@@ -35,20 +35,19 @@ from zakuro.observability import (
     instrument_httpx,
     mount_metrics_endpoint,
 )
-from zakuro.wire import WireError
-from zakuro.worker.envelope import unwrap_payload
+from zakuro.worker.envelope import EnvelopeRejectedError, unwrap_payload
 from zakuro.worker.executor import execute_function
+from zakuro.worker.posture import max_payload_bytes, validate_auth_config, validate_wire_config
 
-# Build the scoped dependencies once at module import so FastAPI captures
-# them in its dependant tree (creating them inside route signatures works
-# but pytest's assertion-rewrite breaks the Annotated-form alternative —
-# see docs in tests/auth/conftest.py).
+# Scoped dependencies built once at import so FastAPI captures them in its
+# dependant tree.
 _REQUIRE_EXEC = require_jwt_scope("exec:fn")
 _REQUIRE_INFO = require_jwt_scope("worker:info")
 
-# Init structured logging + Sentry + Prometheus + OpenTelemetry as early as
-# possible. All four are no-ops when their optional dep is missing or the
-# relevant env var (SENTRY_DSN / OTEL_EXPORTER_OTLP_ENDPOINT) is unset.
+# Structured logging + Sentry + Prometheus + OpenTelemetry, as early as
+# possible. Each is a no-op when its optional dependency (the
+# ``[observability]`` extra) is missing or its env var (SENTRY_DSN /
+# OTEL_EXPORTER_OTLP_ENDPOINT) is unset.
 init_logging("worker")
 init_sentry("worker")
 init_metrics()
@@ -61,12 +60,9 @@ app = FastAPI(
     version=__version__,
 )
 
-# /metrics endpoint, no-op when prometheus_client is not installed. Once
-# RFC 0002 lands, gate this on the metrics:read JWT scope.
+# /metrics endpoint; no-op when prometheus_client is not installed.
 mount_metrics_endpoint(app)
-
-# FastAPI auto-instrumentation; no-op when the extra is missing. Must run AFTER
-# the FastAPI app object exists.
+# FastAPI auto-instrumentation; no-op without the extra. Must follow ``app``.
 instrument_fastapi_app(app)
 
 # Thread pool for function execution (threads share memory, so instance
@@ -78,6 +74,8 @@ executor: ThreadPoolExecutor | None = None
 async def startup() -> None:
     """Initialize thread pool on startup."""
     global executor
+    validate_auth_config()
+    validate_wire_config()
     executor = ThreadPoolExecutor(
         max_workers=multiprocessing.cpu_count(),
     )
@@ -216,27 +214,18 @@ async def ready() -> Response:
 
 @app.get("/health")
 async def health() -> Response:
-    """Legacy alias for `/ready`.
+    """Legacy alias for ``/ready``.
 
-    Kept for backwards compatibility with existing Docker HEALTHCHECK
-    consumers and any external monitors that hit `/health`. New
-    integrations should use `/live` and `/ready` directly.
+    Kept for Docker HEALTHCHECK consumers and monitors that hit ``/health``
+    (status code is what they read). New integrations should use ``/live``
+    and ``/ready`` directly.
     """
     return await ready()
 
 
-@app.get("/info")
-async def info(
-    claims: Claims = Depends(_REQUIRE_INFO),  # noqa: B008
-) -> dict[str, Any]:
-    """Worker info endpoint for broker discovery.
-
-    Authorisation: requires a JWT with the ``worker:info`` scope when
-    ``ZAKURO_AUTH_REQUIRED=1``. The broker holds this scope; an
-    unauthenticated client can still get *minimum-disclosure* worker
-    info via :func:`live` / :func:`ready`.
-    """
-    del claims  # reserved for future per-tenant view filtering
+@app.get("/info", dependencies=[Depends(_REQUIRE_INFO)])
+async def info() -> dict[str, Any]:
+    """Worker info endpoint for broker discovery."""
     import os
     import platform
     import shutil
@@ -251,7 +240,7 @@ async def info(
         vm = psutil.virtual_memory()
         memory_total = vm.total
         memory_available = vm.available
-    except ImportError:
+    except ImportError:  # pragma: no cover - psutil ships with the [worker] extra
         memory_total = 8 * 1024 * 1024 * 1024
         memory_available = memory_total
 
@@ -267,7 +256,7 @@ async def info(
             timeout=5,
         )
         if result.returncode == 0:
-            lines = [x.strip() for x in result.stdout.strip().split("\n") if x.strip()]
+            lines = [line.strip() for line in result.stdout.strip().split("\n") if line.strip()]
             gpus = len(lines)
             if lines:
                 parts = lines[0].split(", ", 1)
@@ -293,6 +282,21 @@ async def info(
         "name": worker_name,
         "worker_type": os.environ.get("ZAKURO_WORKER_TYPE", "zakuro"),
         "version": __version__,
+        # The interpreter that will actually run the job (zc#327).
+        #
+        # A cloudpickled function carries raw CPython bytecode, and opcode
+        # numbers are renumbered between minor versions -- LOAD_FAST is 124 up
+        # to 3.12 and 85 from 3.13. A worker on a different minor version than
+        # the payload was built for therefore answers EVERY request with
+        # `SystemError: unknown opcode`, while being completely healthy.
+        #
+        # A worker record advertises CPUs, RAM and GPUs but never said this, so
+        # a broker could not tell that a worker was incapable of running a
+        # given payload and routed to it anyway. Measured on a ten-node mesh:
+        # four workers on 3.13.9, the rest on 3.12.3, and 13 of 19 requests
+        # failing with nothing wrong on either side.
+        "python_version": platform.python_version(),
+        "python_implementation": platform.python_implementation(),
         "resources": {
             "cpus_total": float(cpus),
             "cpus_available": float(cpus),
@@ -317,48 +321,54 @@ async def info(
     }
 
 
-@app.post("/execute")
-async def execute(
-    request: Request,
-    claims: Claims = Depends(_REQUIRE_EXEC),  # noqa: B008  -- FastAPI Depends idiom
-) -> Response:
+async def _read_capped_body(request: Request) -> bytes:
+    """Read the request body, raising 413 once it exceeds the payload cap.
+
+    A declared ``Content-Length`` over the cap is rejected before any body is
+    read; chunked / undeclared bodies are counted while streaming and aborted
+    as soon as the cap is crossed, so memory use stays bounded by the cap.
+    """
+    limit = max_payload_bytes()
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            too_big = int(declared) > limit
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid Content-Length") from None
+        if too_big:
+            raise HTTPException(status_code=413, detail=f"Payload exceeds {limit} bytes")
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(status_code=413, detail=f"Payload exceeds {limit} bytes")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@app.post("/execute", dependencies=[Depends(_REQUIRE_EXEC)])
+async def execute(request: Request) -> Response:
     """
     Execute a serialized function.
 
-    Wire format depends on ``ZAKURO_WIRE``:
+    Expects cloudpickle-serialized payload with:
+    - func: The function to execute
+    - args: Positional arguments
+    - kwargs: Keyword arguments
 
-    * ``v1`` — body is a postcard-encoded ``zakuro_wire::Envelope``.
-      The worker decodes + HMAC-verifies it via
-      :func:`zakuro.worker.envelope.unwrap_payload`; the envelope's
-      ``callable`` blob (cloudpickle bytes) is then passed to
-      ``execute_function``. HMAC / decode failures return 401 with
-      empty body.
-    * unset — body is the raw cloudpickle dict (legacy path). Behaviour
-      is identical to pre-#117 builds. This branch will be removed once
-      the v0.4 rollout completes.
-
-    Authorisation: requires a JWT with the ``exec:fn`` scope when
-    ``ZAKURO_AUTH_REQUIRED=1``. Unset → anonymous claims, request passes
-    through (RFC 0002 §"Step 5" rollout). The ``claims`` object is
-    available for future per-tenant attribution; today it is unused at
-    the handler level but reaching this point means the request was
-    authorised.
+    Returns cloudpickle-serialized result.
     """
-    del claims  # reserved for per-tenant metrics + auditing
     global executor
     if executor is None:
         raise HTTPException(status_code=503, detail="Worker not ready")
 
-    raw = await request.body()
-
+    payload = await _read_capped_body(request)
     try:
-        inner_payload, _envelope = unwrap_payload(raw)
-    except WireError:
-        # Empty body — leaking the reason would aid enumeration. The
-        # specific reason class is recorded in metrics by `unwrap_payload`
-        # for operator triage (forthcoming when #185 metrics + #189 auth
-        # land; the metric increments degrade gracefully today).
-        return Response(content=b"", status_code=401)
+        # ZAKURO_WIRE=v1|v2: verify the HMAC before any unpickling.
+        payload, _envelope = unwrap_payload(payload)
+    except EnvelopeRejectedError:
+        return Response(status_code=401)
 
     try:
         # Run in thread pool (shared memory for instance state)
@@ -366,7 +376,7 @@ async def execute(
         result_bytes = await loop.run_in_executor(
             executor,
             execute_function,
-            inner_payload,
+            payload,
         )
 
         return Response(
@@ -408,37 +418,15 @@ def main() -> None:
     if args.worker_name:
         os.environ["ZAKURO_WORKER_NAME"] = args.worker_name
 
-    from zakuro.worker.posture import (
-        InsecureBindError,
-        StartupConfigError,
-        resolve_listener,
-    )
+    from zakuro.worker.posture import InsecureBindError, StartupConfigError, resolve_listener
+    from zakuro.worker.tls import uvicorn_ssl_kwargs
 
     try:
+        # Fail-closed bind policy: refuse a routable bind with no caller auth.
         host = resolve_listener(args.host, args.port)
+        ssl_kwargs = uvicorn_ssl_kwargs()
     except (InsecureBindError, StartupConfigError) as exc:
         raise SystemExit(str(exc)) from exc
-
-    # mTLS rollout (#115 Phase 2): honour ZAKURO_CERT_DIR identically to the
-    # `zakuro-worker` CLI. The bind guard (zakuro.worker.posture) treats a
-    # configured cert dir as caller-authenticating, so this listener MUST
-    # actually terminate mutual TLS when it is set. The kwargs type is shared
-    # with zakuro/worker/cli.py so the two cannot drift.
-    from zakuro.worker.cli import SSLKwargs
-
-    ssl_kwargs: SSLKwargs = {}
-    if os.environ.get("ZAKURO_CERT_DIR", "").strip():
-        # Defer the import: zakuro.transport pulls in cryptography.
-        from zakuro.transport import load_server_tls
-
-        material = load_server_tls()
-        ssl_kwargs = {
-            "ssl_certfile": str(material.cert_path),
-            "ssl_keyfile": str(material.key_path),
-            "ssl_ca_certs": str(material.ca_bundle_path),
-            # uvicorn accepts ssl.CERT_REQUIRED as int (2) -> require client certs.
-            "ssl_cert_reqs": 2,
-        }
 
     uvicorn.run(
         "zakuro.worker.server:app",
@@ -449,5 +437,5 @@ def main() -> None:
     )
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - script entry point
     main()

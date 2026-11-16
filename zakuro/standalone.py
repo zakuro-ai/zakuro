@@ -31,7 +31,7 @@ def detect_backend(config: Config | None = None) -> str | None:
     Probe order:
         1. Local worker at 127.0.0.1:3960
         2. Local broker at 127.0.0.1:9000
-        3. Configured broker (e.g. my.zakuro-ai.com:9000) — only if zc CLI is
+        3. Configured broker (e.g. localhost:9000) — only if zc CLI is
            installed, since the remote broker requires zc for auth/routing
 
     Returns:

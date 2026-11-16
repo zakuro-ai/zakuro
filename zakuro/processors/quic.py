@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 import cloudpickle
 
 from zakuro.processors.base import Processor, ProcessorConfig
+from zakuro.wire.keys import wrap_payload
 
 if TYPE_CHECKING:
     from zakuro.compute import Compute
@@ -42,6 +43,14 @@ DEFAULT_PORT = 4433
 _loop: asyncio.AbstractEventLoop | None = None
 _loop_thread: threading.Thread | None = None
 _loop_lock = threading.Lock()
+
+
+def _auth_token() -> bytes:
+    """Bearer token for the worker (``ZAKURO_AUTH`` / config ``auth``), if any."""
+    from zakuro.config import Config
+
+    token = (Config.load().auth_token or "").encode()
+    return token if len(token) <= 0xFFFF else b""
 
 
 def _ensure_loop() -> asyncio.AbstractEventLoop:
@@ -90,6 +99,7 @@ def _build_client_protocol_class() -> type:
             super().__init__(*args, **kwargs)
             self._pending: dict[int, asyncio.Future] = {}
             self._bufs: dict[int, bytearray] = {}
+            self._token = _auth_token()
 
         def quic_event_received(self, event: Any) -> None:  # noqa: D401
             if isinstance(event, StreamDataReceived):
@@ -111,12 +121,7 @@ def _build_client_protocol_class() -> type:
                 # server finished responding. Fail every pending request
                 # with ConnectionError so the caller can decide whether to
                 # reconnect and retry.
-                # The `or` fallback used to sit on the f-string, which is
-                # always truthy -- so "QUIC connection dropped" was
-                # unreachable and an event with no reason_phrase produced a
-                # message ending in a bare colon. Fall back on the phrase
-                # itself, which is the value that can actually be empty.
-                reason = getattr(event, "reason_phrase", "") or "connection dropped"
+                reason = getattr(event, "reason_phrase", "") or "QUIC connection dropped"
                 err = ConnectionError(f"QUIC connection terminated: {reason}")
                 for fut in list(self._pending.values()):
                     if not fut.done():
@@ -125,12 +130,18 @@ def _build_client_protocol_class() -> type:
 
         async def request(self, op: int, payload: bytes) -> tuple[int, bytes]:
             stream_id = self._quic.get_next_available_stream_id(is_unidirectional=False)
-            fut: asyncio.Future[tuple[int, bytes]] = asyncio.get_event_loop().create_future()
+            fut: asyncio.Future = asyncio.get_event_loop().create_future()
             self._pending[stream_id] = fut
+            token = self._token
+            if token:
+                # Bearer JWT for workers running with ZAKURO_AUTH_REQUIRED=1:
+                # high bit of the opcode + a length-prefixed token (see zakuro.auth.frame).
+                op |= 0x80
+                payload = len(token).to_bytes(2, "big") + token + payload
             frame = bytes([op]) + len(payload).to_bytes(4, "big") + payload
             self._quic.send_stream_data(stream_id, frame, end_stream=True)
             self.transmit()
-            return await fut
+            return cast("tuple[int, bytes]", await fut)
 
     return _Client
 
@@ -186,6 +197,8 @@ class QuicProcessor(Processor):
         from aioquic.asyncio import connect
         from aioquic.quic.configuration import QuicConfiguration
 
+        from zakuro.client_tls import apply_quic_client_tls
+
         config = QuicConfiguration(
             is_client=True,
             alpn_protocols=ALPN,
@@ -196,6 +209,8 @@ class QuicProcessor(Processor):
             # ConnectionError quickly so the allocator can route around it.
             idle_timeout=5.0,
         )
+        # Opt-in mTLS (ZAKURO_CLIENT_CERT_DIR); no-op when unset.
+        apply_quic_client_tls(config)
         self._cm = connect(
             self._config.host,
             self._config.port,
@@ -218,35 +233,52 @@ class QuicProcessor(Processor):
         self._protocol = None
         self._cm = None
 
+    def _request_execute(self, payload: bytes) -> tuple[int, bytes]:
+        """Send one OP_EXECUTE frame and return ``(status, body)``.
+
+        One retry on connection-level failure: if the underlying QUIC
+        connection dropped (worker bounced, network blip, stale pool
+        connection), tear it down, dial again, and re-dispatch once.
+        Protocol-level errors from the worker (stat != OK) are NOT retried —
+        that's a deterministic failure the caller should see.
+        """
+        if not self._connected or self._protocol is None:
+            raise RuntimeError("QuicProcessor not connected; use as a context manager.")
+        payload = wrap_payload(payload)
+        try:
+            return cast("tuple[int, bytes]", _run_sync(self._protocol.request(OP_EXECUTE, payload)))
+        except (ConnectionError, OSError, RuntimeError) as first_exc:
+            if not self._reconnect():
+                # Propagate the original failure — caller can decide what
+                # to do. Reconnect attempt itself logs via Worker / Adaptive.
+                raise first_exc
+            return cast("tuple[int, bytes]", _run_sync(self._protocol.request(OP_EXECUTE, payload)))
+
     def execute(
         self,
         func_bytes: bytes,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
     ) -> Any:
-        if not self._connected or self._protocol is None:
-            raise RuntimeError("QuicProcessor not connected; use as a context manager.")
         func = cloudpickle.loads(func_bytes)
         payload = cloudpickle.dumps({"func": func, "args": args, "kwargs": kwargs})
-
-        # One retry on connection-level failure: if the underlying QUIC
-        # connection dropped (worker bounced, network blip, stale pool
-        # connection), tear it down, dial again, and re-dispatch once.
-        # Protocol-level errors from the worker (stat != OK) are NOT
-        # retried — that's a deterministic failure the caller should see.
-        try:
-            status, body = _run_sync(self._protocol.request(OP_EXECUTE, payload))
-        except (ConnectionError, OSError, RuntimeError) as first_exc:
-            if not self._reconnect():
-                # Propagate the original failure — caller can decide what
-                # to do. Reconnect attempt itself logs via Worker / Adaptive.
-                raise first_exc
-            status, body = _run_sync(self._protocol.request(OP_EXECUTE, payload))
-
+        status, body = self._request_execute(payload)
         if status == STAT_OK:
             return cloudpickle.loads(body)
         if status == STAT_USER_ERROR:
             raise cloudpickle.loads(body)
+        raise RuntimeError(f"QUIC protocol error from worker: {body.decode(errors='replace')}")
+
+    def execute_payload(self, payload: bytes, extra_headers: dict[str, str] | None = None) -> bytes:
+        """Send a raw cloudpickle request payload via OP_EXECUTE and return the
+        raw cloudpickle response bytes (result or exception object).
+
+        Used by stateful ``@cls`` proxies. ``extra_headers`` is accepted for
+        interface parity but unused — QUIC affinity is per-connection.
+        """
+        status, body = self._request_execute(payload)
+        if status in (STAT_OK, STAT_USER_ERROR):
+            return body
         raise RuntimeError(f"QUIC protocol error from worker: {body.decode(errors='replace')}")
 
     def _reconnect(self) -> bool:
