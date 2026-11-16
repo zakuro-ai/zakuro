@@ -13,7 +13,7 @@ Usage::
     adaptive = zk.AdaptiveCompute(
         workers=[
             zk.Compute(uri="quic://mac:4433"),
-            zk.Compute(uri="quic://x399:4434"),
+            zk.Compute(uri="quic://gpu-box:4434"),
         ],
         # β₁ / β₂ mirror Adam's moment-EMA decay rates.
         beta1=0.9,
@@ -55,7 +55,7 @@ import time
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from zakuro.compute import Compute
@@ -106,6 +106,7 @@ class _DecisionLogWriter:
             # severe contention some records may still be lost.
             with contextlib.suppress(queue.Empty):
                 self._queue.get_nowait()
+                self._queue.task_done()
             with self._drop_lock:
                 self._dropped += 1
             with contextlib.suppress(queue.Full):
@@ -123,7 +124,9 @@ class _DecisionLogWriter:
         after a batch of dispatches. The hot path never calls this.
         """
         deadline = time.monotonic() + timeout
-        while not self._queue.empty():
+        # ``unfinished_tasks`` (not ``empty()``) also covers the record the
+        # writer thread has dequeued but not yet written.
+        while self._queue.unfinished_tasks:
             if time.monotonic() > deadline:
                 return
             time.sleep(0.005)
@@ -138,13 +141,17 @@ class _DecisionLogWriter:
                     while True:
                         item = self._queue.get()
                         if item is None:
+                            self._queue.task_done()
                             return
                         try:
                             fp.write(item + "\n")
                             fp.flush()
                         except OSError:
-                            # File-handle gone wrong — close + reopen.
+                            # File-handle gone wrong — close + reopen. The
+                            # record is lost; account for it so flush() returns.
+                            self._queue.task_done()
                             break
+                        self._queue.task_done()
             except OSError:
                 # Couldn't even open the file. Sleep briefly + retry; the
                 # dispatch path keeps queueing in the meantime.
@@ -202,11 +209,12 @@ class _WorkerStats:
         "last_latency",
         "health_strikes",
         "suspended",
-        # Consecutive-failure eject state (#222). ``consecutive_failures``
-        # counts dispatch exceptions since the last success; ``ejected``
-        # latches ``True`` once it crosses ``eject_after_failures`` and — unlike
-        # ``suspended`` — is permanent (a health probe does not rehabilitate it).
-        "consecutive_failures",
+        # Consecutive dispatch failures (Phase 1.6 / F4.2). Reset on success.
+        "dispatch_strikes",
+        # Public #222 eject flag: latched when ``dispatch_strikes`` crosses
+        # ``eject_after_failures``. Here an eject *suspends* the worker (the
+        # picker routes around it); it is cleared by a successful dispatch or a
+        # health probe that re-admits the worker.
         "ejected",
         # Drift-detection state (Phase 1.2).
         "m_slow",
@@ -224,8 +232,8 @@ class _WorkerStats:
         self.last_latency: float | None = None
         self.health_strikes: int = 0
         self.suspended: bool = False
-        # Eject state (#222). Reset to 0 on any successful dispatch.
-        self.consecutive_failures: int = 0
+        # Consecutive failed dispatches; resets to 0 on any successful dispatch.
+        self.dispatch_strikes: int = 0
         self.ejected: bool = False
         # Longer-horizon EMA used as the "baseline" that drift is measured
         # against. 1.0 = healthy; > 1.0 = deprioritised proportionally.
@@ -265,7 +273,8 @@ class _WorkerStats:
             "last_latency": self.last_latency,
             "health_strikes": self.health_strikes,
             "suspended": self.suspended,
-            "consecutive_failures": self.consecutive_failures,
+            # Public (#222) names: consecutive dispatch failures and eject flag.
+            "consecutive_failures": self.dispatch_strikes,
             "ejected": self.ejected,
             "bandwidth_bps": self.bandwidth_bps,
         }
@@ -295,87 +304,6 @@ class AdaptiveCompute:
     backpressure_threshold:
         ``is_backpressured`` returns ``True`` when *every* worker's
         expected time-to-serve exceeds this many seconds.
-
-    cost_coefficient:
-        Price-aware routing knob (Phase 4.3, #173). At ``0`` (default) the
-        allocator ignores ``Compute.price_per_hour`` entirely. Positive
-        values scale each worker's expected time by
-        ``1 + cost_coefficient × price``, so more-expensive workers fall
-        further down the picker's queue. Higher values trade speed for
-        spend; with prices in yen/h, ``0.0033`` is a reasonable starting point. See
-        ``tests/test_adaptive.py::TestPriceAware`` for measured behaviour.
-
-    local_region, local_rack:
-        Topology preference (Phase 4.2, #172). When set, the allocator
-        softly demotes workers in a *different* region (and, within a
-        matching region, a different rack). The bandwidth map (#171) is
-        the source of truth for actual transfer cost; topology hints are
-        a tie-breaker — they never overrule a faster remote worker on
-        latency. Defaults are read from ``ZAKURO_REGION`` / ``ZAKURO_RACK``
-        env vars when ``None``.
-    region_penalty, rack_penalty:
-        Multipliers (≥ 1.0) applied to cross-region and cross-rack
-        workers respectively. Both default to small (1.10 / 1.03) so a
-        materially faster remote worker still wins — see
-        ``tests/test_adaptive.py::TestTopologyHints::test_faster_remote_still_wins``.
-
-    seed:
-        Optional integer seed for the soft (softmax) picker's RNG (#222).
-        ``None`` (default) uses a fresh, non-reproducible RNG. Set an int
-        for deterministic pick sequences in tests + debugging; a dedicated
-        ``random.Random`` instance is used so seeding never perturbs the
-        global RNG. No effect when ``softmax_temperature == 0`` (greedy).
-    max_dispatch_retries:
-        Number of *extra* workers :meth:`dispatch` will fail over to after a
-        worker raises (#222). ``0`` (default) preserves the original
-        behaviour — the exception propagates immediately. With ``N`` > 0 the
-        allocator re-picks a different worker up to ``N`` more times before
-        re-raising the last exception; each already-tried worker is excluded
-        from the retry pick, so it never spins on a single dead worker.
-    eject_after_failures:
-        When set, a worker that accumulates this many *consecutive* dispatch
-        failures is permanently removed from rotation (#222). A single
-        success resets the counter. Unlike health-probe ``suspended`` state,
-        an eject does not self-heal — re-admit with :meth:`add_worker`.
-        ``None`` (default) disables ejection.
-
-    Bandwidth awareness (Phase 4.1, #171) is enabled per call via the
-    ``payload_bytes`` argument to :meth:`pick`: if non-zero and the
-    worker has a bandwidth estimate (seeded during warmup or set by the
-    caller), the picker adds ``payload_bytes / bandwidth_bps`` to each
-    worker's expected time. Critical for large state-dict dispatches.
-
-    Examples
-    --------
-
-    Price-aware (Phase 4.3)::
-
-        ac = zk.AdaptiveCompute(
-            workers=[
-                zk.Compute(uri="quic://onprem:4433", price_per_hour=15.0),
-                zk.Compute(uri="quic://cloud:4433", price_per_hour=210.0),
-            ],
-            cost_coefficient=0.0033,  # per yen/h; 0 = speed-only
-        )
-
-    Topology hints (Phase 4.2)::
-
-        ac = zk.AdaptiveCompute(
-            workers=[
-                zk.Compute(uri="quic://a.us-west:4433", region="us-west"),
-                zk.Compute(uri="quic://b.eu-west:4433", region="eu-west"),
-            ],
-            local_region="us-west",
-        )
-
-    Bandwidth-aware dispatch (Phase 4.1)::
-
-        # During warmup, AdaptiveCompute probes each worker with a
-        # large payload and seeds bandwidth_bps. After that, pass the
-        # payload size on each dispatch so the picker weights transfer
-        # time alongside latency:
-        ac.warmup(bandwidth_probe_bytes=8_000_000)
-        ac.pick(payload_bytes=len(state_dict_bytes))
     """
 
     def __init__(
@@ -403,10 +331,6 @@ class AdaptiveCompute:
         self._workers: list[Compute] = list(workers)
         if not self._workers:
             raise ValueError("AdaptiveCompute requires at least one worker.")
-        if max_dispatch_retries < 0:
-            raise ValueError("max_dispatch_retries must be >= 0")
-        if eject_after_failures is not None and eject_after_failures < 1:
-            raise ValueError("eject_after_failures must be >= 1 (or None to disable)")
         if not (0.0 <= beta1 < 1.0) or not (0.0 <= beta2 < 1.0):
             raise ValueError("beta1, beta2 must be in [0, 1).")
         if not (0.0 <= beta_slow < 1.0):
@@ -445,22 +369,24 @@ class AdaptiveCompute:
         self._tau = float(softmax_temperature)
         self._initial_latency = float(initial_latency)
         self._backpressure = float(backpressure_threshold)
-
-        # Deterministic softmax sampling (#222). ``seed=None`` uses a fresh,
-        # unseeded RNG (non-reproducible); an int seed makes the probabilistic
-        # picker reproducible for tests + debugging. A dedicated Random
-        # instance keeps AdaptiveCompute from perturbing the global RNG.
-        self._seed = seed
-        self._rng = random.Random(seed)
-        # Fault-tolerant dispatch (#222). ``max_dispatch_retries`` re-picks a
-        # *different* worker (round-robin over the failed set) after a dispatch
-        # raises; ``eject_after_failures`` permanently removes a worker from
-        # rotation once it accumulates that many consecutive failures.
+        # F4.2 — dispatch-failure resilience. ``max_dispatch_retries`` extra
+        # attempts on *other* workers after a dispatch raises (0 = propagate
+        # the first failure, the historical behaviour). ``eject_after_failures``
+        # suspends a worker after that many *consecutive* dispatch failures so
+        # the picker routes around it; ``None`` disables auto-suspension.
+        if max_dispatch_retries < 0:
+            raise ValueError("max_dispatch_retries must be >= 0")
+        if eject_after_failures is not None and eject_after_failures < 1:
+            raise ValueError("eject_after_failures must be >= 1 or None")
         self._max_dispatch_retries = int(max_dispatch_retries)
         self._eject_after_failures = eject_after_failures
 
         self._stats = [_WorkerStats() for _ in self._workers]
         self._lock = threading.Lock()
+        # NF2 — deterministic mode. An instance-local RNG (seeded or not) drives
+        # softmax exploration so reproducibility never depends on, nor perturbs,
+        # the global ``random`` state. ``seed=None`` is still non-deterministic.
+        self._rng = random.Random(seed)
 
         # Health probing lifecycle (Phase 1.1).
         self._probe_thread: threading.Thread | None = None
@@ -469,11 +395,13 @@ class AdaptiveCompute:
         self._probe_timeout: float = 2.0
         self._max_strikes: int = 3
 
-        # Decision log (Phase 6.1, #176). Background-thread JSONL writer.
-        # ``None`` means disabled — the hot path checks ``self._log_writer``
-        # once and skips the snapshot if disabled.
-        self._log_writer: _DecisionLogWriter | None = None
+        # Decision log (Phase 6.1). Append one JSON object per dispatch with
+        # the allocator's prediction and the observed outcome. Users can
+        # replay this offline to audit decisions / debug weird routing.
         self._log_path: Path | None = None
+        # Background-thread JSONL writer (NF1, #176): the hot dispatch path
+        # only enqueues. ``None`` means disabled.
+        self._log_writer: _DecisionLogWriter | None = None
 
     # .................................................................. API
 
@@ -522,36 +450,29 @@ class AdaptiveCompute:
     # ........................................................ decision log
 
     def enable_decision_log(self, path: str | None = None) -> Path:
-        """Turn on per-dispatch logging to a JSONL file (NF1, #176).
+        """Turn on per-dispatch logging to a JSONL file.
 
         Each dispatch appends one line. Stable schema (frozen at
         :data:`DECISION_LOG_SCHEMA`)::
 
-            {
-              "schema":         "v1",
-              "t":              <unix seconds, float>,
-              "fn":             "<fn name>",
-              "picked":         <chosen worker idx>,
-              "expected_secs":  <allocator estimate for picked>,
-              "actual_secs":    <observed latency>,
-              "ok":             <true | false>,
-              "error":          <repr(exc) | null>,
-              "queue_depth":    [<int per worker>, ...],
-              "ema_latency_ms": [<float per worker>, ...],
-              "drift_factor":   <float, picked worker's drift>,
-              "dropped_since_last": <int, optional — only present after a drop>
-            }
+            {"schema": "v1", "t": <unix>, "fn": "<fn_name>", "picked": <idx>,
+             "attempt": <int>, "expected_secs": <allocator's estimate>,
+             "actual_secs": <observed latency>, "ok": <bool>,
+             "error": <repr(exc) | null>, "queue_before": <int>,
+             "queue_depth": [<int per worker>, ...],
+             "ema_latency_ms": [<float per worker>, ...],
+             "drift_factor": <float>,
+             "dropped_since_last": <int, only present after a drop>}
 
-        Writes are non-blocking: a background thread drains a bounded
-        queue. If the queue overflows, the oldest record is dropped and
-        the next emitted record carries a ``dropped_since_last`` count
-        so post-hoc tooling can detect undersampling.
+        Writes are non-blocking: a background thread drains a bounded queue.
+        If it overflows, the oldest record is dropped and the next emitted
+        record carries ``dropped_since_last``. Calling this twice rotates the
+        writer to the new path (the old one drains and closes first).
 
         Default path is ``$HOME/.zakuro/allocator.jsonl`` (or
         ``$ZAKURO_DECISION_LOG`` if set). Directory is created on demand.
 
-        Calling :func:`enable_decision_log` twice rotates the writer to
-        the new path; the old one drains + closes first.
+        Call with ``path=None`` to disable.
         """
         if path is None:
             env = os.environ.get("ZAKURO_DECISION_LOG")
@@ -570,6 +491,7 @@ class AdaptiveCompute:
         return log_path
 
     def disable_decision_log(self) -> None:
+        """Stop logging; drains every pending record to disk first."""
         if self._log_writer is not None:
             self._log_writer.close()
         self._log_writer = None
@@ -578,9 +500,8 @@ class AdaptiveCompute:
     def flush_decision_log(self, timeout: float = 2.0) -> None:
         """Block until the background writer has drained every enqueued record.
 
-        Useful in tests + replay-tool wrappers that want to read the JSONL
-        file immediately after a batch of dispatches. The hot dispatch
-        path never calls this.
+        For tests and replay tooling that read the JSONL file right after a
+        batch of dispatches. The hot dispatch path never calls this.
         """
         if self._log_writer is not None:
             self._log_writer.flush(timeout=timeout)
@@ -589,9 +510,7 @@ class AdaptiveCompute:
         """Best-effort enqueue — never raises, never blocks the dispatch path."""
         if self._log_writer is None:
             return
-        # Stamp the schema version on every record so replay tools can
-        # detect a future change without parsing the payload.
-        # pragma: no cover — observability never breaks the hot path
+        # Stamp the schema version so replay tools can detect a future change.
         with contextlib.suppress(Exception):
             self._log_writer.put({"schema": DECISION_LOG_SCHEMA, **row})
 
@@ -698,6 +617,11 @@ class AdaptiveCompute:
         for orig_idx, compute in snapshot:
             observed: list[float] = []
             err: str | None = None
+
+            # Dry-run call to warm up connection/imports/OS caches (discarded).
+            with contextlib.suppress(Exception):
+                probe.to(compute)(_WARMUP_TOKEN)
+
             started = time.perf_counter()
             for _ in range(rounds):
                 remaining = timeout - (time.perf_counter() - started)
@@ -841,19 +765,6 @@ class AdaptiveCompute:
 
         Safe to call multiple times; only one probe thread runs per
         ``AdaptiveCompute`` instance.
-
-        The probe thread is a daemon, so it will not keep the process alive on
-        its own — but you should still stop it explicitly to release the
-        worker connections it holds. Pair it with ``stop_health_probes`` in a
-        ``try/finally`` so the loop is torn down even if the body raises:
-
-        .. code-block:: python
-
-            ac.start_health_probes(interval=5.0, max_strikes=3)
-            try:
-                run_workload(ac)
-            finally:
-                ac.stop_health_probes()
         """
         if interval <= 0:
             raise ValueError("interval must be positive")
@@ -908,6 +819,7 @@ class AdaptiveCompute:
                     s.health_strikes = 0
                     if s.suspended:
                         s.suspended = False
+                        s.ejected = False
                     # A good probe is also an observation: fold it into the EMA
                     # so that workers picking up after a transient stall get
                     # recognised as fast again.
@@ -930,7 +842,8 @@ class AdaptiveCompute:
 
     def _probe_loop(self) -> None:
         while not self._probe_stop.is_set():
-            with contextlib.suppress(Exception):  # defensive — loop must never die on a user error
+            # Defensive — the probe loop must never die on a user error.
+            with contextlib.suppress(Exception):
                 self.probe_once()
             # Use Event.wait so stop is immediate.
             self._probe_stop.wait(self._probe_interval)
@@ -947,7 +860,7 @@ class AdaptiveCompute:
                 from zakuro.processors.quic import QuicProcessor
 
                 config = ProcessorConfig(
-                    scheme="quic", host=cast(str, compute.host), port=compute.port
+                    scheme="quic", host=compute.host or "localhost", port=compute.port
                 )
                 processor = QuicProcessor(config, compute)
                 processor.connect()
@@ -998,29 +911,28 @@ class AdaptiveCompute:
     ) -> Any:
         """Pick a worker, execute the function, record the latency.
 
-        When ``max_dispatch_retries == 0`` (default) any exception raised by the
-        worker is propagated unchanged, after the worker's failure counter and
-        queue depth are updated. When retries are configured (#222), a failed
-        dispatch re-picks a *different* worker (up to ``max_dispatch_retries``
-        extra attempts) before the last exception is re-raised; a worker that
-        accumulates ``eject_after_failures`` consecutive failures is
-        permanently removed from rotation.
+        On failure the worker's failure counters are updated; if
+        ``max_dispatch_retries > 0`` the call is retried on another worker,
+        and if ``eject_after_failures`` is set a worker that fails that many
+        times in a row is suspended (routed around). When all attempts are
+        exhausted the last exception is re-raised unchanged.
         """
         fn_name = getattr(getattr(fn, "_func", fn), "__name__", "<fn>")
+        attempts = 1 + self._max_dispatch_retries
         tried: set[int] = set()
         last_exc: BaseException | None = None
-        # attempts = 1 initial + max_dispatch_retries retries.
-        for _ in range(self._max_dispatch_retries + 1):
+
+        for attempt in range(attempts):
             with self._lock:
+                eligible = [i for i in range(len(self._stats)) if i not in tried]
+                if not eligible:
+                    break  # no fresh worker left to retry on
                 idx = self._pick_locked(exclude=tried)
-                # No fresh worker left to try — every eligible worker has
-                # already failed this call (or the pool is exhausted).
-                if idx in tried:
-                    break
                 self._stats[idx].queue += 1
-                expected = self._expected_times_locked(exclude=tried)[idx]
+                expected = self._expected_times_locked()[idx]
                 queue_before = self._stats[idx].queue
                 drift_factor = self._stats[idx].drift_factor
+            tried.add(idx)
             compute = self._workers[idx]
             t0 = time.perf_counter()
             ok = False
@@ -1033,17 +945,17 @@ class AdaptiveCompute:
             except Exception as exc:
                 last_exc = exc
                 error = repr(exc)
-                tried.add(idx)
                 with self._lock:
                     s = self._stats[idx]
                     s.failures += 1
-                    s.consecutive_failures += 1
+                    s.dispatch_strikes += 1
                     if (
                         self._eject_after_failures is not None
-                        and s.consecutive_failures >= self._eject_after_failures
+                        and s.dispatch_strikes >= self._eject_after_failures
                     ):
+                        s.suspended = True
                         s.ejected = True
-                # Fall through to the finally block, then loop for a retry.
+                # Don't raise here — the loop decides whether to retry.
             finally:
                 latency = time.perf_counter() - t0
                 with self._lock:
@@ -1051,9 +963,11 @@ class AdaptiveCompute:
                     s.queue = max(0, s.queue - 1)
                     self._update_ema(s, latency)
                     if ok:
-                        # A clean dispatch clears the eject counter.
-                        s.consecutive_failures = 0
-                    # Snapshot under-lock so the record sees a consistent
+                        s.dispatch_strikes = 0
+                        if s.ejected:
+                            s.ejected = False
+                            s.suspended = False
+                    # Snapshot under the lock so the record sees a consistent
                     # fleet view across queue depths + EMAs.
                     if self._log_writer is not None:
                         queue_depth = [w.queue for w in self._stats]
@@ -1068,6 +982,7 @@ class AdaptiveCompute:
                             "t": time.time(),
                             "fn": fn_name,
                             "picked": idx,
+                            "attempt": attempt,
                             "expected_secs": expected,
                             "actual_secs": latency,
                             "ok": ok,
@@ -1079,26 +994,32 @@ class AdaptiveCompute:
                         }
                     )
 
-        # Every attempt failed. Re-raise the last worker exception.
-        assert last_exc is not None  # loop always runs ≥ 1 attempt
-        raise last_exc
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("AdaptiveCompute.dispatch: no eligible worker to dispatch to.")
 
     # ........................................................... internals
 
-    def _pick_locked(self, payload_bytes: int = 0, exclude: set[int] | None = None) -> int:
-        expected = self._expected_times_locked(payload_bytes=payload_bytes, exclude=exclude)
+    def _pick_locked(
+        self,
+        payload_bytes: int = 0,
+        exclude: frozenset[int] | set[int] | tuple[int, ...] = (),
+    ) -> int:
+        expected = self._expected_times_locked(payload_bytes=payload_bytes)
+        if exclude:
+            expected = [float("inf") if i in exclude else e for i, e in enumerate(expected)]
         if self._tau <= 0.0:
             # Argmin with stable tie-breaking — prefer the earlier worker.
             return min(range(len(expected)), key=lambda i: (expected[i], i))
         # Soft (probabilistic) allocation: logits = -time/τ.
         logits = [-t / self._tau for t in expected]
         m = max(logits)
-        weights = [math.exp(v - m) for v in logits]
-        total = sum(weights)
-        if total <= 0.0 or not math.isfinite(total):
-            # Every candidate is excluded/at infinity — fall back to argmin so
-            # the caller (dispatch) can detect the exhausted set deterministically.
+        if not math.isfinite(m):
+            # Every candidate is effectively infinite (all suspended/excluded);
+            # fall back to deterministic argmin instead of sampling NaNs.
             return min(range(len(expected)), key=lambda i: (expected[i], i))
+        weights = [math.exp(logit - m) for logit in logits]
+        total = sum(weights)
         r = self._rng.random() * total
         acc = 0.0
         for i, w in enumerate(weights):
@@ -1110,21 +1031,13 @@ class AdaptiveCompute:
     def _expected_times_locked(
         self,
         payload_bytes: int = 0,
-        exclude: set[int] | None = None,
     ) -> list[float]:
         out = []
         for i, s in enumerate(self._stats):
-            if exclude is not None and i in exclude:
-                # Caller-excluded (e.g. already-failed this dispatch, #222).
-                out.append(float("inf"))
-                continue
-            if s.suspended or s.ejected:
+            if s.suspended:
                 # Suspended workers get sent to infinity so the picker routes
                 # around them — but they stay in the pool, so a successful
                 # probe can rehabilitate them with one flip of `suspended`.
-                # Ejected workers (#222) are also sent to infinity, but their
-                # exclusion is permanent — only add_worker/re-admission brings
-                # them back.
                 out.append(float("inf"))
                 continue
             m = s.m_hat(self._beta1)
@@ -1268,6 +1181,34 @@ class DecisionReplay:
     _abs_error_sum: float = 0.0
     _calib_n: int = 0
     records: list[dict[str, Any]] = field(default_factory=list)
+    # Lazily-built :func:`zakuro.replay.summarize_decisions` dict backing the
+    # mapping interface below (``replay["task_batches"]`` etc.).
+    _summary: dict[str, Any] | None = field(default=None, repr=False, compare=False)
+
+    # -- mapping view -------------------------------------------------------
+    # ``zk.replay_decisions`` historically returned two shapes: this dataclass
+    # (public SDK, #222) and a summary dict (``zakuro.replay``, which also
+    # covers ``Task`` batch rows, ZAK-0019). Attribute access is the dataclass;
+    # item access is the summary dict, so callers of either keep working.
+
+    def _summary_dict(self) -> dict[str, Any]:
+        if self._summary is None:
+            from zakuro.replay import load_decisions, summarize_decisions
+
+            self._summary = summarize_decisions(load_decisions(self.path))
+        return self._summary
+
+    def __getitem__(self, key: str) -> Any:
+        return self._summary_dict()[key]
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._summary_dict()
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self._summary_dict().get(key, default)
+
+    def keys(self) -> Any:
+        return self._summary_dict().keys()
 
     @property
     def mean_expected_secs(self) -> float | None:
@@ -1356,12 +1297,16 @@ def replay_decisions(path: str | Path, *, keep_records: bool = False) -> Decisio
 
     Raises :class:`FileNotFoundError` if the log does not exist.
     """
-    log_path = Path(path)
+    log_path = Path(path).expanduser()
     if not log_path.exists():
         raise FileNotFoundError(f"decision log not found: {log_path}")
 
     replay = DecisionReplay(path=str(log_path))
     for rec in _iter_decision_records(log_path):
+        # ``Task`` batch rows (ZAK-0019) share the file but are not dispatches;
+        # they are summarised by the mapping view (``replay["task_batches"]``).
+        if rec.get("kind", "adaptive") != "adaptive":
+            continue
         replay.total += 1
         if replay.schema is None:
             replay.schema = rec.get("schema")

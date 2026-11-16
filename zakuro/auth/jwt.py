@@ -1,4 +1,4 @@
-"""Ed25519 JWT verification + HMAC-key derivation (RFC 0002 / #116).
+"""Ed25519 JWT verification (ADR 0013 / #84).
 
 Design notes
 ------------
@@ -13,11 +13,8 @@ Design notes
 * Required claims: ``aud``, ``exp``, ``nbf``, ``jti``, ``tenant_id``,
   ``worker_id``, ``scopes``. Verification fails closed if any are
   absent or malformed.
-* The HMAC key for the postcard envelope's signature (#117) is HKDF-
-  derived from the JWT signing key by the broker; the worker receives
-  it directly via the same channel that issued the JWT. The
-  :func:`derive_payload_hmac_key` helper performs that HKDF locally so
-  unit tests don't have to spin up a broker.
+* :func:`authorize_token` is the transport-agnostic entry point shared by
+  the HTTP dependency and the QUIC frame guard.
 """
 
 from __future__ import annotations
@@ -28,6 +25,8 @@ from typing import Any
 
 try:
     import jwt as _pyjwt
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
     from jwt.exceptions import (
         ExpiredSignatureError,
         InvalidAudienceError,
@@ -38,11 +37,8 @@ try:
 except ImportError as exc:  # pragma: no cover - exercised only without the extra
     raise ImportError(
         "Verifying Zakuro JWTs requires the `[worker]` extra "
-        "(PyJWT[crypto]). Install it with `pip install 'zakuro-ai[worker]'`."
+        "(PyJWT[crypto]), required when ZAKURO_AUTH_REQUIRED is set. Install it with `pip install 'zakuro-ai[worker]'`."
     ) from exc
-
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 _HMAC_KEY_LENGTH = 32
 _HKDF_SALT = b"zakuro-wire-v1"
@@ -185,15 +181,39 @@ def verify_jwt(
     )
 
 
+def authorize_token(token: str, required_scope: str) -> Claims:
+    """Verify *token* against this worker's env config and require *required_scope*.
+
+    Shared by the HTTP dependency and the QUIC frame guard. Reads
+    ``ZAKURO_WORKER_ID`` (optional worker pin), ``ZAKURO_JWT_AUDIENCE``
+    (default ``zakuro-worker``) and ``ZAKURO_JWT_LEEWAY_SECONDS`` (default 5).
+    Raises a :class:`JwtError` subclass on any failure; the token is never
+    echoed in the error.
+    """
+    worker_id = os.environ.get("ZAKURO_WORKER_ID") or None
+    audience = os.environ.get("ZAKURO_JWT_AUDIENCE", "zakuro-worker")
+    try:
+        leeway = int(os.environ.get("ZAKURO_JWT_LEEWAY_SECONDS", "5"))
+    except ValueError:
+        leeway = 5
+    claims = verify_jwt(
+        token,
+        expected_audience=audience,
+        expected_worker_id=worker_id,
+        leeway_seconds=leeway,
+    )
+    if not claims.has_scope(required_scope):
+        raise JwtScopeError(f"missing scope {required_scope!r}")
+    return claims
+
+
 def derive_payload_hmac_key(*, jwt_signing_key: bytes, tenant_id: str) -> bytes:
     """HKDF-derive the per-tenant key used to verify postcard-envelope HMACs.
 
-    Matches the Rust crate's expected derivation:
-    ``HKDF-SHA256(jwt_signing_key, salt="zakuro-wire-v1", info=f"payload:{tenant_id}")``.
-
-    This is called by the broker per-tenant + bundled with the dispatch;
-    the worker also derives it from its own copy of the broker's signing
-    key when verifying. Same algorithm, same result.
+    Matches the Rust crate's derivation:
+    ``HKDF-SHA256(jwt_signing_key, salt="zakuro-wire-v1", info=f"payload:{tenant_id}")``
+    -- the same algorithm as :func:`zakuro.wire.keys.derive_payload_hmac_key`,
+    which takes the mesh master key. Kept for the public 0.2.24 API.
     """
     if not jwt_signing_key:
         raise JwtError("jwt_signing_key must not be empty")

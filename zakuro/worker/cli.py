@@ -17,10 +17,7 @@ class SSLKwargs(TypedDict, total=False):
     """uvicorn TLS keyword arguments, typed to match ``uvicorn.run``.
 
     ``total=False`` because the whole block is absent on the plaintext path.
-
-    Shared with ``zakuro.worker.server``, which builds the same dict from
-    ZAKURO_CERT_DIR and spreads it into ``uvicorn.run``. One definition rather
-    than two kept in sync by comment.
+    :func:`zakuro.worker.tls.uvicorn_ssl_kwargs` produces this shape.
     """
 
     ssl_certfile: str
@@ -30,20 +27,8 @@ class SSLKwargs(TypedDict, total=False):
 
 
 # Single source of truth for the "you need the worker extra" guidance so the
-# HTTP and QUIC paths print identical, actionable instructions. We deliberately
-# show BOTH install paths: a pip-installed wheel uses the extra, a source
-# checkout (git clone) uses `uv sync --extra worker`.
-_WORKER_EXTRA_HINT = (
-    "Install it with one of:\n"
-    "  pip install 'zakuro-ai[worker]'      # installed from PyPI/wheel\n"
-    "  uv sync --extra worker               # from a source checkout (git clone)\n"
-    "  uv pip install '.[worker]'           # source checkout without uv project sync"
-)
-
-# Single source of truth for the "you need the worker extra" guidance so the
-# HTTP and QUIC paths print identical, actionable instructions. We deliberately
-# show BOTH install paths: a pip-installed wheel uses the extra, a source
-# checkout (git clone) uses `uv sync --extra worker`.
+# HTTP and QUIC paths print identical, actionable instructions: a wheel uses
+# the extra, a source checkout uses `uv sync --extra worker`.
 _WORKER_EXTRA_HINT = (
     "Install it with one of:\n"
     "  pip install 'zakuro-ai[worker]'      # installed from PyPI/wheel\n"
@@ -59,7 +44,9 @@ def _build_parser() -> argparse.ArgumentParser:
             "The worker requires the `[worker]` extra (fastapi, uvicorn, psutil, "
             "aioquic). Core `pip install zakuro-ai` ships the client only; run "
             "`pip install 'zakuro-ai[worker]'` or `uv sync --extra worker` before "
-            "starting a worker."
+            "starting a worker. A non-loopback --host needs caller authentication "
+            "(ZAKURO_AUTH_REQUIRED, ZAKURO_WIRE or ZAKURO_CERT_DIR) or "
+            "ZAKURO_INSECURE_BIND=1."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -99,19 +86,15 @@ def main() -> None:
             from zakuro.worker.quic_server import DEFAULT_PORT, run_quic_worker
         except ImportError as exc:
             sys.exit(
-                "`--transport quic` requires the `[worker]` extra (aioquic), which "
-                f"is not installed: {exc}.\n{_WORKER_EXTRA_HINT}"
+                "QUIC transport requires the `[worker]` extra (aioquic), which is not "
+                f"installed: {exc}.\n{_WORKER_EXTRA_HINT}"
             )
         port = (
             args.port
             if args.port is not None
             else int(os.environ.get("ZAKURO_PORT", str(DEFAULT_PORT)))
         )
-        from zakuro.worker.posture import (
-            InsecureBindError,
-            StartupConfigError,
-            resolve_listener,
-        )
+        from zakuro.worker.posture import InsecureBindError, StartupConfigError, resolve_listener
 
         try:
             host = resolve_listener(args.host, port)
@@ -120,55 +103,27 @@ def main() -> None:
         run_quic_worker(host=host, port=port)
         return
 
-    # Default: HTTP via FastAPI + uvicorn. Probe BOTH deps here so a partial
-    # install (e.g. uvicorn present but fastapi missing, the common
-    # `pip install zakuro-ai` then `zakuro-worker` -> `ImportError: fastapi`
-    # case) fails with the actionable hint instead of a raw traceback that
-    # surfaces deep inside `uvicorn.run(...)` when it imports the server module.
+    # Default: HTTP via FastAPI + uvicorn. Probe BOTH deps so a partial install
+    # (uvicorn present, fastapi missing) fails with the hint instead of a raw
+    # traceback from deep inside `uvicorn.run(...)`.
     try:
         import fastapi  # noqa: F401
         import uvicorn
+
+        from zakuro.worker.posture import InsecureBindError, StartupConfigError, resolve_listener
     except ImportError as exc:
         sys.exit(
-            "Running the Zakuro worker (HTTP transport) requires the `[worker]` "
-            f"extra (fastapi, uvicorn, psutil), which is not installed: {exc}.\n"
-            f"{_WORKER_EXTRA_HINT}"
+            "HTTP transport requires the `[worker]` extra (fastapi, uvicorn, psutil), "
+            f"which is not installed: {exc}.\n{_WORKER_EXTRA_HINT}"
         )
     port = args.port if args.port is not None else int(os.environ.get("ZAKURO_PORT", "3960"))
-
-    from zakuro.worker.posture import (
-        InsecureBindError,
-        StartupConfigError,
-        resolve_listener,
-    )
-
     try:
         host = resolve_listener(args.host, port)
+        from zakuro.worker.tls import uvicorn_ssl_kwargs
+
+        ssl_kwargs: SSLKwargs = uvicorn_ssl_kwargs()  # type: ignore[assignment]
     except (InsecureBindError, StartupConfigError) as exc:
         sys.exit(str(exc))
-
-    # mTLS rollout (#115 Phase 2): when ZAKURO_CERT_DIR is set, load
-    # server cert + private key + CA bundle and pass to uvicorn so the
-    # listener terminates TLS itself. When the env var is unset, the
-    # server stays on plaintext HTTP (dev / CI / behind-a-TLS-ingress).
-    ssl_kwargs: SSLKwargs = {}
-    if os.environ.get("ZAKURO_CERT_DIR", "").strip():
-        # Defer the import: zakuro.transport pulls in cryptography.
-        from zakuro.transport import TlsNotConfiguredError, load_server_tls
-
-        try:
-            material = load_server_tls()
-        except TlsNotConfiguredError as exc:
-            # Fail closed, like an insecure bind: never fall back to plaintext.
-            sys.exit(f"ZAKURO_CERT_DIR={os.environ['ZAKURO_CERT_DIR']}: {exc}")
-        ssl_kwargs = {
-            "ssl_certfile": str(material.cert_path),
-            "ssl_keyfile": str(material.key_path),
-            "ssl_ca_certs": str(material.ca_bundle_path),
-            # uvicorn accepts ssl.CERT_REQUIRED as int (2) -> require client certs.
-            "ssl_cert_reqs": 2,
-        }
-
     uvicorn.run(
         "zakuro.worker.server:app",
         host=host,
@@ -178,5 +133,5 @@ def main() -> None:
     )
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - script entry point
     main()
