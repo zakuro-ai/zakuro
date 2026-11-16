@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.1">
     
     
       
@@ -31,10 +31,10 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
       
       
 
@@ -1490,12 +1490,12 @@
 <tr>
 <td><strong>D</strong></td>
 <td>One tenant exhausts the broker's worker pool</td>
-<td>Per-tenant credit ledger + quota gate in the broker</td>
+<td>per-tenant balance ledger + quota gate in the broker</td>
 <td>Medium — quota is best-effort under burst</td>
 </tr>
 <tr>
 <td><strong>E</strong></td>
-<td>Broker bug allows a tenant to call <code>admin:credits</code> scope</td>
+<td>Broker bug allows a tenant to call <code>admin:balance</code> scope</td>
 <td>JWT scope check on every handler; fuzz the scope-parsing path</td>
 <td>Low</td>
 </tr>
@@ -1649,7 +1649,7 @@
 <h2 id="5-adversary-model">5. Adversary model<a class="headerlink" href="#5-adversary-model" title="Permanent link">&para;</a></h2>
 <p>We design for the following adversaries, in order of capability:</p>
 <ol>
-<li><strong>Curious peer</strong> — another tenant on the same broker. <strong>Goal:</strong> read another tenant's job metadata or output. <strong>Defence:</strong> mTLS + JWT scopes, per-tenant credit ledger, no shared state.</li>
+<li><strong>Curious peer</strong> — another tenant on the same broker. <strong>Goal:</strong> read another tenant's job metadata or output. <strong>Defence:</strong> mTLS + JWT scopes, per-tenant balance ledger, no shared state.</li>
 <li><strong>Compromised worker</strong> — an attacker has remote code execution inside a worker (e.g. via a workload-side bug). <strong>Goal:</strong> pivot to a sibling worker or escalate to the broker. <strong>Defence:</strong> ephemeral worker leases (RFC 0007), short-lived JWTs, no long-lived secrets in worker memory, gVisor sandbox.</li>
 <li><strong>Network attacker</strong> — controls the link between client/broker/worker. <strong>Goal:</strong> read or modify in-flight jobs. <strong>Defence:</strong> mTLS at QUIC, postcard HMAC, JWT integrity.</li>
 <li><strong>Malicious operator</strong> — runs the worker host. <strong>Goal:</strong> read tenant data the worker is processing. <strong>Defence:</strong> <strong>none in v1.</strong> Confidential computing (SEV-SNP / TDX) is the only mitigation and is explicitly out-of-scope for v1; documented as a known limitation in <a href="../../rfcs/0007-tenant-isolation/">RFC 0007</a>.</li>
@@ -1804,10 +1804,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.action.edit", "search.suggest", "search.highlight", "search.share"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.action.edit", "search.suggest", "search.highlight", "search.share"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.a5f9d56c.min.js"></script>
       
     
   </body>
