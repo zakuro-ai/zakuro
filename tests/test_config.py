@@ -11,6 +11,7 @@ class TestConfig:
 
     def test_default_values(self) -> None:
         """Test default configuration values."""
+        # Mock file reads to return nothing
         with (
             patch.dict(os.environ, {}, clear=True),
             patch("pathlib.Path.exists", return_value=False),
@@ -20,6 +21,7 @@ class TestConfig:
         assert config.default_host == "localhost"
         assert config.default_port == 9000
         assert config.auth_token is None
+        assert config.tailscale_enabled is True
 
     def test_env_override_host(self) -> None:
         """Test environment variable overrides host."""
@@ -68,28 +70,15 @@ class TestConfig:
         assert config.storage_access_key == "access"
         assert config.storage_secret_key == "secret"
 
-    def test_config_carries_no_mesh_auth_fields(self) -> None:
-        """Config used to hold a mesh auth key and an enable flag, set from
-        the environment.
-
-        The mesh is WireGuard and there is no such credential to carry: a peer
-        profile comes from the dashboard, not from a Config attribute. These
-        assertions exist so the fields cannot quietly come back.
-        """
-        with patch("pathlib.Path.exists", return_value=False):
+    def test_env_tailscale_authkey(self) -> None:
+        """Test TAILSCALE_AUTHKEY environment variable."""
+        with (
+            patch.dict(os.environ, {"TAILSCALE_AUTHKEY": "tskey-xxx"}, clear=True),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
             config = Config.load()
 
-        # Released zakuro still carries the two legacy tailnet fields, marked
-        # deprecated and ignored (discovery is zc-first, ZAK-0015); its CLI
-        # and persisted config still round-trip them, so they stay for
-        # compatibility. Nothing else of that shape may appear.
-        legacy = {"tailscale_enabled", "tailscale_auth_key"}
-        unexpected = {
-            attr
-            for attr in vars(config)
-            if attr.endswith(("_auth_key", "_enabled")) and attr not in legacy
-        }
-        assert not unexpected, f"unexpected mesh auth field on Config: {sorted(unexpected)}"
+        assert config.tailscale_auth_key == "tskey-xxx"
 
     def test_to_dict_masks_token(self) -> None:
         """Test that to_dict masks the auth token."""

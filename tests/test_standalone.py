@@ -50,16 +50,16 @@ class TestDetectBackend:
 
     def test_returns_broker_when_zc_installed_and_reachable(self) -> None:
         def _only_remote_broker(host: str, port: int) -> bool:
-            return host == "my.zakuro-ai.com"
+            return host == "broker.example.com"
 
         from zakuro.config import Config
 
-        config = Config(default_host="my.zakuro-ai.com", default_port=9000)
+        config = Config(default_host="broker.example.com", default_port=9000)
         with (
             patch("zakuro.standalone._tcp_reachable", side_effect=_only_remote_broker),
             patch("zakuro.standalone._has_zc_cli", return_value=True),
         ):
-            assert detect_backend(config) == "zc://my.zakuro-ai.com:9000"
+            assert detect_backend(config) == "zc://broker.example.com:9000"
 
     def test_skips_remote_broker_without_zc_cli(self) -> None:
         with (
@@ -68,7 +68,7 @@ class TestDetectBackend:
         ):
             assert detect_backend() is None
             probed_hosts = {call.args[0] for call in tcp.call_args_list}
-            assert "my.zakuro-ai.com" not in probed_hosts
+            assert "broker.example.com" not in probed_hosts
 
     def test_force_env_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ZAKURO_STANDALONE", "force")

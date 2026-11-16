@@ -1,4 +1,11 @@
-"""Tests for the ``zakuro`` setup/ops CLI and decision-log replay (#222)."""
+"""Tests for the ``zakuro`` setup/ops CLI and decision-log replay (#222).
+
+Ported from the public package (zakuro-ai/zakuro tests/test_cli.py) so the
+0.2.24 CLI contract (``from zakuro.cli import main``) stays covered here. Local
+changes: the config tests isolate ``~/.zakuro/config.yaml`` and expect this
+repo's ``Config().default_host`` (``localhost``, ZAK-0017) rather than the
+retired ``my.zakuro-ai.com``.
+"""
 
 from __future__ import annotations
 
@@ -110,10 +117,28 @@ class TestReplayDecisions:
         assert r.workers[0].picks == 5
 
 
+@pytest.fixture
+def _isolated_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from zakuro import config as cfg_mod
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cfg_mod, "USER_CONFIG_PATH", tmp_path / ".zakuro" / "config.yaml")
+
+
+@pytest.mark.usefixtures("_isolated_config")
 class TestCLI:
     def test_config_get_single_key(self, capsys) -> None:
+        from zakuro.config import Config
+
         assert main(["config", "get", "default_host"]) == 0
-        assert capsys.readouterr().out.strip() == "localhost"
+        assert capsys.readouterr().out.strip() == Config().default_host
+
+    def test_main_module_is_callable_and_importable(self) -> None:
+        """``zakuro.cli:main`` (public entry point) and ``zakuro.cli.main:main`` both work."""
+        import zakuro.cli.main as main_module
+
+        assert main is main_module
+        assert callable(main) and callable(main_module.main)
 
     def test_config_get_unknown_key(self, capsys) -> None:
         assert main(["config", "get", "not_a_key"]) == 1

@@ -55,6 +55,38 @@ class HttpProcessor(Processor):
 
         self._client = ZakuroClient(self._compute)
         self._connected = True
+        self._refuse_if_worker_cannot_meet_the_spec()
+
+    def _refuse_if_worker_cannot_meet_the_spec(self) -> None:
+        """Fail loudly when the worker cannot provide what was asked for.
+
+        This path talks to ONE worker directly, so there is no router to match
+        a spec against a fleet -- and nothing was checking. `Compute(gpus=1)`
+        therefore ran happily on a CPU-only worker and returned a perfectly
+        normal-looking answer, which is the worst way to be wrong: the caller
+        asked for a GPU, did not get one, and was not told.
+
+        Only GPUs are enforced. CPUs and memory are shared and oversubscribed
+        by design, so a shortfall there is scheduling pressure rather than a
+        promise the worker cannot keep.
+        """
+        if self._compute.gpus <= 0:
+            return
+        try:
+            info = self.info()
+        except Exception:
+            # An unreachable worker is the caller's next error anyway; do not
+            # replace it with a confusing one about resources.
+            return
+        available = (info.get("resources") or {}).get("gpus_total", 0)
+        if available < self._compute.gpus:
+            raise RuntimeError(
+                f"This Compute asks for {self._compute.gpus} GPU(s) but the worker at "
+                f"{self._compute.host}:{self._compute.port} reports {available}. "
+                "Running here would silently give you a CPU. Route through a broker "
+                "(`zakuro.nodes()` and `Compute(uri=node.uri)`) so the request can be "
+                "placed on a node that has one."
+            )
 
     def disconnect(self) -> None:
         """Close HTTP client connection."""
@@ -103,6 +135,16 @@ class HttpProcessor(Processor):
             raise result
 
         return result
+
+    def execute_payload(self, payload: bytes, extra_headers: dict[str, str] | None = None) -> bytes:
+        """Send a raw cloudpickle request payload via the HTTP worker.
+
+        Returns the raw cloudpickle response bytes (result or exception);
+        used by stateful ``@cls`` proxies.
+        """
+        if not self._connected or self._client is None:
+            raise RuntimeError("Processor not connected. Use as context manager.")
+        return self._client.execute(payload, extra_headers=extra_headers)
 
     def ping(self) -> bool:
         """Check worker health."""

@@ -1,5 +1,6 @@
 """Tests for processor system."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -285,3 +286,208 @@ class TestComputeUriIntegration:
         """Test default scheme is zc."""
         compute = Compute(host="localhost")
         assert compute.scheme == "zc"
+
+
+class TestBrokerTargeting:
+    """BrokerProcessor forwards mesh pin targets into the requirements header."""
+
+    def _run_execute(self, options: dict) -> dict:
+        """Execute through a mocked broker; return the parsed requirements dict."""
+        import cloudpickle
+        import httpx
+
+        from zakuro.processors.base import ProcessorConfig
+        from zakuro.processors.broker import BrokerProcessor
+
+        captured: dict = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["requirements"] = json.loads(request.headers["X-Zakuro-Requirements"])
+            return httpx.Response(200, content=cloudpickle.dumps("ok"))
+
+        compute = Compute(host="broker", port=9000, memory="1Gi", verify=False)
+        compute.processor_options = options
+        proc = BrokerProcessor(ProcessorConfig.from_uri("zc://broker:9000"), compute)
+        proc._client = httpx.Client(
+            base_url="http://broker:9000", transport=httpx.MockTransport(handler)
+        )
+        proc._connected = True
+
+        result = proc.execute(cloudpickle.dumps(lambda: "ok"), (), {})
+        assert result == "ok"
+        return captured["requirements"]
+
+    def test_target_worker_and_node_forwarded(self) -> None:
+        """target_worker/target_node from processor_options land in requirements verbatim."""
+        req = self._run_execute(
+            {"target_worker": "zc://worker-abc", "target_node": "zc://node-alpha"}
+        )
+        assert req["target_worker"] == "zc://worker-abc"
+        assert req["target_node"] == "zc://node-alpha"
+
+    def test_no_target_omits_keys(self) -> None:
+        """Without pins the keys are absent (broker uses normal strategy routing)."""
+        req = self._run_execute({})
+        assert "target_worker" not in req
+        assert "target_node" not in req
+
+
+class TestHttpProcessorTransport:
+    """HttpProcessor delegates to ZakuroClient; these pin the delegation."""
+
+    def _connected(self, client: MagicMock) -> HttpProcessor:
+        config = ProcessorConfig.from_uri("zakuro://worker:3960")
+        processor = HttpProcessor(config, Compute(host="worker", port=3960, verify=False))
+        processor._client = client
+        processor._connected = True
+        return processor
+
+    def test_connect_rewrites_compute_host_and_port_from_uri(self) -> None:
+        """The URI is authoritative: connect() pushes its host/port onto Compute."""
+        compute = Compute(host="stale", port=1234, verify=False)
+        processor = HttpProcessor(ProcessorConfig.from_uri("zakuro://worker:3960"), compute)
+        processor.connect()
+        try:
+            assert compute.host == "worker"
+            assert compute.port == 3960
+        finally:
+            processor.disconnect()
+
+    def test_connect_is_idempotent(self) -> None:
+        """A second connect() must not discard the live client."""
+        processor = HttpProcessor(
+            ProcessorConfig.from_uri("zakuro://worker:3960"), Compute(host="worker", verify=False)
+        )
+        processor.connect()
+        first = processor._client
+        processor.connect()
+        try:
+            assert processor._client is first
+        finally:
+            processor.disconnect()
+
+    def test_execute_unwraps_result(self) -> None:
+        """The worker's cloudpickle reply is deserialized for the caller."""
+        import cloudpickle
+
+        client = MagicMock()
+        client.execute.return_value = cloudpickle.dumps(21)
+        assert self._connected(client).execute(cloudpickle.dumps(lambda: 21), (), {}) == 21
+
+    def test_execute_reraises_worker_exception(self) -> None:
+        """An exception in the reply payload is raised on the client side."""
+        import cloudpickle
+
+        client = MagicMock()
+        client.execute.return_value = cloudpickle.dumps(ZeroDivisionError("nope"))
+        with pytest.raises(ZeroDivisionError, match="nope"):
+            self._connected(client).execute(cloudpickle.dumps(lambda: 1), (), {})
+
+    def test_execute_payload_forwards_extra_headers(self) -> None:
+        """@cls affinity headers are passed straight through to the client."""
+        client = MagicMock()
+        client.execute.return_value = b"raw"
+        headers = {"X-Zakuro-Instance-Id": "instance_1"}
+        assert self._connected(client).execute_payload(b"payload", headers) == b"raw"
+        client.execute.assert_called_once_with(b"payload", extra_headers=headers)
+
+    def test_execute_payload_requires_a_connection(self) -> None:
+        """Stateful dispatch outside the context manager is a clear error."""
+        processor = HttpProcessor(
+            ProcessorConfig.from_uri("zakuro://worker:3960"), Compute(host="worker", verify=False)
+        )
+        with pytest.raises(RuntimeError, match="not connected"):
+            processor.execute_payload(b"payload")
+
+    def test_ping_delegates_and_defaults_false(self) -> None:
+        """ping() is False before connect and mirrors the client afterwards."""
+        processor = HttpProcessor(
+            ProcessorConfig.from_uri("zakuro://worker:3960"), Compute(host="worker", verify=False)
+        )
+        assert processor.ping() is False
+        client = MagicMock()
+        client.ping.return_value = True
+        assert self._connected(client).ping() is True
+
+    def test_info_delegates_and_requires_a_connection(self) -> None:
+        """info() surfaces the worker document, or refuses if not connected."""
+        processor = HttpProcessor(
+            ProcessorConfig.from_uri("zakuro://worker:3960"), Compute(host="worker", verify=False)
+        )
+        with pytest.raises(RuntimeError, match="not connected"):
+            processor.info()
+        client = MagicMock()
+        client.info.return_value = {"name": "w1"}
+        assert self._connected(client).info() == {"name": "w1"}
+
+
+class TestProcessorBaseDefaults:
+    """Processor's own defaults, independent of any backend."""
+
+    def test_execute_payload_is_unsupported_by_default(self) -> None:
+        """Backends that do not speak the stateful protocol say so by name."""
+        from zakuro.processors.dask_processor import DaskProcessor
+
+        processor = DaskProcessor(
+            ProcessorConfig.from_uri("dask://scheduler:8786"),
+            Compute(host="scheduler", verify=False),
+        )
+        with pytest.raises(NotImplementedError, match="DaskProcessor does not support"):
+            processor.execute_payload(b"payload")
+
+    def test_config_and_compute_are_exposed(self) -> None:
+        """The config/compute properties are the public accessors on a processor."""
+        config = ProcessorConfig.from_uri("zakuro://worker:3960")
+        compute = Compute(host="worker", verify=False)
+        processor = HttpProcessor(config, compute)
+        assert processor.config is config
+        assert processor.compute is compute
+        assert repr(processor) == "HttpProcessor(uri='zakuro://worker:3960')"
+
+
+class TestRegistrySelection:
+    """get_best picks by declared priority and builds a default URI for it."""
+
+    def test_get_best_returns_highest_priority_backend(self) -> None:
+        """With only the always-available backends installed, the broker (100) wins."""
+        from zakuro.processors.broker import BrokerProcessor
+
+        registry = ProcessorRegistry()
+        registry.refresh()
+        processor = registry.get_best(Compute(host="broker-host", verify=False))
+        assert isinstance(processor, BrokerProcessor)
+        assert processor.config.host == "broker-host"
+        assert processor.config.port == 9000
+
+    def test_get_best_defaults_host_to_localhost(self) -> None:
+        """An unresolved Compute still yields a usable local default URI."""
+        registry = ProcessorRegistry()
+        registry.refresh()
+        assert registry.get_best(Compute()).config.host == "localhost"
+
+    def test_get_best_raises_when_nothing_is_registered(self) -> None:
+        """An empty registry is a hard error, not a silent fallback."""
+        registry = ProcessorRegistry()
+        try:
+            registry._processors = {}
+            with pytest.raises(RuntimeError, match="No processors available"):
+                registry.get_best(Compute(host="localhost"))
+        finally:
+            registry.refresh()
+
+    def test_get_best_processor_module_function(self) -> None:
+        """The module-level helper shares the singleton registry."""
+        from zakuro.processors.broker import BrokerProcessor
+        from zakuro.processors.registry import get_best_processor
+
+        assert isinstance(
+            get_best_processor(Compute(host="broker-host", verify=False)), BrokerProcessor
+        )
+
+    def test_refresh_forces_rediscovery(self) -> None:
+        """refresh() drops the cache so newly installed extras are picked up."""
+        registry = ProcessorRegistry()
+        registry.refresh()
+        assert registry._processors is None
+        assert "zc" in registry.available()
+        assert registry._processors is not None

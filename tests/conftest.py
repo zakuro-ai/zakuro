@@ -11,12 +11,13 @@ def local_compute():
     return Compute(host="127.0.0.1", port=3960)
 
 
-# Modules that exercise the transport layer (scheme parsing, reachability
-# probes, adaptive warm-up) and so construct a Compute pointing straight at a
-# worker or cluster. Released zakuro refuses direct addressing unless
-# ZAKURO_ALLOW_DIRECT is set (work is meant to go through a broker); that
-# policy is separate from what these modules test, so they opt out of it here
-# rather than each test testing the policy by accident.
+# Modules that exercise the TRANSPORT layer -- scheme parsing, reachability
+# probes, adaptive warm-up -- and so must be able to construct a Compute
+# pointing straight at a worker or cluster. The addressing POLICY (only
+# zc://node-<fp> reaches across the mesh) is a separate concern, tested on its
+# own in test_mesh_nodes.py::TestDirectAddressingIsRefused. Without this they
+# would be testing the policy by accident, and every transport test would have
+# to be rewritten whenever the policy moves.
 _TRANSPORT_LEVEL_MODULES = (
     "test_compute",
     "test_processors",
