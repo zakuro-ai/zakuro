@@ -8,6 +8,7 @@
 </p>
 
 <p align="center">
+  <a href="#try-it-in-one-command">Try it</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#installation">Installation</a> •
   <a href="#concepts">Concepts</a> •
@@ -19,7 +20,34 @@
 
 **Zakuro is a context-aware distributed-ML runtime.** You decorate a Python function, declare a pool of workers, and the framework routes each call to the worker with the lowest expected time-to-serve — learning from every dispatch, reacting to node failures and performance drift, and never making training wait on things that can be decoupled.
 
-Product vision, engineering plan, and measured benchmark numbers live in the runtime tracking board at **[github.com/orgs/zakuro-ai/projects/6](https://github.com/orgs/zakuro-ai/projects/6)**. Each phase from the legacy `PLAN.md` is now an issue in this repo (#168–#177); the legacy `PRD.md` content is the project README. Cross-cutting enterprise hardening lives separately in [project #3](https://github.com/orgs/zakuro-ai/projects/3).
+The roadmap is tracked as issues in this repo (the phase issues are #168–#177); see [`CHANGELOG.md`](CHANGELOG.md) for what has shipped.
+
+## Try it in one command
+
+```bash
+git clone https://github.com/zakuro-ai/zakuro && cd zakuro
+uv run demo.py
+```
+
+[`uv`](https://docs.astral.sh/uv/getting-started/installation/) installs the published `zakuro-ai` package into a throwaway environment and starts three Zakuro workers on your machine. They count the primes below 100,000,000 in 200 chunks, and a third of the way in one worker is killed outright, with work in flight. Measured on an Apple-silicon Mac, 8 s end to end from a cold cache:
+
+```
+   50/200 [######..................]   calls per worker: w0  21   w1  20   w2  24
+  !! killing worker-1 (pid 33995) mid-job
+
+   75/200 [#########...............]   calls per worker: w0  32   w1  26 (down)   w2  38
+  ...
+  200/200 [########################]   calls per worker: w0 102   w1  30 (down)   w2 106
+
+  primes below 100,000,000: 5,761,455  (known answer 5,761,455) -- correct
+  200/200 calls succeeded, 0 lost; 7 call(s) hit the dead worker and were resent elsewhere
+  worker-1 marked suspended by the health probe; finished in 3.3 s
+```
+
+No GPU, no Docker, no account. The interesting lines are in [`demo.py`](demo.py): `zk.AdaptiveCompute(..., max_dispatch_retries=2)` and `zk.fn(count_primes).to(pool)(lo, hi)`. Point the pool at machines on your network instead of local workers and the code stays the same.
+
+If Zakuro is useful to you, a star helps other people find it, and it's the easiest way to follow new releases.
+
 
 ## Quick start
 
@@ -166,7 +194,7 @@ All numbers come from real subprocess workers running on the Mac (see `scripts/b
 | **Drift detection** | Injected 250 ms/call slowdown ⇒ 95 % traffic diversion at **t + 0.48 s**. Recovery via softmax + health-probe latencies. |
 | **QUIC retry** | In-flight request during worker SIGKILL surfaces `ConnectionError` in **5 s** (vs aioquic's 30–60 s default). |
 
-Full numbers in the [runtime tracking board's "Measured results" section](https://github.com/orgs/zakuro-ai/projects/6) (formerly `PLAN.md`).
+Every row is reproducible with the scripts under [Benchmarks](#benchmarks).
 
 ## Notebooks
 
@@ -199,8 +227,7 @@ uv run python scripts/bench_all.py --log /tmp/zakuro-bench.json
 
 ## Docs
 
-- **[Runtime tracking board](https://github.com/orgs/zakuro-ai/projects/6)** — product vision, phase status, measured benchmark numbers (formerly `PRD.md` + `PLAN.md`)
-- **[Enterprise hardening board](https://github.com/orgs/zakuro-ai/projects/3)** — security, reliability, supply-chain, deployment
+- **[docs.zakuro-ai.com](https://docs.zakuro-ai.com)** — install, guides and API reference
 - [`docs/STABILITY.md`](docs/STABILITY.md) — public-API contract: stable surface, semver, deprecation policy, 1.0 LTS window
 - [`docs/getting-started.md`](docs/getting-started.md) — end-to-end guide, "laptop-only" and "networked" paths
 - [`docs/cli.md`](docs/cli.md) — `zakuro-worker` CLI reference

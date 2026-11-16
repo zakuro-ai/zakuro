@@ -9,6 +9,7 @@ description = "Zakuro - Distributed computing made simple"
 readme = "README.md"
 license = "BSD-3-Clause"
 requires-python = ">=3.10"
+keywords = ["distributed-computing", "distributed-ml", "fault-tolerance", "load-balancing", "remote-execution", "python", "quic", "machine-learning"]
 authors = [
     { name = "ZakuroAI", email = "dev@zakuro-ai.com" },
 ]
