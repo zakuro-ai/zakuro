@@ -29,22 +29,23 @@ git clone https://github.com/zakuro-ai/zakuro && cd zakuro
 uv run demo.py
 ```
 
-[`uv`](https://docs.astral.sh/uv/getting-started/installation/) installs the published `zakuro-ai` package into a throwaway environment and starts three Zakuro workers on your machine. They count the primes below 100,000,000 in 200 chunks, and a third of the way in one worker is killed outright, with work in flight. Measured on an Apple-silicon Mac, 8 s end to end from a cold cache:
+[`uv`](https://docs.astral.sh/uv/getting-started/installation/) installs the published `zakuro-ai` package into a throwaway environment and starts three Zakuro workers on your machine. They count the primes below 100,000,000 in 200 chunks, and a third of the way in one worker is killed outright, with no warning. On an Apple-silicon Mac it takes 6 s from `git clone` to this, install included (17 s on a 2017 Intel laptop):
 
 ```
-   50/200 [######..................]   calls per worker: w0  21   w1  20   w2  24
-  !! killing worker-1 (pid 33995) mid-job
+   50/200 [######..................]   calls sent: w0  21   w1  19   w2  25
+  !! killing worker-1 (pid 41675) mid-job
 
-   75/200 [#########...............]   calls per worker: w0  32   w1  26 (down)   w2  38
+   75/200 [#########...............]   calls sent: w0  31   w1  29   w2  35
+  100/200 [############............]   calls sent: w0  46   w1  37 (down)   w2  49
   ...
-  200/200 [########################]   calls per worker: w0 102   w1  30 (down)   w2 106
+  200/200 [########################]   calls sent: w0 103   w1  37 (down)   w2 100
 
   primes below 100,000,000: 5,761,455  (known answer 5,761,455) -- correct
-  200/200 calls succeeded, 0 lost; 7 call(s) hit the dead worker and were resent elsewhere
-  worker-1 marked suspended by the health probe; finished in 3.3 s
+  200/200 calls succeeded, 0 lost; 10 call(s) hit the dead worker and were resent elsewhere
+  worker-1 marked suspended by the health probe; finished in 3.1 s
 ```
 
-No GPU, no Docker, no account. The interesting lines are in [`demo.py`](demo.py): `zk.AdaptiveCompute(..., max_dispatch_retries=2)` and `zk.fn(count_primes).to(pool)(lo, hi)`. Point the pool at machines on your network instead of local workers and the code stays the same.
+No GPU, no Docker, no account. The interesting lines are in [`demo.py`](demo.py): `zk.AdaptiveCompute(..., max_dispatch_retries=2)` and `zk.fn(count_primes).to(pool)(lo, hi)`. Point the pool at machines on your network instead of local workers and the rest of the code stays the same.
 
 If Zakuro is useful to you, a star helps other people find it, and it's the easiest way to follow new releases.
 
