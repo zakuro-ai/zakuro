@@ -58,6 +58,10 @@ _DEFAULT_MESH_PROXY = "127.0.0.1:18888"
 
 _MESH_PREFIX = "10.13.13."
 
+#: The dashboard ``zc`` signs in to when the credentials name none (zc's
+#: ``PROD_API_URL``).
+_PROD_API_URL = "https://hub.zakuro-ai.com"
+
 #: How long a discovery result is reused. Resolving `zc://node-<fp>` re-runs
 #: discovery, so a loop over `nodes()` used to rescan the whole mesh once per
 #: call -- ten probes per task, and worse than slow: one transient probe
@@ -254,11 +258,38 @@ def _get_json(url: str, timeout: float, headers: dict | None = None) -> Any:
         return None
 
 
-def _endpoints() -> list[str]:
-    """Broker endpoints worth probing: the local one first, then the roster.
+def _hub_roster_endpoints(timeout: float = 6.0) -> list[str]:
+    """Broker endpoints from the hub's node roster, when signed in.
 
-    The roster is the cache zc keeps, so this keeps working signed out and
-    offline -- the same trade ``zc brokers`` makes.
+    The same source ``zc brokers`` reads first (``GET /api/broker/node/roster``),
+    and the only one a machine without a broker of its own has: after
+    ``zc login`` + ``zc connect`` there is no local broker and no
+    ``roster.json``, so without this ``nodes()`` came back empty on a fresh
+    install. Revoked nodes and nodes with no tunnel up are skipped.
+    """
+    key = api_key()
+    if not key:
+        return []
+    url = api_url() or _PROD_API_URL
+    rows = _get_json(f"{url}/api/broker/node/roster", timeout, headers={"X-Broker-Api-Key": key})
+    if not isinstance(rows, list):
+        return []
+    out: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict) or row.get("revoked"):
+            continue
+        ep = row.get("mesh_endpoint")
+        if isinstance(ep, str) and ep.strip():
+            out.append(ep.strip())
+    return out
+
+
+def _endpoints() -> list[str]:
+    """Broker endpoints worth probing: the local one, the hub's roster, the cache.
+
+    The hub roster needs the key ``zc login`` saved; the on-disk roster is the
+    cache a local broker keeps, so this keeps working signed out and offline --
+    the same sources, in the same order after the local broker, as ``zc brokers``.
     """
     found: list[str] = []
     for port in _LOCAL_BROKER_PORTS:
@@ -267,12 +298,13 @@ def _endpoints() -> list[str]:
         if health and health.get("service") == "zakuro-broker":
             found.append(ep)
             break
+    found += _hub_roster_endpoints()
     try:
         roster = json.loads((_home() / "roster.json").read_text())
         found += [ep for _pk, ep in (roster.get("endpoints") or []) if ep]
     except (OSError, ValueError):
         pass
-    return found
+    return list(dict.fromkeys(found))
 
 
 def _workers_by_node(endpoint: str) -> dict[str, set[str]]:

@@ -15,7 +15,7 @@ import pytest
 
 from zakuro import Compute
 from zakuro.processors.base import ProcessorConfig
-from zakuro.processors.broker import BrokerProcessor
+from zakuro.processors.broker import BrokerError, BrokerProcessor
 
 
 def _make_processor(**compute_kwargs) -> BrokerProcessor:
@@ -232,6 +232,52 @@ class TestExecute:
         proc = _wire(_make_processor(memory="1Gi"), handler)
         with pytest.raises(RuntimeError, match=message):
             proc.execute(cloudpickle.dumps(lambda: 1), (), {})
+
+    def test_budget_required_carries_broker_message_code_and_hint(self) -> None:
+        """A 400 BUDGET_REQUIRED is a BrokerError with the broker's text and a fix."""
+        body = {"error": "Remote dispatch needs a budget: set one", "code": "BUDGET_REQUIRED"}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, json=body)
+
+        proc = _wire(_make_processor(memory="1Gi"), handler)
+        with pytest.raises(BrokerError) as exc:
+            proc.execute(cloudpickle.dumps(lambda: 1), (), {})
+        assert exc.value.status == 400
+        assert exc.value.code == "BUDGET_REQUIRED"
+        assert exc.value.message == body["error"]
+        assert "Remote dispatch needs a budget" in str(exc.value)
+        assert 'processor_options={"budget": 10}' in str(exc.value)
+        assert isinstance(exc.value, RuntimeError)
+
+    def test_503_with_json_error_is_not_masked(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(503, json={"error": "cannot validate API key: hub unavailable"})
+
+        proc = _wire(_make_processor(memory="1Gi"), handler)
+        with pytest.raises(BrokerError, match="hub unavailable") as exc:
+            proc.execute(cloudpickle.dumps(lambda: 1), (), {})
+        assert exc.value.status == 503
+        assert exc.value.code is None
+        assert "No workers available" not in str(exc.value)
+
+    def test_402_with_json_error_and_raw_path(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(402, json={"error": "balance 0 yen", "code": "NO_FUNDS"})
+
+        proc = _wire(_make_processor(memory="1Gi"), handler)
+        with pytest.raises(BrokerError, match="balance 0 yen") as exc:
+            proc.execute_payload(b"x")
+        assert exc.value.code == "NO_FUNDS"
+
+    def test_plain_400_becomes_broker_error(self) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(400, text="nope")
+
+        proc = _wire(_make_processor(memory="1Gi"), handler)
+        with pytest.raises(BrokerError, match="400") as exc:
+            proc.execute(cloudpickle.dumps(lambda: 1), (), {})
+        assert exc.value.status == 400
 
     def test_other_error_statuses_raise_http_status_error(self) -> None:
         """Anything else is surfaced by raise_for_status."""
