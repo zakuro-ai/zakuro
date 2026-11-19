@@ -196,6 +196,104 @@ def test_roster_is_read_from_the_cache_so_this_works_offline(monkeypatch, tmp_pa
     assert mesh._endpoints() == ["10.13.13.215:9000"]
 
 
+def test_endpoints_are_deduplicated_in_order(monkeypatch, tmp_path):
+    (tmp_path / "roster.json").write_text(
+        json.dumps(
+            {
+                "endpoints": [
+                    ["a", "10.0.0.2:9000"],
+                    ["b", "10.0.0.1:9000"],
+                    ["c", "10.0.0.2:9000"],
+                ],
+            }
+        )
+    )
+    monkeypatch.setenv("ZAKURO_HOME", str(tmp_path))
+    from zakuro import mesh
+
+    monkeypatch.setattr(mesh, "_get_json", lambda *a, **k: None)
+    assert mesh._endpoints() == ["10.0.0.2:9000", "10.0.0.1:9000"]
+
+
+class TestHubRoster:
+    """A fresh install has no local broker and no roster.json.
+
+    After `zc login` + `zc connect` the only list of nodes is the hub's roster,
+    the source `zc brokers` reads first. Without it `nodes()` was empty, so the
+    README's "`zk.nodes()` lists them" failed on every new machine.
+    """
+
+    ROWS = [
+        {"node_pubkey": "a", "mesh_endpoint": "10.13.13.40:9000", "revoked": False},
+        {"node_pubkey": "b", "mesh_endpoint": "10.13.13.41:9000"},
+        {"node_pubkey": "c", "mesh_endpoint": "10.13.13.42:9000", "revoked": True},
+        {"node_pubkey": "d", "mesh_endpoint": ""},
+        {"node_pubkey": "e", "mesh_endpoint": None},
+        {"node_pubkey": "f", "mesh_endpoint": "10.13.13.40:9000"},
+    ]
+
+    @pytest.fixture
+    def home(self, monkeypatch, tmp_path):
+        for var in ("ZAKURO_API_KEY", "ZAKURO_AUTH", "ZAKURO_API_URL"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv("ZAKURO_HOME", str(tmp_path))
+        return tmp_path
+
+    def fake_hub(self, monkeypatch, rows):
+        from zakuro import mesh
+
+        calls = []
+
+        def get_json(url, timeout, headers=None):
+            calls.append((url, headers))
+            return rows if url.endswith("/api/broker/node/roster") else None
+
+        monkeypatch.setattr(mesh, "_get_json", get_json)
+        return calls
+
+    def test_signed_in_a_fresh_machine_finds_the_nodes(self, monkeypatch, home):
+        (home / "credentials").write_text("api_key=zk_test\napi_url=https://stg.example.test\n")
+        calls = self.fake_hub(monkeypatch, self.ROWS)
+        from zakuro import mesh
+
+        # Revoked, tunnel-less and repeated rows are dropped.
+        assert mesh._endpoints() == ["10.13.13.40:9000", "10.13.13.41:9000"]
+        url, headers = calls[-1]
+        assert url == "https://stg.example.test/api/broker/node/roster"
+        assert headers == {"X-Broker-Api-Key": "zk_test"}
+
+    def test_the_hub_comes_before_the_cache_and_both_are_kept(self, monkeypatch, home):
+        (home / "credentials").write_text("api_key=zk_test\n")
+        (home / "roster.json").write_text(
+            json.dumps({"endpoints": [["x", "10.13.13.17:9000"], ["y", "10.13.13.41:9000"]]})
+        )
+        calls = self.fake_hub(monkeypatch, self.ROWS)
+        from zakuro import mesh
+
+        assert mesh._endpoints() == [
+            "10.13.13.40:9000",
+            "10.13.13.41:9000",
+            "10.13.13.17:9000",
+        ]
+        # No api_url saved: the production dashboard, as zc defaults to.
+        assert calls[-1][0] == "https://hub.zakuro-ai.com/api/broker/node/roster"
+
+    def test_signed_out_the_hub_is_not_asked(self, monkeypatch, home):
+        calls = self.fake_hub(monkeypatch, self.ROWS)
+        from zakuro import mesh
+
+        assert mesh._endpoints() == []
+        assert not [u for u, _ in calls if "roster" in u]
+
+    @pytest.mark.parametrize("body", [None, {"error": "nope"}, ["junk", 3]])
+    def test_an_unusable_hub_answer_is_no_endpoints(self, monkeypatch, home, body):
+        (home / "credentials").write_text("api_key=zk_test\n")
+        self.fake_hub(monkeypatch, body)
+        from zakuro import mesh
+
+        assert mesh._endpoints() == []
+
+
 class TestDirectAddressingIsRefused:
     """Work enters the mesh through a broker, or not at all.
 

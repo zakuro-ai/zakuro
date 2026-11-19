@@ -21,6 +21,71 @@ if TYPE_CHECKING:
 #: what zc's own bench sends for a routing-overhead job.
 DEFAULT_MEMORY_BYTES = 100 * 1024 * 1024
 
+#: Fallbacks when the broker's reply carries no `error` of its own.
+_STATUS_FALLBACK = {
+    402: "Insufficient balance for compute request",
+    429: "Rate limit exceeded",
+    503: "No workers available",
+}
+
+#: Statuses the broker uses to say something a caller can act on.
+_BROKER_ERROR_STATUSES = frozenset({400, *_STATUS_FALLBACK})
+
+_HINTS = {
+    "BUDGET_REQUIRED": (
+        'pass a budget in yen: zk.Compute(uri=..., processor_options={"budget": 10})'
+    ),
+}
+
+
+class BrokerError(RuntimeError):
+    """The broker refused a request and said why.
+
+    Still a `RuntimeError`, so existing `except RuntimeError` keeps working.
+    `message` and `code` are the broker's own `error` / `code` JSON fields
+    (`code` is None when it sent none); `status` is the HTTP status.
+    """
+
+    def __init__(self, status: int, message: str, code: str | None = None) -> None:
+        self.status = status
+        self.code = code
+        self.message = message
+        text = message
+        hint = _HINTS.get(code or "")
+        if hint:
+            text = f"{text} ({hint})"
+        super().__init__(text)
+
+
+def _raise_for_broker_error(response: httpx.Response, fallback: str | None = None) -> None:
+    """Raise `BrokerError` for a non-2xx reply, carrying the broker's own message."""
+    status = response.status_code
+    if status < 400:
+        return
+    if status not in _BROKER_ERROR_STATUSES:
+        # 401/403/404/5xx keep raising httpx.HTTPStatusError, as callers expect.
+        response.raise_for_status()
+        return
+    message: str | None = None
+    code: str | None = None
+    try:
+        body = response.json()
+    except ValueError:
+        body = None
+    if isinstance(body, dict):
+        if isinstance(body.get("error"), str) and body["error"].strip():
+            message = body["error"].strip()
+        if isinstance(body.get("code"), str):
+            code = body["code"]
+    if message is None:
+        message = fallback or _STATUS_FALLBACK.get(status)
+    if message is None and status == 400:
+        message = "Broker rejected the request (400 Bad Request)"
+    if message is None:
+        response.raise_for_status()
+        return
+    raise BrokerError(status, message, code)
+
 
 class BrokerProcessor(Processor):
     """Broker-based processor that routes through zc broker.
@@ -190,18 +255,16 @@ class BrokerProcessor(Processor):
             headers.update(extra_headers)
 
         response = self._client.post("/execute", content=payload, headers=headers)
-        # Same mapping as `execute`: these three say something a caller can
-        # act on, and the raw status does not.
-        if response.status_code == 402:
-            raise RuntimeError("Insufficient balance for compute request")
-        if response.status_code == 429:
-            raise RuntimeError("Rate limit exceeded")
-        if response.status_code == 503:
-            raise RuntimeError(
+        # Same mapping as `execute`: the broker's own message when it sent one.
+        _raise_for_broker_error(
+            response,
+            fallback=(
                 "No worker matched this Compute (check gpus/cpus/memory against "
                 "`zakuro.nodes()`), or the node refused the request"
             )
-        response.raise_for_status()
+            if response.status_code == 503
+            else None,
+        )
         return bytes(response.content)
 
     def execute(self, func_bytes: bytes, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
@@ -253,15 +316,8 @@ class BrokerProcessor(Processor):
             },
         )
 
-        # Check for errors
-        if response.status_code == 402:
-            raise RuntimeError("Insufficient balance for compute request")
-        if response.status_code == 429:
-            raise RuntimeError("Rate limit exceeded")
-        if response.status_code == 503:
-            raise RuntimeError("No workers available")
-
-        response.raise_for_status()
+        # Check for errors (the broker's own message wins over a generic one)
+        _raise_for_broker_error(response)
 
         # Extract cost info from headers
         cost = response.headers.get("X-Zakuro-Cost", "0")
@@ -293,7 +349,7 @@ class BrokerProcessor(Processor):
             raise RuntimeError("Processor not connected.")
 
         response = self._client.get(f"/balance/{self._user_id}")
-        response.raise_for_status()
+        _raise_for_broker_error(response)
         return cast("dict[str, Any]", response.json())
 
     def add_balance(self, amount: float, description: str = "API deposit") -> dict[str, Any]:
@@ -313,7 +369,7 @@ class BrokerProcessor(Processor):
             f"/balance/{self._user_id}/add",
             json={"amount": amount, "description": description},
         )
-        response.raise_for_status()
+        _raise_for_broker_error(response)
         return cast("dict[str, Any]", response.json())
 
     def list_workers(self) -> list[dict[str, Any]]:
@@ -326,7 +382,7 @@ class BrokerProcessor(Processor):
             raise RuntimeError("Processor not connected.")
 
         response = self._client.get("/workers")
-        response.raise_for_status()
+        _raise_for_broker_error(response)
         return cast("list[dict[str, Any]]", response.json().get("workers", []))
 
     def estimate_price(
@@ -359,7 +415,7 @@ class BrokerProcessor(Processor):
                 "estimated_duration_secs": duration_secs,
             },
         )
-        response.raise_for_status()
+        _raise_for_broker_error(response)
         return cast("dict[str, Any]", response.json())
 
     def whoami(self) -> dict[str, Any]:
@@ -372,7 +428,7 @@ class BrokerProcessor(Processor):
             raise RuntimeError("Processor not connected.")
 
         response = self._client.get("/me")
-        response.raise_for_status()
+        _raise_for_broker_error(response)
         return cast("dict[str, Any]", response.json())
 
     def ping(self) -> bool:

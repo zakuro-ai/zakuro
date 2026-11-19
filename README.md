@@ -65,17 +65,23 @@ pool = zk.AdaptiveCompute(workers=[w.compute(verify=False) for w in workers],
 print(square.to(pool)(7))                                # → 49, on whichever worker is fastest
 ```
 
-To run across machines, install `zc`, the Zakuro broker and CLI, from crates.io (the crate is `zc2`; it installs the `zc` command):
+To run across machines, install `zc`, the Zakuro broker and CLI, from crates.io (the crate is `zc2`; it installs the `zc` command). It needs a Rust toolchain ([rustup.rs](https://rustup.rs)) and a C compiler/linker (`build-essential` on Debian/Ubuntu, Xcode Command Line Tools on macOS):
 
 ```bash
 cargo install zc2 --locked
+zc login                               # sign in in the browser
+sudo -E "$(command -v zc)" connect     # join the mesh
 ```
+
+Run `zc login` as yourself, not with `sudo`: it also gives this machine its own mesh identity. Joining the mesh brings up a WireGuard tunnel, so it needs `wireguard-tools` (apt or Homebrew) and root. `-E` keeps your sign-in, and the full path is there because `sudo` does not look in `~/.cargo/bin`.
 
 Then address a machine on the mesh by its node, not its IP. `zk.nodes()` lists them, and the address survives the machine moving:
 
 ```python
 square.to(zk.Compute(uri="zc://node-dd715b7f0a1c2e34", verify=False))(7)
 ```
+
+A node with no free worker of its own forwards the call to another machine, which is paid, so give it a budget in yen: `square.to(zk.Compute(uri="zc://node-dd715b7f0a1c2e34", verify=False, processor_options={"budget": 10}))(7)`. Without one the broker answers `BUDGET_REQUIRED`.
 
 Everything else is in the **[documentation](https://docs.zakuro-ai.com)**: [install options](https://docs.zakuro-ai.com/install/zakuro), [concepts](https://docs.zakuro-ai.com/zakuro/concepts), [choosing a transport](https://docs.zakuro-ai.com/guides/choosing-a-transport), [the zc broker](https://docs.zakuro-ai.com/zc/broker) and the [Python API reference](https://docs.zakuro-ai.com/reference/python-sdk). For ML training on top of Zakuro, see [Sakura](https://github.com/zakuro-ai/sakura).
 
