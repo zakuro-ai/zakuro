@@ -645,7 +645,7 @@ class AdaptiveCompute:
                 # round-trip minus the latency floor to estimate the
                 # worker's effective throughput. Bandwidth dominates over
                 # raw latency once payloads cross a few MiB (see Phase 4.1
-                # in PLAN.md) — the allocator mixes it into expected time.
+                # in docs/design/plan.md) — the allocator mixes it into expected time.
                 bandwidth_bps: float | None = None
                 if bandwidth_probe_bytes > 0:
                     big_payload = b"\x00" * bandwidth_probe_bytes

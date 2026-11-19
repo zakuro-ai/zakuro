@@ -16,8 +16,8 @@ import pytest
 
 pytest.importorskip("cryptography")
 
-from tests.test_worker_tls import _free_port, _udp_loopback_ok
-from tests.test_worker_tls import pki as pki  # re-exported pytest fixture
+from tests.worker.test_worker_tls import _free_port, _udp_loopback_ok
+from tests.worker.test_worker_tls import pki as pki  # re-exported pytest fixture
 from zakuro import client_tls
 from zakuro.client_tls import ClientTlsError
 
