@@ -5,7 +5,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from tests.test_task_zc_placement import frames
+from tests.task.test_task_zc_placement import frames
 from zakuro import task as task_mod
 from zakuro.task import Task, _decode_request_ids
 

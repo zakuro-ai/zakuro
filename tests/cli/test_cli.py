@@ -1,6 +1,6 @@
 """Tests for the ``zakuro`` setup/ops CLI and decision-log replay (#222).
 
-Ported from the public package (zakuro-ai/zakuro tests/test_cli.py) so the
+Ported from the public package (zakuro-ai/zakuro tests/cli/test_cli.py) so the
 0.2.24 CLI contract (``from zakuro.cli import main``) stays covered here. Local
 changes: the config tests isolate ``~/.zakuro/config.yaml`` and expect this
 repo's ``Config().default_host`` (``localhost``, ZAK-0017) rather than the
