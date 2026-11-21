@@ -292,17 +292,12 @@ class BrokerProcessor(Processor):
         if not self._connected or self._client is None:
             raise RuntimeError("Processor not connected. Use as context manager.")
 
-        # Deserialize function to repackage with args
-        func = cloudpickle.loads(func_bytes)
+        # The function travels as the bytes the caller pickled: no second
+        # unpickle and re-pickle here, and identical bytes for an unchanged
+        # function, which a worker can cache by hash.
+        from zakuro.processors._payload import build_execute_payload
 
-        # Serialize function and arguments together
-        payload = cloudpickle.dumps(
-            {
-                "func": func,
-                "args": args,
-                "kwargs": kwargs,
-            }
-        )
+        payload = build_execute_payload(func_bytes, args, kwargs)
 
         # Build requirements header from compute spec + processor_options overrides
         requirements = self._requirements()
