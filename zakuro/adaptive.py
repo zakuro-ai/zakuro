@@ -57,6 +57,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from zakuro.errors import is_remote
+
 if TYPE_CHECKING:
     from zakuro.compute import Compute
 
@@ -943,6 +945,13 @@ class AdaptiveCompute:
                 ok = True
                 return result
             except Exception as exc:
+                if is_remote(exc):
+                    # The remote code raised it: the worker did its job.
+                    # Never retried (it would run the user's code again) and
+                    # never held against the worker.
+                    ok = True
+                    error = repr(exc)
+                    raise
                 last_exc = exc
                 error = repr(exc)
                 with self._lock:
