@@ -52,7 +52,8 @@ def test_execute_does_not_unpickle_the_function(monkeypatch):
             raise AssertionError("the function was unpickled in the SDK")
         return real_loads(data, *a, **kw)
 
-    monkeypatch.setattr(broker.cloudpickle, "loads", loads)
+    # On the module itself: nothing in the SDK may unpickle the function.
+    monkeypatch.setattr(cloudpickle, "loads", loads)
     stub = _Stub()
     try:
         config = ProcessorConfig.from_uri(f"zc://127.0.0.1:{stub.port}")

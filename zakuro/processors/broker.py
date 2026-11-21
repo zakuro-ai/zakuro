@@ -5,10 +5,9 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
-import cloudpickle
 import httpx
 
-from zakuro.errors import mark_remote
+from zakuro.errors import load_reply, mark_remote
 from zakuro.processors.base import Processor, ProcessorConfig
 
 if TYPE_CHECKING:
@@ -329,7 +328,7 @@ class BrokerProcessor(Processor):
             self.last_balance = 0.0
 
         # Deserialize result
-        result = cloudpickle.loads(response.content)
+        result = load_reply(response.content)
 
         if isinstance(result, Exception):
             # Raised by the remote code, not by reaching it: never retried.

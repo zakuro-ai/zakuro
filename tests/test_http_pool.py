@@ -152,3 +152,38 @@ def test_a_broker_restart_between_calls_is_survived(no_key):
         assert add(2, 3) == 5
     finally:
         stub.stop()
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="needs os.fork")
+def test_a_fork_while_the_pool_lock_is_held_does_not_hang_the_child():
+    # Another thread building a client holds the lock at the moment of the
+    # fork: the child inherits it held, and nothing in the child releases it.
+    import signal
+    import time
+    import warnings
+
+    _http_pool._lock.acquire()
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            pid = os.fork()
+        if pid == 0:  # the child: pure Python only, as anything heavier is
+            # unsafe after a fork of a threaded process on macOS
+            code = 3
+            try:
+                free = _http_pool._lock.acquire(timeout=2)
+                code = 0 if free and not _http_pool._clients else 4
+            finally:
+                os._exit(code)
+    finally:
+        _http_pool._lock.release()
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        done, status = os.waitpid(pid, os.WNOHANG)
+        if done:
+            assert os.waitstatus_to_exitcode(status) == 0
+            return
+        time.sleep(0.05)
+    os.kill(pid, signal.SIGKILL)
+    os.waitpid(pid, 0)
+    pytest.fail("the child hung on the pool lock it inherited")

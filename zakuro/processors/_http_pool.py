@@ -27,6 +27,19 @@ _lock = threading.Lock()
 _clients: dict[tuple[object, ...], httpx.Client] = {}
 
 
+def _reset_after_fork() -> None:
+    # A fork copies the lock as it is at that moment: held, if another thread
+    # was looking up a client, and nothing in the child would ever release it.
+    # The child starts with a fresh lock and none of its parent's clients.
+    global _lock
+    _lock = threading.Lock()
+    _clients.clear()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_after_fork)
+
+
 def shared_client(
     base_url: str,
     headers: dict[str, str],
@@ -43,16 +56,20 @@ def shared_client(
     )
     with _lock:
         client = _clients.get(key)
-        if client is None or client.is_closed:
-            client = httpx.Client(
-                base_url=base_url,
-                headers=headers,
-                proxy=proxy,
-                timeout=timeout,
-                limits=httpx.Limits(keepalive_expiry=_KEEPALIVE_EXPIRY_S),
-            )
-            _clients[key] = client
+    if client is not None and not client.is_closed:
         return client
+    # Built outside the lock (an SSL context takes milliseconds): the key holds
+    # this thread's id, so no other thread can be building the same client.
+    client = httpx.Client(
+        base_url=base_url,
+        headers=headers,
+        proxy=proxy,
+        timeout=timeout,
+        limits=httpx.Limits(keepalive_expiry=_KEEPALIVE_EXPIRY_S),
+    )
+    with _lock:
+        _clients[key] = client
+    return client
 
 
 def close_all() -> None:
