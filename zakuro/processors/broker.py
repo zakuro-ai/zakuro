@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 import cloudpickle
 import httpx
 
+from zakuro.errors import mark_remote
 from zakuro.processors.base import Processor, ProcessorConfig
 
 if TYPE_CHECKING:
@@ -335,7 +336,8 @@ class BrokerProcessor(Processor):
         result = cloudpickle.loads(response.content)
 
         if isinstance(result, Exception):
-            raise result
+            # Raised by the remote code, not by reaching it: never retried.
+            raise mark_remote(result)
 
         return result
 
