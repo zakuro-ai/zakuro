@@ -93,15 +93,17 @@ def test_mark_remote_returns_the_same_exception():
 
 
 class _PickledReplyBroker:
-    """Answers every POST with a pickled ``ValueError``."""
+    """Answers every POST with ``reply`` (default: a pickled ``ValueError``)."""
 
-    def __init__(self) -> None:
+    def __init__(self, reply: bytes | None = None) -> None:
+        reply = cloudpickle.dumps(ValueError("from the worker")) if reply is None else reply
+
         class Handler(http.server.BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
 
             def do_POST(self) -> None:  # noqa: N802
                 self.rfile.read(int(self.headers.get("Content-Length", "0")))
-                body = cloudpickle.dumps(ValueError("from the worker"))
+                body = reply
                 self.send_response(200)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
@@ -165,3 +167,68 @@ def test_a_remote_instance_call_error_is_marked(monkeypatch):
     with pytest.raises(KeyError) as info:
         proxy._call_remote_method("get", (), {})
     assert is_remote(info.value)
+
+
+class _UnbuildableError(Exception):
+    """An exception whose constructor takes two arguments. Pickling keeps only
+    ``args`` (the message), so the caller cannot rebuild it."""
+
+    def __init__(self, code: int, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def test_a_reply_that_cannot_be_rebuilt_is_still_the_callers_own(monkeypatch):
+    # The call ran on the worker; only rebuilding its exception here failed.
+    # Retrying would run the user's code a second time.
+    import zakuro.mesh
+    from zakuro.processors.base import ProcessorConfig
+    from zakuro.processors.broker import BrokerProcessor
+
+    monkeypatch.setattr(zakuro.mesh, "api_key", lambda: None)
+    broker = _PickledReplyBroker(cloudpickle.dumps(_UnbuildableError(7, "from the worker")))
+    try:
+        proc = BrokerProcessor(
+            ProcessorConfig.from_uri(f"zc://127.0.0.1:{broker.port}"), _worker(broker.port)
+        )
+        with proc, pytest.raises(Exception) as info:
+            proc.execute(cloudpickle.dumps(len), ([1],), {})
+        assert is_remote(info.value)
+        assert "could not be rebuilt" in str(info.value)
+    finally:
+        broker.stop()
+
+
+def test_the_quic_processor_marks_a_returned_exception(monkeypatch):
+    from zakuro.processors.quic import STAT_USER_ERROR, QuicProcessor
+
+    proc = QuicProcessor.__new__(QuicProcessor)
+    monkeypatch.setattr(
+        proc,
+        "_request_execute",
+        lambda payload: (STAT_USER_ERROR, cloudpickle.dumps(ValueError("from the worker"))),
+    )
+    with pytest.raises(ValueError) as info:
+        proc.execute(cloudpickle.dumps(len), ([1],), {})
+    assert is_remote(info.value)
+
+
+def test_a_worker_that_could_not_load_the_call_is_not_the_callers_error():
+    from zakuro.errors import mark_load_failure
+
+    sent = mark_load_failure(ModuleNotFoundError("No module named 'pandas'"))
+    received = cloudpickle.loads(cloudpickle.dumps(sent))
+    assert not is_remote(mark_remote(received))  # another worker may have the module
+
+
+def test_a_load_failure_is_retried_on_another_worker():
+    from zakuro.errors import mark_load_failure
+
+    ac = _adaptive(max_dispatch_retries=1)
+    fn = _RaisingFn(
+        lambda n: (
+            mark_remote(mark_load_failure(ModuleNotFoundError("no pandas"))) if n == 1 else None
+        )
+    )
+    assert ac.dispatch(fn, (), {}) == "ok"
+    assert fn.calls == 2

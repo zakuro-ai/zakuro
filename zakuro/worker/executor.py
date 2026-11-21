@@ -9,6 +9,8 @@ from typing import Any, cast
 
 import cloudpickle
 
+from zakuro.errors import mark_load_failure
+
 
 def execute_function(payload: bytes) -> bytes:
     """
@@ -24,11 +26,17 @@ def execute_function(payload: bytes) -> bytes:
         cloudpickle-serialized result or exception
     """
     try:
-        # Functions load through the cache (zakuro.worker.fncache): an
-        # unchanged function is not unpickled again on every call.
-        from zakuro.worker.fncache import loads_payload
+        try:
+            # Functions load through zakuro.worker.fncache (off unless
+            # ZAKURO_FN_CACHE=1).
+            from zakuro.worker.fncache import loads_payload
 
-        data = loads_payload(payload)
+            data = loads_payload(payload)
+        except Exception as e:
+            # This worker could not load the call (a module it lacks, a Python
+            # or cloudpickle mismatch): not the user's error, so the SDK may
+            # send the call to another worker.
+            return cast(bytes, cloudpickle.dumps(mark_load_failure(e)))
 
         # Handle different action types
         action = data.get("action", "execute")

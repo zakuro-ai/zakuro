@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 import cloudpickle
 
-from zakuro.errors import mark_remote
+from zakuro.errors import load_reply, mark_remote
 from zakuro.processors.base import Processor, ProcessorConfig
 
 if TYPE_CHECKING:
@@ -130,7 +130,7 @@ class HttpProcessor(Processor):
         result_bytes = self._client.execute(payload)
 
         # Deserialize result
-        result = cloudpickle.loads(result_bytes)
+        result = load_reply(result_bytes)
 
         if isinstance(result, Exception):
             # Raised by the remote code, not by reaching it: never retried.

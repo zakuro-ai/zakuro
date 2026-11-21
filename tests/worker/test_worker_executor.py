@@ -224,3 +224,14 @@ def test_release_instance_action(clean_store) -> None:
     result = _roundtrip({"action": "release_instance", "instance_id": iid})
     assert result == {"released": True}
     assert iid not in ex._instances
+
+
+def test_a_payload_the_worker_cannot_load_comes_back_flagged():
+    # The worker lacks a module the call needs: that is this worker failing,
+    # not the user's code, so the SDK may send the call to another worker.
+    from zakuro.errors import is_load_failure
+
+    payload = b"cno_such_module_zk\nThing\n."  # a pickle naming a module this worker lacks
+    exc = cloudpickle.loads(ex.execute_function(payload))
+    assert isinstance(exc, ModuleNotFoundError)
+    assert is_load_failure(exc)

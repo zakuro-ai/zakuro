@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 import cloudpickle
 
+from zakuro.errors import load_reply, mark_remote
 from zakuro.processors.base import Processor, ProcessorConfig
 from zakuro.wire.keys import wrap_payload
 
@@ -264,9 +265,10 @@ class QuicProcessor(Processor):
         payload = cloudpickle.dumps({"func": func, "args": args, "kwargs": kwargs})
         status, body = self._request_execute(payload)
         if status == STAT_OK:
-            return cloudpickle.loads(body)
+            return load_reply(body)
         if status == STAT_USER_ERROR:
-            raise cloudpickle.loads(body)
+            # Raised by the remote code, not by reaching it: never retried.
+            raise mark_remote(load_reply(body))
         raise RuntimeError(f"QUIC protocol error from worker: {body.decode(errors='replace')}")
 
     def execute_payload(self, payload: bytes, extra_headers: dict[str, str] | None = None) -> bytes:

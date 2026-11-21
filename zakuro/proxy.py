@@ -9,7 +9,7 @@ from typing import Any, Generic, TypeVar
 import cloudpickle
 
 from zakuro.compute import Compute
-from zakuro.errors import mark_remote
+from zakuro.errors import load_reply, mark_remote
 
 T = TypeVar("T")
 
@@ -90,7 +90,7 @@ class RemoteProxy(Generic[T]):
         )
 
         result_bytes = self._send(payload, "create_instance", instance_id)
-        result = cloudpickle.loads(result_bytes)
+        result = load_reply(result_bytes)
 
         if isinstance(result, Exception):
             # Raised by the remote code, not by reaching it: never retried.
@@ -126,7 +126,7 @@ class RemoteProxy(Generic[T]):
         )
 
         result_bytes = self._send(payload, "call_method", self._instance_id)
-        result = cloudpickle.loads(result_bytes)
+        result = load_reply(result_bytes)
 
         if isinstance(result, Exception):
             # Raised by the remote code, not by reaching it: never retried.
