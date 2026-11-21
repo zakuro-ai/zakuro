@@ -24,7 +24,11 @@ def execute_function(payload: bytes) -> bytes:
         cloudpickle-serialized result or exception
     """
     try:
-        data = cloudpickle.loads(payload)
+        # Functions load through the cache (zakuro.worker.fncache): an
+        # unchanged function is not unpickled again on every call.
+        from zakuro.worker.fncache import loads_payload
+
+        data = loads_payload(payload)
 
         # Handle different action types
         action = data.get("action", "execute")
