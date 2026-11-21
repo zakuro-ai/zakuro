@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import cloudpickle
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 try:
     from fastapi import FastAPI, HTTPException, Request, Response
@@ -357,9 +358,14 @@ async def execute(request: Request) -> Response:
     - args: Positional arguments
     - kwargs: Keyword arguments
 
-    Returns cloudpickle-serialized result.
+    Returns cloudpickle-serialized result. Served by :class:`_ExecuteFastPath`
+    in front of the app; this route answers when the app runs without it.
     """
-    global executor
+    return await _execute_response(request)
+
+
+async def _execute_response(request: Request) -> Response:
+    """The work of ``POST /execute``, once the caller is authorized."""
     if executor is None:
         raise HTTPException(status_code=503, detail="Worker not ready")
 
@@ -390,6 +396,40 @@ async def execute(request: Request) -> Response:
             media_type="application/octet-stream",
             status_code=200,  # 200 because error is in payload
         )
+
+
+class _ExecuteFastPath:
+    """Serve ``POST /execute`` past FastAPI's routing, dependency solving and
+    middleware stack; every other request goes to the app.
+
+    For a one-endpoint job server the framework cost the worker several times
+    the job: a py-spy profile under load put ~60 % of the worker's CPU in the
+    FastAPI/Starlette stack and ~16 % in running the function (2026-11-21). The
+    caller is authorized by the same dependency as the route, and the payload
+    cap and envelope check are the route's own code.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["path"] != "/execute" or scope["method"] != "POST":
+            await self.app(scope, receive, send)
+            return
+        request = Request(scope, receive)
+        try:
+            await _REQUIRE_EXEC(request)
+            response = await _execute_response(request)
+        except HTTPException as exc:
+            # What FastAPI's default handler answers for it.
+            response = JSONResponse(
+                {"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers
+            )
+        await response(scope, receive, send)
+
+
+# Inside Starlette's ServerErrorMiddleware, so an unexpected error is still a 500.
+app.add_middleware(_ExecuteFastPath)
 
 
 @app.get("/")
@@ -428,11 +468,14 @@ def main() -> None:
     except (InsecureBindError, StartupConfigError) as exc:
         raise SystemExit(str(exc)) from exc
 
+    from zakuro.worker.cli import access_log_enabled
+
     uvicorn.run(
         "zakuro.worker.server:app",
         host=host,
         port=args.port,
         reload=False,
+        access_log=access_log_enabled(),
         **ssl_kwargs,
     )
 
