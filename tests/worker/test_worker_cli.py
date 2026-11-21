@@ -102,6 +102,7 @@ class TestMainHttp:
         monkeypatch.setattr(uvicorn, "run", lambda app, **kw: captured.update(app=app, **kw))
         monkeypatch.delenv("ZAKURO_PORT", raising=False)
         monkeypatch.delenv("ZAKURO_TRANSPORT", raising=False)
+        monkeypatch.delenv("ZAKURO_ACCESS_LOG", raising=False)
         monkeypatch.setattr(sys, "argv", ["zakuro-worker", "--host", "127.0.0.1"])
 
         cli.main()
@@ -111,6 +112,7 @@ class TestMainHttp:
             "host": "127.0.0.1",
             "port": 3960,
             "reload": False,
+            "access_log": False,
         }
 
     def test_port_from_env(self, monkeypatch) -> None:
