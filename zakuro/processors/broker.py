@@ -175,12 +175,15 @@ class BrokerProcessor(Processor):
         # proxy; loopback must NOT go through it, or talking to your own
         # broker means leaving the host and coming back.
         from zakuro.mesh import proxy_for
+        from zakuro.processors._http_pool import shared_client
 
-        self._client = httpx.Client(
-            base_url=broker_url,
-            headers=headers,
-            proxy=proxy_for(str(self._config.host)),
-            timeout=httpx.Timeout(
+        # Kept and reused across calls: a client per call meant a new TCP
+        # connection to the broker for every call.
+        self._client = shared_client(
+            broker_url,
+            headers,
+            proxy_for(str(self._config.host)),
+            httpx.Timeout(
                 connect=10.0,
                 read=300.0,  # 5 min for long computations
                 write=60.0,
@@ -190,10 +193,8 @@ class BrokerProcessor(Processor):
         self._connected = True
 
     def disconnect(self) -> None:
-        """Close HTTP client connection."""
-        if self._client is not None:
-            self._client.close()
-            self._client = None
+        """Release the client. It stays open for the next call on this thread."""
+        self._client = None
         self._connected = False
 
     def _requirements(self) -> dict[str, Any]:
