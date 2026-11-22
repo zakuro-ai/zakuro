@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import multiprocessing
+import time
 from typing import Any
 
 import cloudpickle
@@ -222,31 +223,17 @@ async def health() -> Response:
     return await ready()
 
 
-@app.get("/info", dependencies=[Depends(_REQUIRE_INFO)])
-async def info() -> dict[str, Any]:
-    """Worker info endpoint for broker discovery."""
-    import os
-    import platform
-    import shutil
+# When nvidia-smi was asked and what it said (gpu count, model, VRAM in GiB).
+# GPUs found stand for the process; a probe that found none (no driver yet, no
+# nvidia-smi) is asked again once _GPU_RETRY_SECS have passed.
+_GPU_PROBE: tuple[float, tuple[int, str | None, int | None]] | None = None
+_GPU_RETRY_SECS = 60.0
+
+
+def _probe_gpus() -> tuple[int, str | None, int | None]:
     import subprocess
 
-    cpus = multiprocessing.cpu_count()
-
-    # Memory info
-    try:
-        import psutil
-
-        vm = psutil.virtual_memory()
-        memory_total = vm.total
-        memory_available = vm.available
-    except ImportError:  # pragma: no cover - psutil ships with the [worker] extra
-        memory_total = 8 * 1024 * 1024 * 1024
-        memory_available = memory_total
-
-    # GPU info from nvidia-smi
-    gpus = 0
-    gpu_model = None
-    gpu_vram_gb = None
+    gpus, gpu_model, gpu_vram_gb = 0, None, None
     try:
         result = subprocess.run(
             ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
@@ -265,6 +252,46 @@ async def info() -> dict[str, Any]:
                         gpu_vram_gb = int(parts[1].strip()) // 1024
     except Exception:
         pass
+    return gpus, gpu_model, gpu_vram_gb
+
+
+async def _gpu_info() -> tuple[int, str | None, int | None]:
+    """The broker re-probes /info every few seconds. nvidia-smi is a process
+    that takes tens of milliseconds on a GPU host, and ran on the event loop
+    each time, every job on this worker waiting behind it: it now runs on a
+    thread, and only until it has found the GPUs."""
+    global _GPU_PROBE
+    now = time.monotonic()
+    if _GPU_PROBE is not None:
+        asked_at, found = _GPU_PROBE
+        if found[0] > 0 or now - asked_at < _GPU_RETRY_SECS:
+            return found
+    found = await asyncio.to_thread(_probe_gpus)
+    _GPU_PROBE = (now, found)
+    return found
+
+
+@app.get("/info", dependencies=[Depends(_REQUIRE_INFO)])
+async def info() -> dict[str, Any]:
+    """Worker info endpoint for broker discovery."""
+    import os
+    import platform
+    import shutil
+
+    cpus = multiprocessing.cpu_count()
+
+    # Memory info
+    try:
+        import psutil
+
+        vm = psutil.virtual_memory()
+        memory_total = vm.total
+        memory_available = vm.available
+    except ImportError:  # pragma: no cover - psutil ships with the [worker] extra
+        memory_total = 8 * 1024 * 1024 * 1024
+        memory_available = memory_total
+
+    gpus, gpu_model, gpu_vram_gb = await _gpu_info()
 
     # CPU model
     cpu_model = platform.processor() or platform.machine() or None
