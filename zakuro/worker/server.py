@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import multiprocessing
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import cloudpickle
@@ -38,6 +37,7 @@ from zakuro.observability import (
 )
 from zakuro.worker.envelope import EnvelopeRejectedError, unwrap_payload
 from zakuro.worker.executor import execute_function
+from zakuro.worker.pool import JobPool
 from zakuro.worker.posture import max_payload_bytes, validate_auth_config, validate_wire_config
 
 # Scoped dependencies built once at import so FastAPI captures them in its
@@ -68,7 +68,7 @@ instrument_fastapi_app(app)
 
 # Thread pool for function execution (threads share memory, so instance
 # state in executor._instances is visible to all workers)
-executor: ThreadPoolExecutor | None = None
+executor: JobPool | None = None
 
 
 @app.on_event("startup")
@@ -77,9 +77,7 @@ async def startup() -> None:
     global executor
     validate_auth_config()
     validate_wire_config()
-    executor = ThreadPoolExecutor(
-        max_workers=multiprocessing.cpu_count(),
-    )
+    executor = JobPool(max_workers=multiprocessing.cpu_count())
 
 
 @app.on_event("shutdown")
@@ -378,12 +376,7 @@ async def _execute_response(request: Request) -> Response:
 
     try:
         # Run in thread pool (shared memory for instance state)
-        loop = asyncio.get_event_loop()
-        result_bytes = await loop.run_in_executor(
-            executor,
-            execute_function,
-            payload,
-        )
+        result_bytes = await executor.run(execute_function, payload)
 
         return Response(
             content=result_bytes,
