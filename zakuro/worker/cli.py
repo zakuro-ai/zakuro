@@ -75,6 +75,15 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def access_log_enabled() -> bool:
+    """uvicorn's access log, one line per request, only with ZAKURO_ACCESS_LOG=1.
+
+    On a worker that line is one per job: its busiest output, and ~4 % of its
+    CPU under load (py-spy, 2026-11-21).
+    """
+    return os.environ.get("ZAKURO_ACCESS_LOG", "").strip().lower() in ("1", "true", "yes")
+
+
 def main() -> None:
     args = _build_parser().parse_args()
 
@@ -129,6 +138,7 @@ def main() -> None:
         host=host,
         port=port,
         reload=False,
+        access_log=access_log_enabled(),
         **ssl_kwargs,
     )
 

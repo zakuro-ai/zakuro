@@ -182,6 +182,7 @@ def test_main_forwards_host_port_and_worker_name_to_uvicorn(monkeypatch) -> None
         ["zakuro-worker", "--host", "127.0.0.1", "--port", "4100", "--worker-name", "named"],
     )
     monkeypatch.delenv("ZAKURO_WORKER_NAME", raising=False)
+    monkeypatch.delenv("ZAKURO_ACCESS_LOG", raising=False)
 
     server.main()
 
@@ -190,6 +191,7 @@ def test_main_forwards_host_port_and_worker_name_to_uvicorn(monkeypatch) -> None
         "host": "127.0.0.1",
         "port": 4100,
         "reload": False,
+        "access_log": False,
     }
     import os
 
@@ -266,3 +268,48 @@ def test_execute_accepts_body_within_cap(
     response = client.post("/execute", content=payload)
     assert response.status_code == 200
     assert cloudpickle.loads(response.content) == 7
+
+
+def test_execute_does_not_go_through_fastapi_routing(client: TestClient, monkeypatch) -> None:
+    """POST /execute is served past FastAPI's routing and dependency solving.
+
+    For a one-endpoint job server the framework cost the worker several times
+    the job: a py-spy profile under load put ~60 % of the worker's CPU in the
+    FastAPI/Starlette stack and ~16 % in running the function (2026-11-21).
+    """
+    import fastapi.routing
+
+    calls = {"n": 0}
+    real = fastapi.routing.solve_dependencies
+
+    async def counting(*args, **kwargs):
+        calls["n"] += 1
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(fastapi.routing, "solve_dependencies", counting)
+    assert client.get("/health").status_code == 200
+    assert calls["n"] >= 1, "the counter sees a routed request"
+    calls["n"] = 0
+    payload = cloudpickle.dumps({"func": lambda x: x * 2, "args": (21,), "kwargs": {}})
+    response = client.post("/execute", content=payload)
+    assert response.status_code == 200
+    assert cloudpickle.loads(response.content) == 42
+    assert calls["n"] == 0, "/execute went through FastAPI's routing"
+
+
+def test_the_access_log_is_off_unless_asked(monkeypatch) -> None:
+    """One log line per job is the worker's busiest output and ~4 % of its CPU
+    under load; ZAKURO_ACCESS_LOG=1 turns it back on."""
+    import uvicorn
+
+    from zakuro.worker import cli
+
+    captured: dict = {}
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **kw: captured.update(kw))
+    monkeypatch.setattr("sys.argv", ["zakuro-worker", "--host", "127.0.0.1"])
+    monkeypatch.delenv("ZAKURO_ACCESS_LOG", raising=False)
+    cli.main()
+    assert captured["access_log"] is False
+    monkeypatch.setenv("ZAKURO_ACCESS_LOG", "1")
+    cli.main()
+    assert captured["access_log"] is True
