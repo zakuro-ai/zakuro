@@ -19,6 +19,12 @@ from zakuro import __version__
 from zakuro.worker import server
 
 
+@pytest.fixture(autouse=True)
+def _fresh_gpu_probe(monkeypatch) -> None:
+    """/info keeps what nvidia-smi said; each test starts without it."""
+    monkeypatch.setattr(server, "_GPU_PROBE", None)
+
+
 @pytest.fixture
 def client() -> Iterator[TestClient]:
     """A TestClient whose context triggers the startup/shutdown hooks."""
@@ -120,6 +126,57 @@ def test_info_reports_no_gpus_when_nvidia_smi_is_missing(client: TestClient, mon
     assert info["resources"]["gpus_total"] == 0
     assert info["hardware"]["gpu_model"] is None
     assert info["hardware"]["gpu_vram_gb"] is None
+
+
+def _probe_recorder(calls: list[str], answer: str | None):
+    """A subprocess.run stand-in that notes whether it ran on an event loop."""
+
+    def run(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
+        import asyncio
+
+        try:
+            asyncio.get_running_loop()
+            calls.append("on the event loop")
+        except RuntimeError:
+            calls.append("off the event loop")
+        if answer is None:
+            raise FileNotFoundError("nvidia-smi")
+        return subprocess.CompletedProcess(args, 0, stdout=answer, stderr="")
+
+    return run
+
+
+def test_info_asks_nvidia_smi_off_the_event_loop_and_once(client: TestClient, monkeypatch) -> None:
+    """The broker re-probes /info every few seconds. nvidia-smi ran on the event
+    loop each time (tens of ms on a GPU host, every job on the worker waiting
+    behind it); GPUs found are not asked about again."""
+    calls: list[str] = []
+    monkeypatch.setattr(subprocess, "run", _probe_recorder(calls, "NVIDIA L4, 23034\n"))
+
+    first = client.get("/info").json()
+    second = client.get("/info").json()
+
+    assert calls == ["off the event loop"]
+    for info in (first, second):
+        assert info["resources"]["gpus_total"] == 1
+        assert info["hardware"]["gpu_model"] == "NVIDIA L4"
+        assert info["hardware"]["gpu_vram_gb"] == 22
+
+
+def test_info_asks_again_later_when_no_gpu_answered(client: TestClient, monkeypatch) -> None:
+    """A driver can come up after the worker: a probe that found nothing is
+    retried once its retry time has passed, and not before."""
+    calls: list[str] = []
+    monkeypatch.setattr(subprocess, "run", _probe_recorder(calls, None))
+
+    assert client.get("/info").json()["resources"]["gpus_total"] == 0
+    assert client.get("/info").json()["resources"]["gpus_total"] == 0
+    assert len(calls) == 1, "not before its retry time"
+
+    monkeypatch.setattr(server, "_GPU_RETRY_SECS", 0.0)
+    monkeypatch.setattr(subprocess, "run", _probe_recorder(calls, "NVIDIA L4, 23034\n"))
+    assert client.get("/info").json()["resources"]["gpus_total"] == 1
+    assert len(calls) == 2
 
 
 def test_execute_runs_the_function_and_returns_pickled_result(client: TestClient) -> None:
