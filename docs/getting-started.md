@@ -278,10 +278,10 @@ The broker picks the best worker using its routing strategy (`best_price`, `best
 
 ### Step 6 — WireGuard mesh + hosted broker (optional)
 
-Zakuro's production mesh runs on WireGuard, with the hosted broker at
-`my.zakuro-ai.com` for billing. Each host holds a `zakuro0` interface with an
+Zakuro's production mesh runs on WireGuard, with the hosted broker behind
+the hub (`hub.zakuro-ai.com`) for billing. Each host holds a `zakuro0` interface with an
 address in `10.13.13.0/24`; `zc vpn` brings it up from a peer profile, which
-the dashboard issues per user.
+the hub issues per user.
 
 ```bash
 # Bring up the mesh interface on each host that will run a worker
@@ -291,7 +291,7 @@ zc vpn up
 ZAKURO_WORKER_TAGS=gpu,a100 zakuro-worker --transport quic
 
 # On the client (also on the mesh):
-compute = zk.Compute(uri="zc://my.zakuro-ai.com:9000")
+compute = zk.Compute(uri="zc://<broker-mesh-address>:9000")
 ```
 
 This path needs a Zakuro account for the broker API key (`$ZAKURO_AUTH`). Everything else works locally without an account.

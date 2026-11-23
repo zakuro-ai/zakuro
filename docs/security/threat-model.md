@@ -16,7 +16,7 @@ Covered:
 Out of scope:
 
 - The user's training code itself. We treat the workload as **adversarial** — the worker runs it in an isolated tenant, but we do not guarantee the workload is correct. See [RFC 0007](../rfcs/0007-tenant-isolation.md).
-- Hosted-broker SaaS (`my.zakuro-ai.com`). Operated separately, modelled separately.
+- Hosted-broker SaaS (`hub.zakuro-ai.com`). Operated separately, modelled separately.
 - Hardware side-channels (Spectre, Rowhammer). Mitigation is the responsibility of the host / kernel.
 - Physical access to the worker host.
 

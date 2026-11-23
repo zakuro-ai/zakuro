@@ -34,15 +34,12 @@ import httpx
 
 #: Production marketplace API.
 #:
-#: NOT `my.zakuro-ai.com`, which zc's `credentials.rs` still names as its
-#: PROD_API_URL: that host has no DNS record at all (NXDOMAIN, verified
-#: 2026-09-06 against 1.1.1.1), so anything defaulting to it fails to resolve
-#: rather than failing to authenticate. `hub.zakuro-ai.com` is the live prod
-#: host -- Cloudflare-proxied, publicly reachable, and serving
-#: `/api/datasets` -- and it is the prod twin of the `stg.hub` that staging
-#: moved to when stg-my was decommissioned.
+#: `hub.zakuro-ai.com` is the live prod host -- Cloudflare-proxied, publicly
+#: reachable, and serving `/api/datasets`. The retired dashboard host has no
+#: DNS record, so a default pointing at it would fail to resolve rather than
+#: fail to authenticate.
 PROD_API_URL = "https://hub.zakuro-ai.com"
-#: Staging. stg.hub serves the whole API in-process; stg-my is decommissioned.
+#: Staging. stg.hub serves the whole API in-process.
 STAGING_API_URL = "https://stg.hub.zakuro-ai.com"
 
 _UUID_RE = re.compile(
