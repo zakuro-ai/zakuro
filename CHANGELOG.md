@@ -58,6 +58,7 @@ flag-day change: no backward-compatible aliases. Upgrade together with `zc`.
 - All GitHub Actions are pinned to commit SHAs ([#237]).
 
 ### Fixed
+- Cap `sentry-sdk` below 3 in the `observability` extra: 3.0 dropped the `send_default_pii` option, so `init_sentry` raised `TypeError: Unknown option 'send_default_pii'` whenever `SENTRY_DSN` was set (and mypy failed CI).
 - `pip-audit` CVE exit codes are surfaced instead of being swallowed ([#238]).
 - Removed broken notebook links from the README ([#239]).
 - Added the missing `ci-local` task and clarified the contributor docs ([#240]).

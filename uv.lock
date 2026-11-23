@@ -2198,6 +2198,33 @@ wheels = [
 ]
 
 [[package]]
+name = "types-psutil"
+version = "7.2.2.20261122"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/c3/f2b13b3a78628887c407bee49eed3e8bfb5e23e2e8407c31146269226215/types_psutil-7.2.2.20261122.tar.gz", hash = "sha256:30879c88d871c99f4a632cb17826ce8ec55de2c4884ed84e4f8f293b91c6439e", size = 27671, upload-time = "2026-11-22T09:00:03.397Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/78/da/cc4e00f377450ebc69075f10eea90dce14a534e789426367347e1a1a64b2/types_psutil-7.2.2.20261122-py3-none-any.whl", hash = "sha256:ee60d47cddb6ecace68aeb5326bce47fef706a00f728df7ec27dae31d4ed8472", size = 33505, upload-time = "2026-11-22T09:00:02.507Z" },
+]
+
+[[package]]
+name = "types-pyyaml"
+version = "6.0.12.20261122"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3d/fe/e4d32b089d06f3b5d2f3f1909b1cb450ce2e18ea6e2c1863d2b29ad0090e/types_pyyaml-6.0.12.20261122.tar.gz", hash = "sha256:7fa577c893a1db255cbb02320884ffcb97b7a219fe515bec6c5f15d5d3af41ed", size = 19093, upload-time = "2026-11-22T08:57:28.481Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4c/71/8dc5553ca25c3a4799ce789f8300d2c3933d427585222c431c77450ed60d/types_pyyaml-6.0.12.20261122-py3-none-any.whl", hash = "sha256:689fbbe883b60471166dede9dba6ac0dbdbcf0ea98062d7ec195430f5bbdb009", size = 21356, upload-time = "2026-11-22T08:57:27.509Z" },
+]
+
+[[package]]
+name = "types-tqdm"
+version = "4.70.0.20261122"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/96/be/d7d285ee602365302e83d16aa146496486873c61c95ff43ebacd70d58f35/types_tqdm-4.70.0.20261122.tar.gz", hash = "sha256:f2c4ac5e043ee54d73cd1abc3f111dc7a2ab9ee717eb593b8e7330c326c3e61a", size = 19659, upload-time = "2026-11-22T08:58:22.257Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3a/ef/00233066db8f645839c00ea2626d11850ea6f4a6e2b2207fec4d70b091fe/types_tqdm-4.70.0.20261122-py3-none-any.whl", hash = "sha256:a8e81a67368e5c03eb5e20dfbdd27162cfc0fcfbb0951a8a05357a895deeba74", size = 25406, upload-time = "2026-11-22T08:58:21.443Z" },
+]
+
+[[package]]
 name = "typing-extensions"
 version = "4.15.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2603,6 +2630,9 @@ all = [
     { name = "ruff" },
     { name = "sentry-sdk" },
     { name = "structlog" },
+    { name = "types-psutil" },
+    { name = "types-pyyaml" },
+    { name = "types-tqdm" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 all-processors = [
@@ -2622,6 +2652,9 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "types-psutil" },
+    { name = "types-pyyaml" },
+    { name = "types-tqdm" },
 ]
 observability = [
     { name = "opentelemetry-exporter-otlp-proto-http" },
@@ -2707,10 +2740,16 @@ requires-dist = [
     { name = "ray", marker = "extra == 'ray'", specifier = ">=2.0.0" },
     { name = "ruff", marker = "extra == 'all'", specifier = ">=0.1.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
-    { name = "sentry-sdk", marker = "extra == 'all'", specifier = ">=2.0.0" },
-    { name = "sentry-sdk", marker = "extra == 'observability'", specifier = ">=2.0.0" },
+    { name = "sentry-sdk", marker = "extra == 'all'", specifier = ">=2.0.0,<3" },
+    { name = "sentry-sdk", marker = "extra == 'observability'", specifier = ">=2.0.0,<3" },
     { name = "structlog", marker = "extra == 'all'", specifier = ">=24.1.0" },
     { name = "structlog", marker = "extra == 'observability'", specifier = ">=24.1.0" },
+    { name = "types-psutil", marker = "extra == 'all'" },
+    { name = "types-psutil", marker = "extra == 'dev'" },
+    { name = "types-pyyaml", marker = "extra == 'all'" },
+    { name = "types-pyyaml", marker = "extra == 'dev'" },
+    { name = "types-tqdm", marker = "extra == 'all'" },
+    { name = "types-tqdm", marker = "extra == 'dev'" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'all'", specifier = ">=0.23.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'worker'", specifier = ">=0.23.0" },
 ]
