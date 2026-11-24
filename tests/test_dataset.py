@@ -92,9 +92,9 @@ class TestApiUrlResolution:
         assert resolve_api_url(None) == PROD_API_URL
 
     def test_production_is_a_host_that_actually_resolves(self):
-        # zc's credentials.rs names my.zakuro-ai.com, which is NXDOMAIN. A
-        # default that cannot resolve fails before it can even report an auth
-        # error, so pin the one that is live.
+        # The retired dashboard host is NXDOMAIN. A default that cannot
+        # resolve fails before it can even report an auth error, so pin the
+        # one that is live.
         assert PROD_API_URL == "https://hub.zakuro-ai.com"
 
     def test_zakuro_env_selects_staging(self, monkeypatch):

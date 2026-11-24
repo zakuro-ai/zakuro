@@ -32,7 +32,7 @@ Python runtime dependencies
 --- Apache Software License; MIT License (1 package(s)) ---
   * uvloop 0.22.1  <UNKNOWN>
 
---- Apache-2.0 (15 package(s)) ---
+--- Apache-2.0 (18 package(s)) ---
   * coverage 7.13.3  <https://github.com/coveragepy/coveragepy>
   * msgpack 1.1.2  <https://msgpack.org/>
   * opentelemetry-api 1.42.1  <https://github.com/open-telemetry/opentelemetry-python/tree/main/opentelemetry-api>
@@ -48,6 +48,9 @@ Python runtime dependencies
   * opentelemetry-util-http 0.63b1  <https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/util/opentelemetry-util-http>
   * pyspark 4.1.1  <https://github.com/apache/spark/tree/master/python>
   * pytest-asyncio 1.3.0  <https://github.com/pytest-dev/pytest-asyncio>
+  * types-psutil 7.2.2.20261122  <https://github.com/python/typeshed>
+  * types-PyYAML 6.0.12.20261122  <https://github.com/python/typeshed>
+  * types-tqdm 4.70.0.20261122  <https://github.com/python/typeshed>
 
 --- Apache-2.0 AND BSD-2-Clause (1 package(s)) ---
   * prometheus_client 0.25.0  <https://github.com/prometheus/client_python>
