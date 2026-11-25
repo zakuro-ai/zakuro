@@ -201,7 +201,14 @@ jobs:
       - name: Install dependencies
         run: uv pip install -e ".[dev,worker,observability]" --system
       - name: pip-audit
-        run: uv pip install --system pip-audit && pip-audit --strict --desc on
+        # Audit the installed dependencies, not the project itself: on a release
+        # pull request its new version is not on PyPI yet, so `--strict` failed
+        # on "Dependency not found on PyPI" (zakuro#272, 0.2.29). `--skip-editable`
+        # does not help: under `--strict` a skipped package is an error too.
+        run: |
+          uv pip install --system pip-audit
+          uv pip freeze --system --exclude-editable > "$RUNNER_TEMP/requirements.txt"
+          pip-audit --strict --desc on --disable-pip --no-deps -r "$RUNNER_TEMP/requirements.txt"
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@cf5c088a69634cd13ccddc735d7926162c31f9a6  # master
         with:
